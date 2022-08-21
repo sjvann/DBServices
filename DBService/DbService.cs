@@ -8,7 +8,7 @@ using System.Data.SqlClient;
 
 namespace DBService
 {
-    public class DbService
+    public class DbService<T> where T: TableBased
     {
         private readonly SqlConnection _conn;
         private readonly EnumSupportedServer _providerName;
@@ -21,9 +21,9 @@ namespace DBService
         #region Public Method
         public SqlConnection GetConnect => _conn;
 
-        public int CheckHasRecord<T>() where T : TableBased
+        public int CheckHasRecord()
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null)
             {
                 try
@@ -49,9 +49,9 @@ namespace DBService
 
 
         #region CRUD Public Method
-        public IEnumerable<T>? GetRecordbyTable<T>() where T : TableBased
+        public IEnumerable<T>? GetRecordbyTable()
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null)
             {
                 try
@@ -75,9 +75,9 @@ namespace DBService
 
 
         }
-        public IEnumerable<T>? GetRecords<T>(string[]? fields = null, string? whereStr = null) where T : TableBased
+        public IEnumerable<T>? GetRecords(string[]? fields = null, string? whereStr = null)
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null)
             {
                 try
@@ -101,9 +101,9 @@ namespace DBService
         }
 
 
-        public T? GetRecord<T>(int id) where T : TableBased
+        public T? GetRecord(int id)
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null)
             {
                 try
@@ -125,9 +125,9 @@ namespace DBService
             }
             return null;
         }
-        public IEnumerable<T>? GetRecordByKey<T>(string key, object value) where T : TableBased
+        public IEnumerable<T>? GetRecordByKey(string key, object value)
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null)
             {
                 try
@@ -150,9 +150,9 @@ namespace DBService
             return new List<T>();
         }
 
-        public T? AddRecord<T>(T source, int? parentId = null) where T : TableBased
+        public T? AddRecord(T source, int? parentId = null) 
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null)
             {
                 try
@@ -160,7 +160,7 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForInsert(source, parentId);
                     int resultId = sql != null ? _conn.Query<int>(sql, source).SingleOrDefault() : 0;
-                    return GetRecord<T>(resultId);
+                    return GetRecord(resultId);
                 }
                 catch (SqlException ex)
                 {
@@ -175,9 +175,9 @@ namespace DBService
             return null;
 
         }
-        public bool AddBulkRecord<T>(IList<T> source) where T : TableBased
+        public bool AddBulkRecord(IList<T> source) 
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null && source.Any())
             {
                 try
@@ -201,9 +201,9 @@ namespace DBService
             return false;
 
         }
-        public bool DeleteRecord<T>(int id) where T : TableBased
+        public bool DeleteRecord(int id) 
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
              if(_conn != null && _sqlProvider != null && id != 0)
             {
                 try
@@ -225,9 +225,9 @@ namespace DBService
           
             return false;
         }
-        public bool DeleteRecordByKey<T>(string key, int id) where T : TableBased
+        public bool DeleteRecordByKey(string key, int id)
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if(_conn != null && _sqlProvider != null && id !=0)
             {
                 try
@@ -248,9 +248,9 @@ namespace DBService
             }
             return false;
         }
-        public bool UpdateRecord<T>(int id, T source) where T : TableBased
+        public bool UpdateRecord(int id, T source) 
         {
-             var _sqlProvider = SetupSqlProvider<T>();
+             var _sqlProvider = SetupSqlProvider();
             if(_conn != null && _sqlProvider != null && id != 0 && source != null)
             {
                 try
@@ -272,9 +272,9 @@ namespace DBService
 
             return false;
         }
-        public bool UpdateRecordByKey<T>(string key, int id, T source) where T : TableBased
+        public bool UpdateRecordByKey(string key, int id, T source)
         {
-            var _sqlProvider = SetupSqlProvider<T>();
+            var _sqlProvider = SetupSqlProvider();
             if(_conn != null && _sqlProvider != null && id != 0 && source != null)
             {
                 try
@@ -303,14 +303,14 @@ namespace DBService
         #endregion
 
         #region Private Method
-        public ITableSqlService<TTable>? SetupSqlProvider<TTable>() where TTable : TableBased
+        private ITableSqlService<T>? SetupSqlProvider() 
         {
             switch (_providerName)
             {
                 case EnumSupportedServer.SqlServer:
-                    return new TableSqlForMsSql<TTable>();
+                    return new TableSqlForMsSql<T>();
                 case EnumSupportedServer.Sqlite:
-                    return new TableSqlForSqlite<TTable>();
+                    return new TableSqlForSqlite<T>();
                 default:
                     return null;
             }
