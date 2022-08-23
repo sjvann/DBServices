@@ -8,5 +8,6 @@ namespace DBService.Models
 {
     public  class TableBased
     {
+       
     }
 }

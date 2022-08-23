@@ -28,8 +28,9 @@
         public string[]? GetFields();
         public string? GetParameters();
         public string? GetSqlForCheckTableExist();
-        string? GetSqlForDeleteByKey(string key, int id);
-        string? GetSqlForUpdateByKey(string key, int id, T source);
+        string? GetSqlForDeleteByKey(string key, object value);
+        string? GetSqlForUpdateByKey(string key, object value, T source);
+        public string? GetSqlLastInsertId();
         #endregion
 
     }

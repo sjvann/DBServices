@@ -131,11 +131,12 @@ namespace DBService.TableService
             }
 
         }
-        public string? GetSqlForDeleteByKey(string key, int id)
+        public string? GetSqlForDeleteByKey(string key, object value)
         {
-            if (_tableName != null)
+            string? whereStr = SetupMapForKeyValue(key, value);
+            if (_tableName != null && whereStr != null)
             {
-                return $"DELETE FROM {_tableName} WHERE {key} = {id};";
+                return $"DELETE FROM {_tableName} WHERE {whereStr});";
             }
             else
             {
@@ -157,14 +158,15 @@ namespace DBService.TableService
                 return null;
             }
         }
-        public string? GetSqlForUpdateByKey(string key, int id, T source)
+        public string? GetSqlForUpdateByKey(string key, object value, T source)
         {
-            if (_tableName != null && _fields != null && _fields.Any())
-            {
+            string? whereStr = SetupMapForKeyValue(key, value);
+            if (_tableName != null && _fields != null && _fields.Any() && whereStr!= null)
+            {   
                 var target = MapFiledValue(source);
                 string? setClasue = SetupMapForKeyValue(target);
 
-                return setClasue != null ? $"UPDATE {_tableName} SET {setClasue} WHERE {key} = {id};" : null;
+                return setClasue != null ? $"UPDATE {_tableName} SET {setClasue} WHERE {whereStr};" : null;
             }
             else
             {
@@ -219,6 +221,10 @@ namespace DBService.TableService
         public string[]? GetFields()
         {
             return _fields;
+        }
+        public string? GetSqlLastInsertId()
+        {
+            throw new NotImplementedException();
         }
 
         public string GetSqlForCheckRows()
@@ -347,6 +353,36 @@ namespace DBService.TableService
             }
             else
             { return null; }
+        }
+
+        private static string? SetupMapForKeyValue(string key, object value)
+        {
+            if (value != null)
+            {
+
+                if (value is DateTime)
+                {
+                    DateTime n = (DateTime)value;
+                    return $"{key} = '{n:yyyy-MM-dd}'";
+                }
+                else if (value is int)
+                {
+                    int n = (int)value;
+                    return $"{key} = {n}";
+                }
+                else if (value is bool b)
+                {
+                    int n = b ? 1 : 0;
+                    return $"{key} = {n}";
+                }
+                else
+                {
+                    string n = (string)value;
+                    return $"{key} = '{n}'";
+                }
+            }
+            return null;
+
         }
 
 

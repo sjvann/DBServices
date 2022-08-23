@@ -1,18 +1,14 @@
 ﻿using DBService.Models;
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Reflection;
 
 namespace DBService.TableService
 {
     public class TableSqlForSqlite<T> : ITableSqlService<T> where T : TableBased
     {
         private readonly string? _tableName;
-        private readonly string[]? _fields;
-        private readonly IEnumerable<FieldBased>? _fieldsWithDataType;
+        private readonly List<string> _fields = new();
+
         public TableSqlForSqlite()
         {
 
@@ -22,22 +18,14 @@ namespace DBService.TableService
                 _tableName = ta.Name;
             }
 
-            ColumnAttribute[] ca = (ColumnAttribute[])Attribute.GetCustomAttributes(typeof(T), typeof(ColumnAttribute));
-            if (ca != null && ca.Any())
+            foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                _fields = ca.Select(x => x.Name ?? string.Empty).ToArray();
-                List<FieldBased> target = new();
-                foreach (var item in ca)
+                ColumnAttribute? ca = (ColumnAttribute?)Attribute.GetCustomAttribute(prop, typeof(ColumnAttribute));
+                if (ca != null && ca.Name != null)
                 {
-                    target.Add(new FieldBased()
-                    {
-                        FieldName = item.Name,
-                        FieldType = item.TypeName
-                    });
+                    _fields.Add(ca.Name);
                 }
-                _fieldsWithDataType = target;
             }
-
         }
 
 
@@ -60,7 +48,7 @@ namespace DBService.TableService
             if (_tableName != null && fields != null && fields.Any())
             {
                 string fieldsStr = string.Join(',', fields);
-                return whereStr == null ? $"SELECT DISTINCT {_fields} FROM {GetTableName()}" : $"SELECT DISTINCT {fieldsStr} FROM {GetTableName()} WHERE {whereStr};";
+                return whereStr == null ? $"SELECT DISTINCT * FROM {GetTableName()}" : $"SELECT DISTINCT {fieldsStr} FROM {GetTableName()} WHERE {whereStr};";
             }
             else
             {
@@ -71,7 +59,7 @@ namespace DBService.TableService
         {
             if (_tableName != null && _fields != null && _fields.Contains(key))
             {
-                return $"SELECT * FROM {_tableName} WHERE {key} = {value};";
+                return $"SELECT * FROM {_tableName} WHERE {key} = '{value}';";
             }
             else
             {
@@ -91,16 +79,29 @@ namespace DBService.TableService
             }
 
         }
+        public string? GetSqlByKeyValuePair(Dictionary<string, object> values)
+        {
+            if (_tableName != null && values != null && values.Any())
+            {
+                string? queryString = SetupMapForKeyValue(values);
+                return queryString != null ? $"SELECT * FROM {_tableName} WHERE {queryString};" : null;
+            }
+            else
+            {
+                return null;
+            }
+
+        }
         #endregion
         #region DML
         public string? GetSqlForInsert(T source, int? parentId = null)
         {
-            if (_tableName != null && _fields != null && _fields.Any())
+            if (_tableName != null)
             {
                 var target = MapFiledValue(source);
                 string? fieldStr = target != null ? string.Join(",", target.Keys) : null;
                 string? valueStr = SetupMapForInsertValue(target);
-                return valueStr != null ? $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr}); SELECT last_insert_rowid();" : null;
+                return valueStr != null ? $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr});" : null;
             }
             else
             {
@@ -146,6 +147,35 @@ namespace DBService.TableService
                 return null;
             }
         }
+        public string? GetSqlForDeleteByKey(string key, object value)
+        {
+            string? whereStr = SetupMapForKeyValue(key, value);
+            if (_tableName != null && whereStr != null)
+            {
+                return $"DELETE FROM {_tableName} WHERE {whereStr};";
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        public string? GetSqlForUpdateByKey(string key, object value, T source)
+        {
+            string? whereStr = SetupMapForKeyValue(key, value);
+            if (_tableName != null && _fields != null && _fields.Any() && whereStr != null)
+            {
+                var target = MapFiledValue(source);
+                string? setClasue = SetupMapForKeyValue(target);
+
+                return setClasue != null ? $"UPDATE {_tableName} SET {setClasue} WHERE {whereStr};" : null;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
 
         #endregion
         #region DDL
@@ -181,12 +211,16 @@ namespace DBService.TableService
 
         public string[]? GetFields()
         {
-            return _fields;
+            return _fields.ToArray();
+        }
+        public string? GetSqlLastInsertId()
+        {
+            return "SELECT last_insert_rowid();";
         }
 
         public string GetSqlForCheckRows()
         {
-            throw new NotImplementedException();
+            return $"SELECT * FROM {_tableName};";
         }
 
         public string GetSqlForTruncate()
@@ -209,10 +243,11 @@ namespace DBService.TableService
             {
                 foreach (var item in _fields)
                 {
-                    object? value = s.GetField(item)?.GetValue(source);
-                    if (value != null)
+                    PropertyInfo? f = s.GetProperty(item);
+                    object? o = f?.GetValue(source) ?? null;
+                    if (o != null)
                     {
-                        map.Add(item, value);
+                        map.Add(item, o);
                     }
                 }
             }
@@ -312,20 +347,75 @@ namespace DBService.TableService
             { return null; }
         }
 
-        public string? GetSqlByKeyValuePair(Dictionary<string, object> values)
+        private static string? SetupMapForKeyValue(Dictionary<string, object>? source)
         {
-            throw new NotImplementedException();
+            if (source != null && source.Any())
+            {
+                List<string> setClause = new();
+                foreach (var item in source)
+                {
+                    if (item.Value != null)
+                    {
+                        if (item.Value is DateTime)
+                        {
+                            DateTime n = (DateTime)item.Value;
+                            setClause.Add($"{item.Key} = '{n:yyyy-MM-dd}'");
+                        }
+                        else if (item.Value is int)
+                        {
+                            int n = (int)item.Value;
+                            setClause.Add($"{item.Key} = {n}");
+                        }
+                        else if (item.Value is bool b)
+                        {
+                            int n = b ? 1 : 0;
+                            setClause.Add($"{item.Key} = {n}");
+                        }
+                        else
+                        {
+                            string n = (string)item.Value;
+                            setClause.Add($"{item.Key} = '{n}'");
+                        }
+                    }
+
+                }
+                return string.Join(',', setClause);
+            }
+            else
+            { return null; }
         }
 
-        public string? GetSqlForDeleteByKey(string key, int id)
+
+        private static string? SetupMapForKeyValue(string key, object value)
         {
-            throw new NotImplementedException();
+            if (value != null)
+            {
+
+                if (value is DateTime)
+                {
+                    DateTime n = (DateTime)value;
+                    return $"{key} = '{n:yyyy-MM-dd}'";
+                }
+                else if (value is int)
+                {
+                    int n = (int)value;
+                    return $"{key} = {n}";
+                }
+                else if (value is bool b)
+                {
+                    int n = b ? 1 : 0;
+                    return $"{key} = {n}";
+                }
+                else
+                {
+                    string n = (string)value;
+                    return $"{key} = '{n}'";
+                }
+            }
+            return null;
+
         }
 
-        public string? GetSqlForUpdateByKey(string key, int id, T source)
-        {
-            throw new NotImplementedException();
-        }
 
 
         #endregion

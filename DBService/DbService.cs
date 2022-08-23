@@ -3,23 +3,25 @@ using DBService.Models;
 using DBService.Models.Enum;
 using DBService.TableService;
 using System.Data;
+using System.Data.Common;
 using System.Data.SqlClient;
-
+using System.Data.SQLite;
 
 namespace DBService
 {
-    public class DbService<T> where T: TableBased
+    public class DbService<T> where T : TableBased
     {
-        private readonly SqlConnection _conn;
+        private DbConnection? _conn;
+        private readonly string? _connectString;
         private readonly EnumSupportedServer _providerName;
 
-        public DbService(EnumSupportedServer providerName, string? connectString)
+        public DbService(EnumSupportedServer providerName, string connectString)
         {
-            _conn = new SqlConnection(connectString);
             _providerName = providerName;
+            _connectString = connectString;
         }
         #region Public Method
-        public SqlConnection GetConnect => _conn;
+
 
         public int CheckHasRecord()
         {
@@ -30,8 +32,8 @@ namespace DBService
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForCheckRows();
-                    int affectedRows = (sql != null) ? _conn.Execute(sql) : 0;
-                    return affectedRows;
+                    var affectedRows = _conn.Query<int>(sql);
+                    return affectedRows.Count();
                 }
                 catch (SqlException ex)
                 {
@@ -150,7 +152,7 @@ namespace DBService
             return new List<T>();
         }
 
-        public T? AddRecord(T source, int? parentId = null) 
+        public T? AddRecord(T source, int? parentId = null)
         {
             var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null)
@@ -159,7 +161,13 @@ namespace DBService
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForInsert(source, parentId);
-                    int resultId = sql != null ? _conn.Query<int>(sql, source).SingleOrDefault() : 0;
+                    int resultId = sql != null ? _conn.Execute(sql) : 0;
+                    if (resultId != 0)
+                    {
+                        string? sql2 = _sqlProvider.GetSqlLastInsertId();
+                        resultId = string.IsNullOrEmpty(sql2) ? 0 : _conn.Query<int>(sql2).FirstOrDefault();
+                    }
+
                     return GetRecord(resultId);
                 }
                 catch (SqlException ex)
@@ -175,7 +183,7 @@ namespace DBService
             return null;
 
         }
-        public bool AddBulkRecord(IList<T> source) 
+        public bool AddBulkRecord(IList<T> source)
         {
             var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null && source.Any())
@@ -201,16 +209,16 @@ namespace DBService
             return false;
 
         }
-        public bool DeleteRecord(int id) 
+        public bool DeleteRecord(int id)
         {
             var _sqlProvider = SetupSqlProvider();
-             if(_conn != null && _sqlProvider != null && id != 0)
+            if (_conn != null && _sqlProvider != null && id != 0)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForDelete(id);
-                    int effectRow = sql != null ?  _conn.Execute(sql) : 0;
+                    int effectRow = sql != null ? _conn.Execute(sql) : 0;
                     return effectRow > 0;
                 }
                 catch (SqlException ex)
@@ -222,13 +230,13 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-          
+
             return false;
         }
-        public bool DeleteRecordByKey(string key, int id)
+        public bool DeleteRecordByKey(string key, object id)
         {
             var _sqlProvider = SetupSqlProvider();
-            if(_conn != null && _sqlProvider != null && id !=0)
+            if (_conn != null && _sqlProvider != null && id != null)
             {
                 try
                 {
@@ -248,17 +256,20 @@ namespace DBService
             }
             return false;
         }
-        public bool UpdateRecord(int id, T source) 
+        public T? UpdateRecord(int id, T source)
         {
-             var _sqlProvider = SetupSqlProvider();
-            if(_conn != null && _sqlProvider != null && id != 0 && source != null)
+            var _sqlProvider = SetupSqlProvider();
+            if (_conn != null && _sqlProvider != null && id != 0 && source != null)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForUpdate(id, source);
                     int effectRow = sql != null ? _conn.Execute(sql) : 0;
-                    return effectRow > 0;
+                    if (effectRow > 0)
+                    {
+                        return GetRecord(id);
+                    }
                 }
                 catch (SqlException ex)
                 {
@@ -270,19 +281,23 @@ namespace DBService
                 }
             }
 
-            return false;
+            return null;
         }
-        public bool UpdateRecordByKey(string key, int id, T source)
+        public T? UpdateRecordByKey(string key, object value, int id, T source)
         {
+
             var _sqlProvider = SetupSqlProvider();
-            if(_conn != null && _sqlProvider != null && id != 0 && source != null)
+            if (_conn != null && _sqlProvider != null && value != null && source != null && id != 0)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
-                    string? sql = _sqlProvider.GetSqlForUpdateByKey(key, id, source);
+                    string? sql = _sqlProvider.GetSqlForUpdateByKey(key, value, source);
                     int effectRow = sql != null ? _conn.Execute(sql) : 0;
-                    return effectRow > 0;
+                    if (effectRow > 0)
+                    {
+                        return GetRecord(id);
+                    }
                 }
                 catch (SqlException ex)
                 {
@@ -293,9 +308,9 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-            return false;
+            return null;
         }
-        
+
 
         #endregion
 
@@ -303,13 +318,15 @@ namespace DBService
         #endregion
 
         #region Private Method
-        private ITableSqlService<T>? SetupSqlProvider() 
+        private ITableSqlService<T>? SetupSqlProvider()
         {
             switch (_providerName)
             {
                 case EnumSupportedServer.SqlServer:
+                    _conn = new SqlConnection(_connectString);
                     return new TableSqlForMsSql<T>();
                 case EnumSupportedServer.Sqlite:
+                    _conn = new SQLiteConnection(_connectString);
                     return new TableSqlForSqlite<T>();
                 default:
                     return null;
