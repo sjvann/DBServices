@@ -1,8 +1,10 @@
 ﻿using DBService.Models;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -11,8 +13,9 @@ namespace DBService.TableService
     public class TableSqlForMsSql<T> : ITableSqlService<T> where T : TableBased
     {
         private readonly string? _tableName;
-        private readonly string[]? _fields;
-        private readonly IEnumerable<FieldBased>? _fieldsWithDataType;
+        private readonly List<string> _fields = new();
+        private readonly List<string> _keyfields = new();
+
         public TableSqlForMsSql()
         {
 
@@ -21,23 +24,22 @@ namespace DBService.TableService
             {
                 _tableName = ta.Name;
             }
-
-            ColumnAttribute[] ca = (ColumnAttribute[])Attribute.GetCustomAttributes(typeof(T), typeof(ColumnAttribute));
-            if (ca != null && ca.Any())
+            foreach (PropertyInfo prop in typeof(T).GetProperties())
             {
-                _fields = ca.Select(x => x.Name ?? string.Empty).ToArray();
-                List<FieldBased> target = new();
-                foreach (var item in ca)
+                Attribute[]? cas = Attribute.GetCustomAttributes(prop);
+                if (cas != null && cas.Any())
                 {
-                    target.Add(new FieldBased()
+                    foreach (Attribute ca in cas)
                     {
-                        FieldName = item.Name,
-                        FieldType = item.TypeName
-                    });
-                }
-                _fieldsWithDataType = target;
-            }
 
+                        if (ca is ColumnAttribute temp && temp.Name != null) _fields.Add(temp.Name);
+                        if (ca is KeyAttribute)
+                        {
+                            _keyfields.Add(prop.Name);
+                        }
+                    }
+                }
+            }
         }
         #region DQL
         public string? GetSqlForAll(string? whereStr = null)
@@ -112,7 +114,7 @@ namespace DBService.TableService
                 var target = MapFiledValue(source);
                 string? fieldStr = target != null ? string.Join(",", target.Keys) : null;
                 string? valueStr = SetupMapForInsertValue(target);
-                return valueStr != null ? $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr}); SELECT @@IDENTITY;" : null;
+                return valueStr != null ? $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr}); " : null;
             }
             else
             {
@@ -136,7 +138,7 @@ namespace DBService.TableService
             string? whereStr = SetupMapForKeyValue(key, value);
             if (_tableName != null && whereStr != null)
             {
-                return $"DELETE FROM {_tableName} WHERE {whereStr});";
+                return $"DELETE FROM {_tableName} WHERE {whereStr};";
             }
             else
             {
@@ -161,8 +163,8 @@ namespace DBService.TableService
         public string? GetSqlForUpdateByKey(string key, object value, T source)
         {
             string? whereStr = SetupMapForKeyValue(key, value);
-            if (_tableName != null && _fields != null && _fields.Any() && whereStr!= null)
-            {   
+            if (_tableName != null && _fields != null && _fields.Any() && whereStr != null)
+            {
                 var target = MapFiledValue(source);
                 string? setClasue = SetupMapForKeyValue(target);
 
@@ -220,11 +222,11 @@ namespace DBService.TableService
 
         public string[]? GetFields()
         {
-            return _fields;
+            return _fields.ToArray();
         }
         public string? GetSqlLastInsertId()
         {
-            throw new NotImplementedException();
+            return "SELECT @@IDENTITY";
         }
 
         public string GetSqlForCheckRows()
@@ -252,11 +254,17 @@ namespace DBService.TableService
             {
                 foreach (var item in _fields)
                 {
-                    object? value = s.GetField(item)?.GetValue(source);
-                    if (value != null)
+                    if (item != null && !_keyfields.Contains(item))
                     {
-                        map.Add(item, value);
+                        PropertyInfo? f = s.GetProperty(item);
+
+                        object? o = f?.GetValue(source) ?? null;
+                        if (o != null)
+                        {
+                            map.Add(item, o);
+                        }
                     }
+
                 }
             }
             return map;
@@ -300,7 +308,7 @@ namespace DBService.TableService
                         {
                             string n = (string)item;
                             string newOne = n.Replace("'", "''");
-                            sb.Add($"'{newOne}'");
+                            sb.Add($"N'{newOne}'");
                         }
                     }
                     else
@@ -344,7 +352,7 @@ namespace DBService.TableService
                         else
                         {
                             string n = (string)item.Value;
-                            setClause.Add($"{item.Key} = '{n}'");
+                            setClause.Add($"{item.Key} = N'{n}'");
                         }
                     }
 

@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 
 namespace DBService.Models
 {
-    public  class TableBased
+    public abstract class TableBased
     {
-       
+        public abstract int GetId();
     }
 }

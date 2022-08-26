@@ -152,7 +152,7 @@ namespace DBService
             return new List<T>();
         }
 
-        public T? AddRecord(T source, int? parentId = null)
+        public object? AddRecord(T source, int? parentId = null)
         {
             var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null)
@@ -165,10 +165,8 @@ namespace DBService
                     if (resultId != 0)
                     {
                         string? sql2 = _sqlProvider.GetSqlLastInsertId();
-                        resultId = string.IsNullOrEmpty(sql2) ? 0 : _conn.Query<int>(sql2).FirstOrDefault();
+                       return string.IsNullOrEmpty(sql2) ? 0 : _conn.Query<int>(sql2).FirstOrDefault();
                     }
-
-                    return GetRecord(resultId);
                 }
                 catch (SqlException ex)
                 {
@@ -283,11 +281,11 @@ namespace DBService
 
             return null;
         }
-        public T? UpdateRecordByKey(string key, object value, int id, T source)
+        public IEnumerable<T>? UpdateRecordByKey(string key, object value, T source)
         {
 
             var _sqlProvider = SetupSqlProvider();
-            if (_conn != null && _sqlProvider != null && value != null && source != null && id != 0)
+            if (_conn != null && _sqlProvider != null && value != null && source != null)
             {
                 try
                 {
@@ -296,7 +294,8 @@ namespace DBService
                     int effectRow = sql != null ? _conn.Execute(sql) : 0;
                     if (effectRow > 0)
                     {
-                        return GetRecord(id);
+
+                        return GetRecordByKey(key, (int)value);
                     }
                 }
                 catch (SqlException ex)
@@ -308,7 +307,7 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-            return null;
+            return new List<T>();
         }
 
 
