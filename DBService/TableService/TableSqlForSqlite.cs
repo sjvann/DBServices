@@ -7,25 +7,13 @@ namespace DBService.TableService
     public class TableSqlForSqlite<T> : ITableSqlService<T> where T : TableBased
     {
         private readonly string? _tableName;
-        private readonly List<string> _fields = new();
+        private readonly IEnumerable<FieldBased>? _fields;
 
         public TableSqlForSqlite()
         {
+            _tableName = TableBased.GetTableName<T>();
+            _fields = TableBased.GetFields<T>();
 
-            TableAttribute? ta = (TableAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(TableAttribute));
-            if (ta != null)
-            {
-                _tableName = ta.Name;
-            }
-
-            foreach (PropertyInfo prop in typeof(T).GetProperties())
-            {
-                ColumnAttribute? ca = (ColumnAttribute?)Attribute.GetCustomAttribute(prop, typeof(ColumnAttribute));
-                if (ca != null && ca.Name != null)
-                {
-                    _fields.Add(ca.Name);
-                }
-            }
         }
 
 
@@ -35,7 +23,7 @@ namespace DBService.TableService
         {
             if (_tableName != null)
             {
-                return whereStr == null ? $"SELECT DISTINCT * FROM {_tableName}" : $"SELECT * FROM {_tableName} WHERE {whereStr};";
+                return whereStr == null ? $"SELECT * FROM {_tableName}" : $"SELECT * FROM {_tableName} WHERE {whereStr};";
             }
             else
             {
@@ -48,18 +36,20 @@ namespace DBService.TableService
             if (_tableName != null && fields != null && fields.Any())
             {
                 string fieldsStr = string.Join(',', fields);
-                return whereStr == null ? $"SELECT DISTINCT * FROM {GetTableName()}" : $"SELECT DISTINCT {fieldsStr} FROM {GetTableName()} WHERE {whereStr};";
+                return whereStr == null ? $"SELECT * FROM {GetTableName()}" : $"SELECT {fieldsStr} FROM {GetTableName()} WHERE {whereStr};";
             }
             else
             {
                 return null;
             }
         }
-        public string? GetSqlByKey(string key, object value)
+        public string? GetSqlByKeyValue(string key, object value)
         {
-            if (_tableName != null && _fields != null && _fields.Contains(key))
+            var queryString = MapForKeyValue(key, value);
+
+            if (_tableName != null && !string.IsNullOrEmpty(queryString))
             {
-                return $"SELECT * FROM {_tableName} WHERE {key} = '{value}';";
+                return $"SELECT * FROM {_tableName} WHERE {queryString};";
             }
             else
             {
@@ -79,12 +69,13 @@ namespace DBService.TableService
             }
 
         }
-        public string? GetSqlByKeyValuePair(Dictionary<string, object> values)
+        public string? GetSqlByKeyValues(Dictionary<string, object> values)
         {
-            if (_tableName != null && values != null && values.Any())
+            string? queryString = MapForKeyValues(values);
+            if (_tableName != null && !string.IsNullOrEmpty(queryString))
             {
-                string? queryString = SetupMapForKeyValue(values);
-                return queryString != null ? $"SELECT * FROM {_tableName} WHERE {queryString};" : null;
+
+                return $"SELECT * FROM {_tableName} WHERE {queryString};";
             }
             else
             {
@@ -96,12 +87,12 @@ namespace DBService.TableService
         #region DML
         public string? GetSqlForInsert(T source, int? parentId = null)
         {
-            if (_tableName != null)
+            var target = MapFiledValueFromSource(source);
+            string? fieldStr = target != null ? string.Join(",", target.Keys) : null;
+            string? valueStr = MapForInsertValue(target);
+            if (_tableName != null && !string.IsNullOrEmpty(fieldStr) && !string.IsNullOrEmpty(valueStr))
             {
-                var target = MapFiledValue(source);
-                string? fieldStr = target != null ? string.Join(",", target.Keys) : null;
-                string? valueStr = SetupMapForInsertValue(target);
-                return valueStr != null ? $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr});" : null;
+                return $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr});";
             }
             else
             {
@@ -120,36 +111,9 @@ namespace DBService.TableService
             }
 
         }
-        public string? GetSqlForUpdate(int id, T source)
-        {
-            if (_tableName != null && _fields != null && _fields.Any())
-            {
-                var target = MapFiledValue(source);
-                string? setClasue = SetupMapForUpdateValue(target);
-
-                return setClasue != null ? $"UPDATE {_tableName} SET {setClasue} WHERE id = {id};" : null;
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        public string? GetSqlForBlukAdd()
-        {
-            if (_tableName != null && _fields != null && _fields.Any())
-            {
-                string fieldsStr = string.Join(',', _fields);
-                return $"INSERT INTO {_tableName} ({fieldsStr}) VALUES ({GetParameters()})";
-            }
-            else
-            {
-                return null;
-            }
-        }
         public string? GetSqlForDeleteByKey(string key, object value)
         {
-            string? whereStr = SetupMapForKeyValue(key, value);
+            string? whereStr = MapForKeyValue(key, value);
             if (_tableName != null && whereStr != null)
             {
                 return $"DELETE FROM {_tableName} WHERE {whereStr};";
@@ -160,21 +124,55 @@ namespace DBService.TableService
             }
         }
 
-        public string? GetSqlForUpdateByKey(string key, object value, T source)
+        public string? GetSqlForUpdate(int id, T source)
         {
-            string? whereStr = SetupMapForKeyValue(key, value);
-            if (_tableName != null && _fields != null && _fields.Any() && whereStr != null)
+            var target = MapFiledValueFromSource(source);
+            string? setClasue = MapForUpdateValue(target);
+            if (_tableName != null && !string.IsNullOrEmpty(setClasue))
             {
-                var target = MapFiledValue(source);
-                string? setClasue = SetupMapForKeyValue(target);
-
-                return setClasue != null ? $"UPDATE {_tableName} SET {setClasue} WHERE {whereStr};" : null;
+                return $"UPDATE {_tableName} SET {setClasue} WHERE id = {id};";
             }
             else
             {
                 return null;
             }
         }
+        public string? GetSqlForUpdateByKey(string key, object value, T source)
+        {
+            var target = MapFiledValueFromSource(source);
+            string? setClasue = MapForKeyValues(target);
+            string? whereStr = MapForKeyValue(key, value);
+            if (_tableName != null && !string.IsNullOrEmpty(whereStr) && !string.IsNullOrEmpty(setClasue))
+            {
+                return $"UPDATE {_tableName} SET {setClasue} WHERE {whereStr};";
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        public string? GetSqlForBlukAdd()
+        {
+            string[] fields = (from f in _fields
+                               where f.FieldName != null
+                               select f.FieldName).ToArray();
+            string? queryStr = GetParameters(fields);
+            string fieldsStr = string.Join(',', fields);
+            if (_tableName != null && queryStr != null && fieldsStr != null)
+            {
+                return $"INSERT INTO {_tableName} ({fieldsStr}) VALUES ({queryStr})";
+            }
+            else
+            {
+                return null;
+            }
+        }
+        public string? GetSqlForBlukAdd(IEnumerable<T> sources)
+        {
+            throw new NotImplementedException();
+        }
+
 
 
         #endregion
@@ -202,17 +200,17 @@ namespace DBService.TableService
             else
             { return null; }
         }
-        public string GetParameters()
+        public string[]? GetFieldsName()
         {
-            var p = from a in _fields
-                    select "@" + a;
-            return string.Join(",", p);
+            return (from f in _fields
+                    where !string.IsNullOrEmpty(f.FieldName)
+                    select f.FieldName).ToArray();
+        }
+        IEnumerable<FieldBased>? ITableSqlService<T>.GetFields()
+        {
+            return _fields;
         }
 
-        public string[]? GetFields()
-        {
-            return _fields.ToArray();
-        }
         public string? GetSqlLastInsertId()
         {
             return "SELECT last_insert_rowid();";
@@ -220,7 +218,7 @@ namespace DBService.TableService
 
         public string GetSqlForCheckRows()
         {
-            return $"SELECT * FROM {_tableName};";
+            return $"SELECT Count(*) FROM {_tableName};";
         }
 
         public string GetSqlForTruncate()
@@ -233,29 +231,31 @@ namespace DBService.TableService
             return _tableName;
         }
         #endregion
-        #region Private Method
-        private Dictionary<string, object> MapFiledValue(T? source)
+        #region public Service Method
+        public static Dictionary<string, object> MapFiledValueFromSource(T? source)
         {
             if (source == null) return new Dictionary<string, object>();
             Type s = typeof(T);
             Dictionary<string, object> map = new();
-            if (_fields != null && _fields.Any())
+            var fields = TableBased.GetFields<T>();
+            if (fields != null && fields.Any())
             {
-                foreach (var item in _fields)
+                foreach (var item in fields)
                 {
-                    PropertyInfo? f = s.GetProperty(item);
-                    object? o = f?.GetValue(source) ?? null;
-                    if (o != null)
+                    if (item != null && !string.IsNullOrEmpty(item.FieldName))
                     {
-                        map.Add(item, o);
+                        PropertyInfo? f = s.GetProperty(item.FieldName);
+                        object? o = f?.GetValue(source) ?? null;
+                        if (o != null)
+                        {
+                            map.Add(item.FieldName, o);
+                        }
                     }
                 }
             }
             return map;
         }
-
-
-        private static string? SetupMapForInsertValue(Dictionary<string, object>? source)
+        public static string? MapForInsertValue(Dictionary<string, object>? source)
         {
 
             if (source != null && source.Any())
@@ -309,7 +309,7 @@ namespace DBService.TableService
             }
 
         }
-        private static string? SetupMapForUpdateValue(Dictionary<string, object>? source)
+        public static string? MapForUpdateValue(Dictionary<string, object>? source)
         {
             if (source != null && source.Any())
             {
@@ -347,50 +347,28 @@ namespace DBService.TableService
             { return null; }
         }
 
-        private static string? SetupMapForKeyValue(Dictionary<string, object>? source)
+        public static string? MapForKeyValues(Dictionary<string, object>? source)
         {
             if (source != null && source.Any())
             {
                 List<string> setClause = new();
                 foreach (var item in source)
                 {
-                    if (item.Value != null)
+                    string? map = MapForKeyValue(item.Key, item.Value);
+                    if (map != null)
                     {
-                        if (item.Value is DateTime)
-                        {
-                            DateTime n = (DateTime)item.Value;
-                            setClause.Add($"{item.Key} = '{n:yyyy-MM-dd}'");
-                        }
-                        else if (item.Value is int)
-                        {
-                            int n = (int)item.Value;
-                            setClause.Add($"{item.Key} = {n}");
-                        }
-                        else if (item.Value is bool b)
-                        {
-                            int n = b ? 1 : 0;
-                            setClause.Add($"{item.Key} = {n}");
-                        }
-                        else
-                        {
-                            string n = (string)item.Value;
-                            setClause.Add($"{item.Key} = '{n}'");
-                        }
+                        setClause.Add(map);
                     }
-
                 }
                 return string.Join(',', setClause);
             }
             else
             { return null; }
         }
-
-
-        private static string? SetupMapForKeyValue(string key, object value)
+        public static string? MapForKeyValue(string? key, object? value)
         {
             if (value != null)
             {
-
                 if (value is DateTime)
                 {
                     DateTime n = (DateTime)value;
@@ -406,19 +384,20 @@ namespace DBService.TableService
                     int n = b ? 1 : 0;
                     return $"{key} = {n}";
                 }
-                else
+                else if (value is string n)
                 {
-                    string n = (string)value;
                     return $"{key} = '{n}'";
                 }
             }
             return null;
 
         }
-
-
-
+        public string? GetParameters(string[] fields)
+        {
+            var p = from a in fields
+                    select "@" + a;
+            return string.Join(",", p);
+        }
         #endregion
-
     }
 }

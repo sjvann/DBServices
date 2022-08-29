@@ -14,5 +14,10 @@ namespace DBServiceTest.Model
         public int? LoginTimes { get; set; }
         [Column("BirthOfDay", TypeName = "TEXT")]
         public string? BirthOfDay { get; set; }
+
+        public override int GetId()
+        {
+            return Id ?? 0;
+        }
     }
 }

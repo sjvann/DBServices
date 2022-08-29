@@ -14,11 +14,16 @@ namespace DBService
         private DbConnection? _conn;
         private readonly string? _connectString;
         private readonly EnumSupportedServer _providerName;
+        private readonly string? _tableName;
+        private readonly IEnumerable<FieldBased> _fields;
 
         public DbService(EnumSupportedServer providerName, string connectString)
         {
             _providerName = providerName;
             _connectString = connectString;
+            _tableName = TableBased.GetTableName<T>();
+            _fields = TableBased.GetFields<T>();
+
         }
         #region Public Method
 
@@ -135,7 +140,7 @@ namespace DBService
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
-                    string? sql = _sqlProvider.GetSqlByKey(key, value);
+                    string? sql = _sqlProvider.GetSqlByKeyValue(key, value);
                     var result = sql != null ? _conn.Query<T>(sql) : new List<T>();
                     return result;
                 }
@@ -152,7 +157,7 @@ namespace DBService
             return new List<T>();
         }
 
-        public object? AddRecord(T source, int? parentId = null)
+        public Ttype AddRecord<Ttype>(T source, int? parentId = null) where Ttype : struct
         {
             var _sqlProvider = SetupSqlProvider();
             if (_conn != null && _sqlProvider != null && source != null)
@@ -161,11 +166,12 @@ namespace DBService
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     string? sql = _sqlProvider.GetSqlForInsert(source, parentId);
-                    int resultId = sql != null ? _conn.Execute(sql) : 0;
-                    if (resultId != 0)
+                    int effectRecords = sql != null ? _conn.Execute(sql) : 0;
+                    string? sql2 = _sqlProvider.GetSqlLastInsertId();
+                    if (effectRecords > 0 && !string.IsNullOrEmpty(sql2))
                     {
-                        string? sql2 = _sqlProvider.GetSqlLastInsertId();
-                       return string.IsNullOrEmpty(sql2) ? 0 : _conn.Query<int>(sql2).FirstOrDefault();
+                        var requltId = _conn.Query<Ttype>(sql2);
+                        return requltId?.FirstOrDefault() ?? default;
                     }
                 }
                 catch (SqlException ex)
@@ -178,7 +184,7 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-            return null;
+            return default;
 
         }
         public bool AddBulkRecord(IList<T> source)
@@ -295,7 +301,7 @@ namespace DBService
                     if (effectRow > 0)
                     {
 
-                        return GetRecordByKey(key, (int)value);
+                        return GetRecordByKey(key, value);
                     }
                 }
                 catch (SqlException ex)

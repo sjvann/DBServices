@@ -7,12 +7,12 @@ namespace DBServiceTest
 {
 
     [TestClass]
-    public class DemoTest
+    public class DemoTestForSqlite
     {
         private readonly string connString = "Data Source=c://temp//Test.db;Version=3;";
         private readonly DbService<Demo> db;
 
-        public DemoTest()
+        public DemoTestForSqlite()
         {
             db = new DbService<Demo>(EnumSupportedServer.Sqlite, connString);
         }
@@ -51,15 +51,18 @@ namespace DBServiceTest
         public void CreateDemoRecord()
         {
             string newName = $"New_{DateTime.Now:HHmmss}";
-            Demo newOne = new()
-            {
+            List<Demo> records = new();
+            var oneRecord = new Demo() {
                 Name = newName,
                 LoginTimes = 3,
                 BirthOfDay = "20100303"
             };
-            var result = db.AddRecord(newOne);
-            Assert.IsNotNull(result);
-            Assert.AreEqual(newName, result.Name);
+            records.Add(oneRecord);
+            var resultId = db.AddRecord<int>(oneRecord);
+            var newRecord = db.GetRecord(resultId);
+            Assert.IsNotNull(resultId);
+
+            Assert.AreEqual(newName, newRecord?.Name);
         }
         [TestMethod]
         public void UpdateDemoRecord()
@@ -81,7 +84,7 @@ namespace DBServiceTest
         {
             string newName = $"New_{DateTime.Now:HHmmss}";
             Demo? current = db.GetRecordbyTable()?.Last();
-            if(current != null && current.Id != null)
+            if (current != null && current.Id != null)
             {
                 Demo newOne = new()
                 {
@@ -90,11 +93,11 @@ namespace DBServiceTest
                     LoginTimes = 3,
                     BirthOfDay = "20100303"
                 };
-                if(current.Name != null)
+                if (current.Name != null)
                 {
-                  current = db.UpdateRecordByKey("Name", current.Name, current.Id??0, newOne);
+                    current = db.UpdateRecordByKey("Name", current.Name, newOne)?.FirstOrDefault();
                 }
-               
+
             }
             Assert.IsNotNull(current);
             Assert.AreEqual(newName, current.Name);
