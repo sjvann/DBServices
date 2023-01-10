@@ -10,11 +10,11 @@ namespace DBServiceTest
     public class DemoTestForMsSql
     {
         private readonly string connString = "Data Source=localhost;Initial Catalog=DbService;User ID=dbserviceadm;Password=fmjcjjmf5$QQ;";
-        private readonly DbService<Demo> db;
+        private readonly DbServiceGeneric<Demo> db;
 
         public DemoTestForMsSql()
         {
-            db = new DbService<Demo>(EnumSupportedServer.SqlServer, connString);
+            db = new DbServiceGeneric<Demo>(EnumSupportedServer.SqlServer, connString);
         }
         #region Query
         [TestMethod]

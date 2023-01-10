@@ -5,7 +5,7 @@ VisualStudioVersion = 17.3.32811.315
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DBService", "DBService\DBService.csproj", "{60FA1E6B-A35A-4E77-A0A6-B0EFA18252E6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DBServiceTest", "DBServiceTest\DBServiceTest.csproj", "{830993FE-1D20-4E5B-8336-0528B5D5F7D8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DBServiceTest", "DBServiceTest\DBServiceTest.csproj", "{830993FE-1D20-4E5B-8336-0528B5D5F7D8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

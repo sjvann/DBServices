@@ -1,4 +1,4 @@
-﻿namespace DBService.Models
+﻿namespace DBService.Models.Interface
 {
     public interface IBulkInsert
     {
