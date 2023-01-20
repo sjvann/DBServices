@@ -9,7 +9,8 @@ namespace DBService.Models.Interface
 {
     public interface IDataMeta
     {
-        string GetSqlFieldsByName(string tableName);
+        string GetSqlFieldsByName();
         string GetSqlTableNameList(bool includeView = true);
+        string GetSqlForeignKeyList();
     }
 }

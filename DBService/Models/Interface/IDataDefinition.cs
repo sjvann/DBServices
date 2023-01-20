@@ -8,7 +8,7 @@ namespace DBService.Models.Interface
 {
     public interface IDataDefinition
     {
-        string? GetSqlForCreateTable(string tableName);
-        string? GetSqlForDropTable(string tableName);
+        string? GetSqlForCreateTable();
+        string? GetSqlForDropTable();
     }
 }

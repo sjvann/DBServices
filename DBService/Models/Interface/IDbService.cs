@@ -25,5 +25,7 @@ namespace DBService.Models.Interface
         bool UpdateRecordByKeyValue(KeyValuePair<string, object> query, IEnumerable<KeyValuePair<string, object>> source);
         bool DeleteRecordById(int id);
         bool DeleteRecordByKeyValue(KeyValuePair<string, object> criteria);
+        void SetCurrent(string? tableName);
+        TableBaseModel? GetCurrent();
     }
 }

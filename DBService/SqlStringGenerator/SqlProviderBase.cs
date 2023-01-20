@@ -1,9 +1,10 @@
 ﻿
+using DBService.Models.Interface;
 using System.ComponentModel.Design;
 
 namespace DBService.SqlStringGenerator
 {
-    public abstract class SqlProviderBase
+    public abstract class SqlProviderBase:ISqlProviderBase
     {
         protected string? _tableName;
         protected SqlProviderBase() { }
@@ -28,7 +29,6 @@ namespace DBService.SqlStringGenerator
             if (_tableName == null) return null;
             return $"SELECT Count(*) FROM {_tableName} ;";
         }
-
         public abstract string? GetSqlLastInsertId();
         public abstract string? GetSqlForTruncate();
 
@@ -81,7 +81,7 @@ namespace DBService.SqlStringGenerator
             var queryString = MapForKeyValue(new KeyValuePair<string, object>(key, value));
             return $"SELECT * FROM {_tableName} WHERE {queryString} ;";
         }
-        public string? GetSqlByKeyValues(Dictionary<string, object> values)
+        public string? GetSqlByKeyValues(IDictionary<string, object> values)
         {
             if (_tableName == null) return null;
             var queryString = MapForKeyValues(values);
@@ -94,6 +94,26 @@ namespace DBService.SqlStringGenerator
             return $"SELECT * FROM {_tableName} WHERE {queryString} ;";
         }
 
+        #region One-Many
+        public string? GetSqlForInnerJoin(string targetTableName, string sourceKeyName, string targetKeyName)
+        {
+            if (_tableName == null) return null;
+            return $"SELECT * FROM {_tableName} INNER JOIN {targetKeyName} ON {_tableName}.{sourceKeyName} = {targetKeyName}.{targetKeyName} ; ";
+
+        }
+        public string? GetSqlForLeftJoin(string targetTableName, string sourceKeyName, string targetKeyName)
+        {
+            if (_tableName == null) return null;
+            return $"SELECT * FROM {_tableName} RIGHT OUTER JOIN {targetKeyName} ON {_tableName}.{sourceKeyName} = {targetKeyName}.{targetKeyName} ; ";
+
+        }
+        public string? GetSqlForRightJoin(string targetTableName, string sourceKeyName, string targetKeyName)
+        {
+            if (_tableName == null) return null;
+            return $"SELECT * FROM {_tableName} LEFT OUTER JOIN {targetKeyName} ON {_tableName}.{sourceKeyName} = {targetKeyName}.{targetKeyName} ; ";
+
+        }
+        #endregion
         #endregion
         #region DML
         public string? GetSqlForInsert(IEnumerable<KeyValuePair<string, object>> source)
@@ -267,8 +287,11 @@ namespace DBService.SqlStringGenerator
 
         #endregion
         #region Meta
-        public abstract string GetSqlFieldsByName(string tableName);
+        public abstract string GetSqlFieldsByName();
         public abstract string GetSqlTableNameList(bool includeView = true);
+        public abstract string GetSqlForeignKeyList();
+
+
         #endregion
     }
 }

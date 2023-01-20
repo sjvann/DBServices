@@ -8,10 +8,16 @@ namespace DBService.Models.Interface
 {
     public interface IDataManipulate
     {
-        string? GetSqlForDelete(string tableName,int id);
-        string? GetSqlForDeleteByKey(string tableName,KeyValuePair<string, object> criteria);
-        string? GetSqlForInsert(string tableName,IEnumerable<KeyValuePair<string, object>> source);
-        string? GetSqlForUpdate(string tableName,int id, IEnumerable<KeyValuePair<string, object>> source);
-        string? GetSqlForUpdateByKey(string tableName,KeyValuePair<string, object> criteria, IEnumerable<KeyValuePair<string, object>> source);
+        string? GetSqlForDelete(int id);
+        string? GetSqlForDeleteByKey(KeyValuePair<string, object> criteria);
+
+        string? GetSqlForInsert(IEnumerable<KeyValuePair<string, object>> source);
+        string? GetSqlForUpdate(int id, IEnumerable<KeyValuePair<string, object>> source);
+        string? GetSqlForUpdateByKey(KeyValuePair<string, object> criteria, IEnumerable<KeyValuePair<string, object>> source);
+        #region Multi Version
+        //string? GetSqlForDeleteMulti(IEnumerable<KeyValuePair<string, object>> criterias);
+        //string? GetSqlForUpdateMulti();
+        #endregion
+
     }
 }

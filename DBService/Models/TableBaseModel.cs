@@ -1,4 +1,8 @@
 ﻿using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace DBService.Models
 {
@@ -15,7 +19,7 @@ namespace DBService.Models
         public IEnumerable<FieldBaseModel>? Fields { get; set; }
         public IEnumerable<RecordBaseModel>? Records { get; set; }
 
-        public string ToJsonString(bool fullSet = false , bool ignoreNull = false)
+        public JsonObject? ToJsonObject(bool fullSet = false , bool ignoreNull = false)
         {
             StringBuilder sb = new();
             sb.Append('{');
@@ -80,7 +84,10 @@ namespace DBService.Models
 
             sb.Append('}');
 
-            return sb.ToString();
+            MemoryStream stream = new(Encoding.UTF8.GetBytes(sb.ToString()));
+            return (JsonObject?)JsonNode.Parse(stream);
+           
+
         }
     }
 }

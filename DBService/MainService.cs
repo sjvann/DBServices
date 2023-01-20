@@ -102,9 +102,8 @@ namespace DBService
                     ConnectString = _connectString,
                     TableName = tableName,
                     Fields = targetTable?.Value,
-                    PkFieldList = targetTable?.Value.Where(x => x.IsKey.HasValue).Select(x => x.FieldName!)
+                    PkFieldList = targetTable?.Value.Where(x => x.IsKey.HasValue && x.IsKey.Value).Select(x => x.FieldName!)
                 };
-
             }
 
         }

@@ -55,9 +55,9 @@ namespace DBServiceTest
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonString());
+                Console.WriteLine(result.ToJsonObject()?.ToJsonString());
 
-                 Console.WriteLine(result.ToJsonString(true));
+                 Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
             }
         }
         [TestMethod]
@@ -67,7 +67,7 @@ namespace DBServiceTest
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonString());
+                Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
             }
         }
         [TestMethod]
@@ -78,7 +78,7 @@ namespace DBServiceTest
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonString());
+                Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
             }
         }
         #endregion
