@@ -14,6 +14,11 @@ namespace DBService.SqlStringGenerator.MsSql
             throw new NotImplementedException();
         }
 
+        public override string GetSqlForeignKeyList()
+        {
+            throw new NotImplementedException();
+        }
+
         public override string? GetSqlForTruncate()
         {
             throw new NotImplementedException();

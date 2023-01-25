@@ -26,28 +26,7 @@ namespace DBServiceTest
             Console.WriteLine(string.Join(',', tableList));
 
         }
-        [TestMethod]
-        public void GetFieldList()
-        {
-            var fieldList = db.GetFieldObjectByName("Demo");
-            Assert.IsTrue(fieldList?.Count() > 0);
-            Console.WriteLine(string.Join(',', fieldList.Select(x => x.FieldName)));
 
-        }
-        [TestMethod]
-        public void GetAllFieldList()
-        {
-            var allFieldList = db.GetAllFieldList();
-            Assert.IsTrue(allFieldList?.Count > 0);
-            Console.WriteLine(string.Join(',', allFieldList.Where(x => x.Key == "Demo").Select(x => x.Value).First().Select(x => x.FieldName)));
-
-        }
-        [TestMethod]
-        public void CheckHasRecord()
-        {
-            Assert.IsTrue(db.CheckHasRecord());
-
-        }
         [TestMethod]
         public void GetAllFromDb()
         {
@@ -55,9 +34,7 @@ namespace DBServiceTest
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonObject()?.ToJsonString());
-
-                 Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
+                Console.WriteLine(result.ToFullJsonObject()?.ToJsonString());
             }
         }
         [TestMethod]
@@ -67,20 +44,33 @@ namespace DBServiceTest
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
+                Console.WriteLine(result.GetRecordsJsonObject());
             }
         }
         [TestMethod]
         public void GetRecordByKeyValue()
         {
 
-            TableBaseModel? result = db.GetRecordByKeyValue(new KeyValuePair<string, object>("Name", "BB"));
+            TableBaseModel? result = db.GetRecordByKeyValue(new KeyValuePair<string, object?>("Name", "BB"));
             Assert.IsNotNull(result);
             if (result != null)
             {
-                Console.WriteLine(result.ToJsonObject(true)?.ToJsonString());
+                Console.WriteLine(result.GetRecordsJsonObject());
             }
         }
+        [TestMethod]
+        public void GetMetaData()
+        {
+
+           db.SetCurrent("Demo") ;
+            TableBaseModel? result = db.GetCurrent();
+            Assert.IsNotNull(result);
+            if (result != null)
+            {
+                Console.Write(result.GetMetaJsonObject());
+            }
+        }
+
         #endregion
 
     }

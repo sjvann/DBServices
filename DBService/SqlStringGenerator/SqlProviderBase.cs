@@ -1,10 +1,11 @@
 ﻿
 using DBService.Models.Interface;
 using System.ComponentModel.Design;
+using System.Data;
 
 namespace DBService.SqlStringGenerator
 {
-    public abstract class SqlProviderBase:ISqlProviderBase
+    public abstract class SqlProviderBase : ISqlProviderBase
     {
         protected string? _tableName;
         protected SqlProviderBase() { }
@@ -67,6 +68,12 @@ namespace DBService.SqlStringGenerator
 
 
         }
+        public string? GetSqlForValueSet(string fieldName)
+        {
+            if (_tableName == null) return null;
+            return $"SELECT DISTINCT {fieldName} FROM {_tableName}" ;
+
+        }
 
         public string? GetSqlForFields(string[] fieldNames, string? whereStr = null)
         {
@@ -78,16 +85,16 @@ namespace DBService.SqlStringGenerator
         public string? GetSqlByKeyValue(string key, object value)
         {
             if (_tableName == null) return null;
-            var queryString = MapForKeyValue(new KeyValuePair<string, object>(key, value));
+            var queryString = MapForKeyValue(new KeyValuePair<string, object?>(key, value));
             return $"SELECT * FROM {_tableName} WHERE {queryString} ;";
         }
-        public string? GetSqlByKeyValues(IDictionary<string, object> values)
+        public string? GetSqlByKeyValues(IDictionary<string, object?> values)
         {
             if (_tableName == null) return null;
             var queryString = MapForKeyValues(values);
             return $"SELECT * FROM {_tableName} WHERE {queryString} ;";
         }
-        public string? GetSqlByKeyValues(IEnumerable<KeyValuePair<string, object>> values)
+        public string? GetSqlByKeyValues(IEnumerable<KeyValuePair<string, object?>> values)
         {
             if (_tableName == null) return null;
             string queryString = MapForKeyValues(values);
@@ -116,7 +123,7 @@ namespace DBService.SqlStringGenerator
         #endregion
         #endregion
         #region DML
-        public string? GetSqlForInsert(IEnumerable<KeyValuePair<string, object>> source)
+        public string? GetSqlForInsert(IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (_tableName == null) return null;
             string fieldStr = string.Join(",", source.Select(x => x.Key));
@@ -124,14 +131,14 @@ namespace DBService.SqlStringGenerator
             return $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr}) ;";
 
         }
-        public string? GetSqlForUpdate(int id, IEnumerable<KeyValuePair<string, object>> source)
+        public string? GetSqlForUpdate(int id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (_tableName == null) return null;
             string setClasue = MapForUpdateValue(source);
             return $"UPDATE {_tableName} SET {setClasue} WHERE id = {id} ;";
 
         }
-        public string? GetSqlForUpdateByKey(KeyValuePair<string, object> criteria, IEnumerable<KeyValuePair<string, object>> source)
+        public string? GetSqlForUpdateByKey(KeyValuePair<string, object?> criteria, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (_tableName == null) return null;
             string setClasue = MapForKeyValues(source);
@@ -144,7 +151,7 @@ namespace DBService.SqlStringGenerator
             if (_tableName == null) return null;
             return $"DELETE FROM {_tableName} WHERE Id = {id} ;";
         }
-        public string? GetSqlForDeleteByKey(KeyValuePair<string, object> criteria)
+        public string? GetSqlForDeleteByKey(KeyValuePair<string, object?> criteria)
         {
             if (_tableName == null) return null;
             string whereStr = MapForKeyValue(criteria);
@@ -157,7 +164,7 @@ namespace DBService.SqlStringGenerator
 
 
         #region Private Methed - Utility
-        private static string MapForKeyValue(KeyValuePair<string, object> source)
+        private static string MapForKeyValue(KeyValuePair<string, object?> source)
         {
             var key = source.Key;
             var value = source.Value;
@@ -178,11 +185,12 @@ namespace DBService.SqlStringGenerator
             {
                 return $"{key} = '{n4}'";
             }
-
-            return string.Empty;
-
+            else
+            {
+                return string.Empty;
+            }
         }
-        private static string MapForKeyValues(IEnumerable<KeyValuePair<string, object>> source)
+        private static string MapForKeyValues(IEnumerable<KeyValuePair<string, object?>> source)
         {
             List<string> setClause = new();
             foreach (var item in source)
@@ -195,7 +203,7 @@ namespace DBService.SqlStringGenerator
             }
             return string.Join(',', setClause);
         }
-        private static string MapForInsertValue(IEnumerable<object> source)
+        private static string MapForInsertValue(IEnumerable<object?> source)
         {
             if (source != null && source.Any())
             {
@@ -228,11 +236,14 @@ namespace DBService.SqlStringGenerator
                         {
                             sb.Add($"{dd}");
                         }
+                        else if(item is string ds)
+                        {
+                           
+                            sb.Add($"'{ds}'");
+                        }
                         else
                         {
-                            string? n = (string)item;
-                            string? newOne = n.Replace("'", "''");
-                            sb.Add($"'{newOne}'");
+                            sb.Add($"'{item.ToString()}'");
                         }
                     }
                     else
@@ -249,7 +260,7 @@ namespace DBService.SqlStringGenerator
             }
 
         }
-        public static string MapForUpdateValue(IEnumerable<KeyValuePair<string, object>> source)
+        public static string MapForUpdateValue(IEnumerable<KeyValuePair<string, object?>> source)
         {
 
             List<string> setClause = new();
@@ -272,9 +283,18 @@ namespace DBService.SqlStringGenerator
                         int n = b ? 1 : 0;
                         setClause.Add($"{item.Key} = {n}");
                     }
+                    else if(item.Value is long)
+                    {
+                        long? n = (long)item.Value;
+                        setClause.Add($"{item.Key} = {n}");
+                    }
+                    else if(item.Value is string sv)
+                    {   
+                        setClause.Add($"{item.Key} = '{sv}'");
+                    }
                     else
                     {
-                        string? n = (string)item.Value;
+                        string? n = item.Value.ToString();
                         setClause.Add($"{item.Key} = '{n}'");
                     }
                 }
@@ -287,9 +307,10 @@ namespace DBService.SqlStringGenerator
 
         #endregion
         #region Meta
-        public abstract string GetSqlFieldsByName();
+        public abstract string GetSqlFieldsByName(string tableName);
         public abstract string GetSqlTableNameList(bool includeView = true);
         public abstract string GetSqlForeignKeyList();
+
 
 
         #endregion

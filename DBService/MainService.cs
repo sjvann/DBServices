@@ -8,6 +8,7 @@ using System.Data;
 using System.Data.Common;
 using System.Data.SqlClient;
 using System.Data.SQLite;
+using System.Linq;
 
 namespace DBService
 {
@@ -47,7 +48,7 @@ namespace DBService
             return this;
         }
         #endregion
-        #region 處理Meta資訊
+        #region 設定要處理的資料表
         /// <summary>
         /// 取得資料庫中所有資料表(包含view)
         /// </summary>
@@ -58,39 +59,7 @@ namespace DBService
             return _tableNameList ?? new List<string>();
 
         }
-        /// <summary>
-        /// 取回資料庫中所有資料表與欄位
-        /// </summary>
-        /// <returns></returns>
-        public IDictionary<string, IEnumerable<FieldBaseModel>> GetAllFieldList()
-        {
-            if (_fieldListWithTableName == null || !_fieldListWithTableName.Any())
-            {
-                var tableList = GetTableNameList();
-                SetAllFieldList(tableList);
-            }
 
-            return _fieldListWithTableName ?? new Dictionary<string, IEnumerable<FieldBaseModel>>();
-        }
-        /// <summary>
-        /// 取回資料表中所有欄位
-        /// </summary>
-        /// <param name="tableName">資料表名稱</param>
-        /// <returns></returns>
-        public IEnumerable<FieldBaseModel>? GetFieldObjectByName(string tableName)
-        {
-            if (_fieldListWithTableName == null || !_fieldListWithTableName.Any()) SetAllFieldList(GetTableNameList());
-            if (_fieldListWithTableName != null)
-            {
-                return _fieldListWithTableName.Where(x => x.Key == tableName).Select(x => x.Value).FirstOrDefault();
-            }
-            else
-            {
-                return new List<FieldBaseModel>();
-            }
-        }
-        #endregion
-        #region 設定要處理的資料表
         public void SetCurrent(string? tableName)
         {
             if (tableName != null)
@@ -105,7 +74,6 @@ namespace DBService
                     PkFieldList = targetTable?.Value.Where(x => x.IsKey.HasValue && x.IsKey.Value).Select(x => x.FieldName!)
                 };
             }
-
         }
         public TableBaseModel? GetCurrent()
         {
@@ -149,7 +117,6 @@ namespace DBService
             return result;
 
         }
-
         #endregion
         #region 查詢類服務
         public TableBaseModel? GetRecordByTable(string? tableName = null)
@@ -241,7 +208,7 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object> query)
+        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -254,7 +221,8 @@ namespace DBService
                     {
                         List<RecordBaseModel> result = new();
 
-                        string? sql = _sqlProvider.GetSqlByKeyValue(query.Key, query.Value);
+
+                        string? sql = (query.Value != null) ? _sqlProvider.GetSqlByKeyValue(query.Key, query.Value) : null;
                         var temp = (sql != null) ? _conn.Query(sql) : null;
                         if (temp != null && temp.Any())
                         {
@@ -285,7 +253,7 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordByKeyValues(IEnumerable<KeyValuePair<string, object>> query)
+        public TableBaseModel? GetRecordByKeyValues(IEnumerable<KeyValuePair<string, object?>> query)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -417,9 +385,40 @@ namespace DBService
 
             return tableResult;
         }
+        public IEnumerable<string> GetValueSetByFieldName(string fieldName)
+        {
+            List<string> result = new();
+            if (_conn != null)
+            {
+                try
+                {
+                    if (_conn.State != ConnectionState.Open) _conn.Open();
+
+                    if (_sqlProvider != null)
+                    {
+                        string? sql = _sqlProvider.GetSqlForValueSet(fieldName);
+                        var temp = (sql != null) ? _conn.Query<string>(sql) : null;
+                        if (temp != null)
+                        {
+                            result.AddRange(temp);
+                        }
+                    }
+                }
+                catch (SqlException ex)
+                {
+
+                    Console.WriteLine(ex.Message);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                }
+            }
+            return result;
+        }
         #endregion
         #region 新增更新刪除服務
-        public TableBaseModel AddRecord(IEnumerable<KeyValuePair<string, object>> source)
+        public TableBaseModel? AddRecord(IEnumerable<KeyValuePair<string, object?>> source)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -432,24 +431,16 @@ namespace DBService
                         string? sql = _sqlProvider.GetSqlForInsert(source);
                         int resultId = sql != null ? _conn.Execute(sql) : 0;
                         if (resultId != 0)
-                        {
-                            List<RecordBaseModel> result = new();
+                        {  
                             string? sql2 = _sqlProvider.GetSqlLastInsertId();
                             var temp = (sql != null) ? _conn.Query(sql2) : null;
 
                             if (temp != null && temp.Any())
                             {
-                                if (_current != null)
-                                {
-                                    result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                    _current.Records = result;
-                                    tableResult = _current;
-                                }
-                                else
-                                {
-                                    result.AddRange(MapToRecordBased(temp, null));
-                                    tableResult.Records = result;
-                                }
+                                var t1 = (IEnumerable<KeyValuePair<string, object?>>)temp.First();
+                                var t2 = t1.First();
+                                int lastId =Convert.ToInt16(t2.Value);
+                               return GetRecordById(lastId);
                             }
                         }
                     }
@@ -467,7 +458,7 @@ namespace DBService
             return tableResult;
 
         }
-        public TableBaseModel UpdateRecordById(int id, IEnumerable<KeyValuePair<string, object>> source)
+        public TableBaseModel UpdateRecordById(int id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -479,7 +470,7 @@ namespace DBService
                     {
                         string? sql = _sqlProvider.GetSqlForUpdate(id, source);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
-                        if (effectRow >  0)
+                        if (effectRow > 0)
                         {
                             var temp = GetRecordById(id);
                             if (temp != null)
@@ -502,9 +493,9 @@ namespace DBService
             return tableResult;
 
         }
-        public bool UpdateRecordByKeyValue(KeyValuePair<string, object> query, IEnumerable<KeyValuePair<string, object>> source)
+        public bool UpdateRecordByKeyValue(KeyValuePair<string, object?> query, IEnumerable<KeyValuePair<string, object?>> source)
         {
-            
+
             if (_conn != null)
             {
                 try
@@ -558,7 +549,7 @@ namespace DBService
             }
             return false;
         }
-        public bool DeleteRecordByKeyValue(KeyValuePair<string, object> criteria)
+        public bool DeleteRecordByKeyValue(KeyValuePair<string, object?> criteria)
         {
             if (_conn != null)
             {
@@ -570,7 +561,7 @@ namespace DBService
                         string? sql = _sqlProvider.GetSqlForDeleteByKey(criteria);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
                         return effectRow > 0;
-                    }  
+                    }
                 }
                 catch (SqlException ex)
                 {
@@ -588,6 +579,18 @@ namespace DBService
         #endregion
 
         #region 4. Private Method
+        /// <summary>
+        /// 取回資料庫中所有資料表與欄位
+        /// </summary>
+        /// <returns></returns>
+        private void GetAllFieldList()
+        {
+            if (_fieldListWithTableName == null || !_fieldListWithTableName.Any())
+            {
+                var tableList = GetTableNameList();
+                SetAllFieldList(tableList);
+            }
+        }
         public static IEnumerable<RecordBaseModel> MapToRecordBased(IEnumerable<dynamic> target, IEnumerable<string>? PkFieldName, string? FkFieldId = null)
         {
             List<RecordBaseModel> result = new();
@@ -597,7 +600,7 @@ namespace DBService
                 List<string> pkValue = new();
                 List<KeyValuePair<string, object>> recordValue = new();
                 RecordBaseModel record = new();
-                record.ParentKey = FkFieldId;
+                record.ParentKeyValue = FkFieldId;
 
                 if (item is IDictionary<string, object> recordTarget)
                 {
@@ -610,7 +613,8 @@ namespace DBService
                     }
                     recordValue.AddRange(recordTarget);
                     record.FieldValue = recordValue;
-
+                    _ = int.TryParse(recordTarget.First(x => x.Key == "Id").Value.ToString(), out int id);
+                    record.Id = id;
                     result.Add(record);
                 }
             }
@@ -677,6 +681,8 @@ namespace DBService
             }
             _fieldListWithTableName = _allFieldList;
         }
+
+
         #endregion
     }
 }

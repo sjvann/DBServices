@@ -14,9 +14,9 @@ namespace DBService.SqlStringGenerator.Sqlite
             string whereStr = includeView ? $"type in ('table', 'view')" : $"type = 'table'";
             return $"SELECT name FROM pragma_table_list WHERE {whereStr} AND name NOT LIKE 'sqlite_%'";
         }
-        public override string GetSqlFieldsByName()
+        public override string GetSqlFieldsByName(string tableName)
         {
-            return $"SELECT * FROM pragma_table_info('{_tableName}')";
+            return $"SELECT * FROM pragma_table_info('{tableName}')";
         }
 
         public override string? GetSqlLastInsertId()

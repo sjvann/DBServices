@@ -9,7 +9,8 @@ namespace DBService.Models
     public class RecordBaseModel
     {
         public IEnumerable<string>? PkFieldValue { get; set; }
-        public string? ParentKey { get; set; }
+        public string? ParentKeyValue { get; set; }
+        public int Id { get; set; }
         public IEnumerable<KeyValuePair<string, object>>? FieldValue { get; set; }
 
         public string ToJsonString(bool ignorNull = false)
