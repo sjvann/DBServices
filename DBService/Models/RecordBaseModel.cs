@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace DBService.Models
@@ -12,8 +14,24 @@ namespace DBService.Models
         public string? ParentKeyValue { get; set; }
         public int Id { get; set; }
         public IEnumerable<KeyValuePair<string, object>>? FieldValue { get; set; }
+        public T? GetObject<T>() where T : class
+        {
+            if (FieldValue == null) return default;
+            List<KeyValuePair<string, JsonNode?>> targets = new();
+            foreach (var item in FieldValue)
+            {
+                JsonNode? newValue = JsonValue.Create(item.Value);
+                if (newValue != null)
+                {
+                    targets.Add(new KeyValuePair<string, JsonNode?>(item.Key, newValue));
+                }
+            }
+            JsonObject result = new(targets);
 
-        public string ToJsonString(bool ignorNull = false)
+            var objectResult = JsonSerializer.Deserialize<T>(result);
+            return objectResult;
+        }
+        public string ToJsonString(bool ignoreNull = false)
         {
 
             StringBuilder sb = new();
@@ -23,15 +41,10 @@ namespace DBService.Models
                 List<string> oneRecord = new();
                 foreach (var one in FieldValue)
                 {
-                    if (!ignorNull && one.Value != null)
+                    if (!ignoreNull && one.Value != null)
                     {
                         oneRecord.Add(CheckType(one.Key, one.Value));
                     }
-                    else
-                    {
-                        oneRecord.Add(CheckType(one.Key, one.Value));
-                    }
-
                 }
                 sb.Append(string.Join(',', oneRecord));
             }

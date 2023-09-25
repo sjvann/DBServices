@@ -21,7 +21,7 @@ namespace DBService.SqlStringGenerator.Sqlite
 
         public override string? GetSqlLastInsertId()
         {
-            return "SELECT last_insert_rowid();";
+            return $"SELECT MAX(Id) FROM {_tableName};";
         }
 
         public override string? GetSqlForTruncate()

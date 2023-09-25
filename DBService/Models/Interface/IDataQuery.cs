@@ -9,7 +9,7 @@ namespace DBService.Models.Interface
     public interface IDataQuery
     {
         string? GetSqlById(object id);
-        string? GetSqlByKeyValue(string key, object value);
+        string? GetSqlByKeyValue(string key, object value, string? operators = null);
         string? GetSqlByKeyValues(IDictionary<string, object?> values);
         string? GetSqlByKeyValues(IEnumerable<KeyValuePair<string, object?>> values);
         string? GetSqlForAll(string? whereStr = null);

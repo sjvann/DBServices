@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>WebService</name>
+    </assembly>
+    <members>
+        <member name="T:WebService.DbWebService">
+            <summary>
+            微服務
+            </summary>
+        </member>
+        <member name="M:WebService.DbWebService.UseDbWebService(Microsoft.AspNetCore.Builder.WebApplication,System.String,System.String)">
+            <summary>
+            使用Web Service
+            </summary>
+            <param name="app">擴增WebApplication</param>
+            <param name="connectString">資料庫連練字串</param>
+            <param name="server">資料庫種類</param>
+        </member>
+        <member name="M:WebService.DbWebService.DeleteData(System.String,System.Int32,DBService.Models.Interface.IDbService)">
+            <summary>
+            刪除資料表某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">該紀錄唯一編碼</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.PutData(System.String,System.Int32,System.Object,DBService.Models.Interface.IDbService)">
+            <summary>
+            更新資料表某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">該紀錄唯一編碼</param>
+            <param name="payload">該紀錄有更新的部分</param>
+                    /// <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.PostData(System.String,System.Object,DBService.Models.Interface.IDbService)">
+            <summary>
+            新增資料表紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="payload">新增資料別內容(JSON)</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetDataById(System.String,System.Int32,DBService.Models.Interface.IDbService)">
+            <summary>
+            由ID取得某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">某紀錄唯一編碼</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetDataQuery(System.String,WebService.Models.QueryModel,DBService.Models.Interface.IDbService)">
+            <summary>
+            使用QueryModel建立Key-Values來查詢資料
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="query">查詢條件</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetAllTableName(DBService.Models.Interface.IDbService)">
+            <summary>
+            取回資料庫中所有資料表名稱
+            </summary>
+            <param name="db"></param>
+            <returns>資料表名稱清單</returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetMetaData(System.String,DBService.Models.Interface.IDbService)">
+            <summary>
+            取回資料表的欄位結構定義
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="db"></param>
+            <returns>回傳TableBaseModel類別</returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetMetaValueSet(System.String,System.String,DBService.Models.Interface.IDbService)">
+            <summary>
+            回傳資料表鍾某欄位的可能值
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="fieldName">欄位名稱</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+    </members>
+</doc>

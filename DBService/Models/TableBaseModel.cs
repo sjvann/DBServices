@@ -42,6 +42,29 @@ namespace DBService.Models
             MemoryStream stream = new(Encoding.UTF8.GetBytes(sb.ToString()));
             return (JsonObject?)JsonNode.Parse(stream);
         }
+        public JsonArray? GetRecordsJsonArray()
+        {
+            StringBuilder sb = new();
+            if (Records != null && Records.Any())
+            {
+                sb.Append('[');
+                List<string> rs = new();
+                foreach (var item in Records)
+                {
+                    rs.Add(item.ToJsonString());
+                }
+                sb.Append(string.Join(',', rs));
+
+                sb.Append(']');
+            }
+            else
+            {
+                sb.Append("[]");
+            }
+            var tempString = sb.ToString();
+            MemoryStream stream = new(Encoding.UTF8.GetBytes(tempString));
+            return (JsonArray?)JsonNode.Parse(stream);
+        }
         public JsonObject? GetRecordsJsonObject()
         {
             StringBuilder sb = new();

@@ -8,23 +8,37 @@ using System.Data;
 using System.Data.Common;
 using System.Data.SqlClient;
 using System.Data.SQLite;
-using System.Linq;
 
 namespace DBService
 {
     public class MainService : IDbService
     {
+        private static MainService? _instance = null;
         private DbConnection? _conn;
         private readonly string? _connectString;
         private SqlProviderBase? _sqlProvider;
         private TableBaseModel? _current;
         private IEnumerable<string>? _tableNameList;
         private IDictionary<string, IEnumerable<FieldBaseModel>>? _fieldListWithTableName;
-
+        private readonly static object lockObject = new();
         #region 1. 建構元
-        public MainService(string connectString)
+        public static MainService GetInstance(string connectString)
+        {
+            if (_instance == null)
+            {
+                lock (lockObject)
+                {
+                    _instance ??= new MainService(connectString);
+                }
+                _instance = new MainService(connectString);
+            }
+            return _instance;
+        }
+        private MainService(string connectString)
         {
             _connectString = connectString;
+            _conn = new SqlConnection(connectString);
+
 
         }
         #endregion
@@ -165,7 +179,7 @@ namespace DBService
             return tableResult;
 
         }
-        public TableBaseModel? GetRecordById(int id)
+        public TableBaseModel? GetRecordById(long id)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -208,7 +222,7 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query)
+        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query, string? opertor = null)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -222,7 +236,7 @@ namespace DBService
                         List<RecordBaseModel> result = new();
 
 
-                        string? sql = (query.Value != null) ? _sqlProvider.GetSqlByKeyValue(query.Key, query.Value) : null;
+                        string? sql = (query.Value != null) ? _sqlProvider.GetSqlByKeyValue(query.Key, query.Value, opertor) : null;
                         var temp = (sql != null) ? _conn.Query(sql) : null;
                         if (temp != null && temp.Any())
                         {
@@ -420,6 +434,7 @@ namespace DBService
         #region 新增更新刪除服務
         public TableBaseModel? AddRecord(IEnumerable<KeyValuePair<string, object?>> source)
         {
+
             TableBaseModel tableResult = new();
             if (_conn != null)
             {
@@ -429,9 +444,10 @@ namespace DBService
                     if (_sqlProvider != null)
                     {
                         string? sql = _sqlProvider.GetSqlForInsert(source);
+
                         int resultId = sql != null ? _conn.Execute(sql) : 0;
                         if (resultId != 0)
-                        {  
+                        {
                             string? sql2 = _sqlProvider.GetSqlLastInsertId();
                             var temp = (sql != null) ? _conn.Query(sql2) : null;
 
@@ -439,8 +455,8 @@ namespace DBService
                             {
                                 var t1 = (IEnumerable<KeyValuePair<string, object?>>)temp.First();
                                 var t2 = t1.First();
-                                int lastId =Convert.ToInt16(t2.Value);
-                               return GetRecordById(lastId);
+                                var lastId = Convert.ToInt64(t2.Value);
+                                return GetRecordById(lastId);
                             }
                         }
                     }
@@ -458,7 +474,7 @@ namespace DBService
             return tableResult;
 
         }
-        public TableBaseModel UpdateRecordById(int id, IEnumerable<KeyValuePair<string, object?>> source)
+        public TableBaseModel UpdateRecordById(long id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             TableBaseModel tableResult = new();
             if (_conn != null)
@@ -524,7 +540,7 @@ namespace DBService
             return false;
 
         }
-        public bool DeleteRecordById(int id)
+        public bool DeleteRecordById(long id)
         {
             if (_conn != null && id != 0)
             {
@@ -681,6 +697,7 @@ namespace DBService
             }
             _fieldListWithTableName = _allFieldList;
         }
+
 
 
         #endregion

@@ -9,12 +9,12 @@ namespace DBServiceTest
     [TestClass]
     public class MetaTestForSqlite
     {
-        private readonly string connString = "Data Source=c://temp//Test.db;Version=3;";
+        private readonly string connString = "Data Source=c://temp//Test.db;";
         private readonly IDbService db;
 
         public MetaTestForSqlite()
         {
-            db = new MainService(connString).UseSQLite("Demo");
+            db = MainService.GetInstance(connString).UseSQLite("Demo");
 
         }
         #region Query

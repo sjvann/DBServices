@@ -51,7 +51,7 @@ namespace DBService.SqlStringGenerator
         public string? GetSqlById(object id)
         {
             if (_tableName == null) return null;
-            if (id is int)
+            if (id is long || id is int)
             {
                 return $"SELECT * FROM {_tableName} WHERE Id = {id} ;";
             }
@@ -71,7 +71,7 @@ namespace DBService.SqlStringGenerator
         public string? GetSqlForValueSet(string fieldName)
         {
             if (_tableName == null) return null;
-            return $"SELECT DISTINCT {fieldName} FROM {_tableName}" ;
+            return $"SELECT DISTINCT {fieldName} FROM {_tableName}";
 
         }
 
@@ -82,10 +82,10 @@ namespace DBService.SqlStringGenerator
             return whereStr == null ? $"SELECT {fieldsStr} FROM {_tableName}" : $"SELECT {fieldsStr} FROM {_tableName} WHERE {whereStr};";
 
         }
-        public string? GetSqlByKeyValue(string key, object value)
+        public string? GetSqlByKeyValue(string key, object value, string? operators = null)
         {
             if (_tableName == null) return null;
-            var queryString = MapForKeyValue(new KeyValuePair<string, object?>(key, value));
+            var queryString = MapForKeyValue(new KeyValuePair<string, object?>(key, value), operators);
             return $"SELECT * FROM {_tableName} WHERE {queryString} ;";
         }
         public string? GetSqlByKeyValues(IDictionary<string, object?> values)
@@ -126,12 +126,13 @@ namespace DBService.SqlStringGenerator
         public string? GetSqlForInsert(IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (_tableName == null) return null;
+
             string fieldStr = string.Join(",", source.Select(x => x.Key));
             string valueStr = MapForInsertValue(source.Select(x => x.Value));
             return $"INSERT INTO {_tableName} ({fieldStr}) VALUES ({valueStr}) ;";
 
         }
-        public string? GetSqlForUpdate(int id, IEnumerable<KeyValuePair<string, object?>> source)
+        public string? GetSqlForUpdate(long id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (_tableName == null) return null;
             string setClasue = MapForUpdateValue(source);
@@ -146,7 +147,7 @@ namespace DBService.SqlStringGenerator
             return $"UPDATE {_tableName} SET {setClasue} WHERE {whereStr} ;";
 
         }
-        public virtual string? GetSqlForDelete(int id)
+        public virtual string? GetSqlForDelete(long id)
         {
             if (_tableName == null) return null;
             return $"DELETE FROM {_tableName} WHERE Id = {id} ;";
@@ -164,26 +165,32 @@ namespace DBService.SqlStringGenerator
 
 
         #region Private Methed - Utility
-        private static string MapForKeyValue(KeyValuePair<string, object?> source)
+        private static string MapForKeyValue(KeyValuePair<string, object?> source, string? opertor = null)
         {
             var key = source.Key;
             var value = source.Value;
+            string op = opertor ??= "=";
             if (value is DateTime n1)
             {
-                return $"{key} = '{n1:yyyy-MM-dd}'";
+                return $"{key} {op} '{n1:yyyy-MM-dd}'";
             }
             else if (value is int n2)
             {
-                return $"{key} = {n2}";
+                return $"{key} {op} {n2}";
             }
+            else if (value is long n5)
+            {
+                return $"{key} {op} {n5}";
+            }
+
             else if (value is bool b)
             {
                 int n3 = b ? 1 : 0;
-                return $"{key} = {n3}";
+                return $"{key} {op} {n3}";
             }
             else if (value is string n4)
             {
-                return $"{key} = '{n4}'";
+                return $"{key} {op} '{n4}'";
             }
             else
             {
@@ -236,9 +243,9 @@ namespace DBService.SqlStringGenerator
                         {
                             sb.Add($"{dd}");
                         }
-                        else if(item is string ds)
+                        else if (item is string ds)
                         {
-                           
+
                             sb.Add($"'{ds}'");
                         }
                         else
@@ -283,13 +290,13 @@ namespace DBService.SqlStringGenerator
                         int n = b ? 1 : 0;
                         setClause.Add($"{item.Key} = {n}");
                     }
-                    else if(item.Value is long)
+                    else if (item.Value is long)
                     {
                         long? n = (long)item.Value;
                         setClause.Add($"{item.Key} = {n}");
                     }
-                    else if(item.Value is string sv)
-                    {   
+                    else if (item.Value is string sv)
+                    {
                         setClause.Add($"{item.Key} = '{sv}'");
                     }
                     else
