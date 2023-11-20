@@ -19,7 +19,7 @@ namespace DBService
         public T? GetData<T>(int id, string? tableName = null) where T : class
         {
             if (_db is null) return default;
-            _db.SetCurrent(tableName ?? typeof(T).Name);
+            _db.SetCurrentTable(tableName ?? typeof(T).Name);
             var queryResult = _db.GetRecordById(id);
             if (queryResult != null && queryResult.Records != null && queryResult.Records.Any())
             {
@@ -32,9 +32,8 @@ namespace DBService
         public IEnumerable<T>? GetDatas<T>(KeyValuePair<string, object?>? query, string? tableName = null) where T : class
         {
             if (_db is null) return default;
-            _db.SetCurrent(tableName ?? typeof(T).Name);
-
-            var queryResult = query != null ? _db.GetRecordByKeyValue(query.Value) : _db.GetRecordByTable();
+         
+            var queryResult = query != null ? _db.GetRecordByKeyValue(query.Value) : _db.GetRecordByTable(tableName ?? typeof(T).Name);
             List<T> targets = new();
             if (queryResult != null && queryResult.Records != null && queryResult.Records.Any())
             {
@@ -48,9 +47,8 @@ namespace DBService
         public IEnumerable<T>? GetDatas<T>(IEnumerable<KeyValuePair<string, object?>>? query, string? tableName = null) where T : class
         {
             if (_db is null) return default;
-            _db.SetCurrent(tableName ?? typeof(T).Name);
-
-            var queryResult = query != null ? _db.GetRecordByKeyValues(query) : _db.GetRecordByTable();
+          
+            var queryResult = query != null ? _db.GetRecordByKeyValues(query) : _db.GetRecordByTable(tableName ?? typeof(T).Name);
             List<T> targets = new();
             if (queryResult != null && queryResult.Records != null && queryResult.Records.Any())
             {
@@ -64,8 +62,7 @@ namespace DBService
         public IEnumerable<T>? GetDatas<T>(string? queryString, string? tableName = null) where T: class
         {
             if (_db is null) return default;
-            _db.SetCurrent(tableName ?? typeof(T).Name);
-            var queryResult = queryString != null ? _db.GetRecordForAll(queryString) : _db.GetRecordByTable();
+            var queryResult = queryString != null ? _db.GetRecordForAll(queryString) : _db.GetRecordByTable(tableName ?? typeof(T).Name);
             List<T> targets = new();
             if (queryResult != null && queryResult.Records != null && queryResult.Records.Any())
             {
@@ -79,10 +76,10 @@ namespace DBService
         }
         #endregion
         #region Set Data
-        public T? SetData<T>(T data, string? tableName = null) where T : class
+        public T? SetData<T>(T data) where T : class
         {
             if (_db is null) return default;
-            _db.SetCurrent(tableName ?? typeof(T).Name);
+           
             Dictionary<string, object?> dictionary = new();
             var properties = typeof(T).GetProperties();
             foreach (var property in properties)

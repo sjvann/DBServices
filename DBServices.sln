@@ -7,7 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DBService", "DBService\DBSe
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DBServiceTest", "DBServiceTest\DBServiceTest.csproj", "{830993FE-1D20-4E5B-8336-0528B5D5F7D8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebService", "WebService\WebService.csproj", "{3925416F-0F1F-4F06-86DE-E24B19CED0B5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WebService", "WebService\WebService.csproj", "{3925416F-0F1F-4F06-86DE-E24B19CED0B5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TestProject", "TestProject", "{E72F58B7-4452-4352-A25C-FE8D5C5159AD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -30,6 +32,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{830993FE-1D20-4E5B-8336-0528B5D5F7D8} = {E72F58B7-4452-4352-A25C-FE8D5C5159AD}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B7999845-CA12-4053-B804-27A3DB701CDE}

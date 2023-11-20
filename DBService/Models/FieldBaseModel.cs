@@ -10,7 +10,11 @@ namespace DBService.Models
     {
         public string? FieldName { get; set; }
         public string? FieldType { get; set; }
-        public bool? IsKey { get; set; }
+        public bool IsNotNull { get; set; } = false;
+        public bool IsPrimaryKey { get; set; } = false;
+        public bool IsForeignKey { get; set; } = false;
+        public ForeignBaseModel? ForeignInfo { get; set; }
+
 
         public string ToJsonString(bool ignoreNull = false)
         {
@@ -20,13 +24,27 @@ namespace DBService.Models
             {
                 if (!string.IsNullOrEmpty(FieldName)) { sb.Append($"\"FieldName\": \"{FieldName}\","); }
                 if (!string.IsNullOrEmpty(FieldType)) { sb.Append($"\"FieldType\": \"{FieldType}\","); }
-                if (IsKey != null) { sb.Append($"\"IsKey\": \"{IsKey}\""); }
+                sb.Append($"\"IsNotNull\": \"{IsNotNull}\",");
+                sb.Append($"\"IsPK\": \"{IsPrimaryKey}\",");
+               
+                if(ForeignInfo != null)
+                {
+                     sb.Append($"\"IsFK\": \"{IsForeignKey}\",");
+                    sb.Append($"\"ForeignInfo\": {ForeignInfo.ToJsonString()}");
+                }
+                else
+                {
+                     sb.Append($"\"IsFK\": \"{IsForeignKey}\"");
+                }
             }
             else
             {
                 sb.Append($"\"FieldName\": \"{FieldName}\",");
                 sb.Append($"\"FieldType\": \"{FieldType}\",");
-                sb.Append($"\"IsKey\": \"{IsKey}\"");
+                sb.Append($"\"IsNotNull\": \"{IsNotNull}\",");
+                sb.Append($"\"IsPK\": \"{IsPrimaryKey}\",");
+                sb.Append($"\"IsFK\": \"{IsForeignKey}\",");
+                sb.Append($"\"ForeignInfo\": {ForeignInfo?.ToJsonString()}");
             }
 
             sb.Append('}');

@@ -4,23 +4,25 @@ using DBService.Models.Interface;
 using DBService.SqlStringGenerator;
 using DBService.SqlStringGenerator.MsSql;
 using DBService.SqlStringGenerator.Sqlite;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
-using System.Data.SQLite;
+
 
 namespace DBService
 {
-    public class MainService : IDbService
+    public class MainService : IDbService, ISupportedDb
     {
         private static MainService? _instance = null;
+        private readonly string _connectString;
         private DbConnection? _conn;
-        private readonly string? _connectString;
         private SqlProviderBase? _sqlProvider;
-        private TableBaseModel? _current;
+        private TableBaseModel? _currentTable;
         private IEnumerable<string>? _tableNameList;
-        private IDictionary<string, IEnumerable<FieldBaseModel>>? _fieldListWithTableName;
+        private IEnumerable<FieldBaseModel>? _currentTableFields;
         private readonly static object lockObject = new();
+        private string? _currentTableName;
         #region 1. 建構元
         public static MainService GetInstance(string connectString)
         {
@@ -30,76 +32,63 @@ namespace DBService
                 {
                     _instance ??= new MainService(connectString);
                 }
-                _instance = new MainService(connectString);
             }
             return _instance;
         }
         private MainService(string connectString)
         {
             _connectString = connectString;
-            _conn = new SqlConnection(connectString);
-
-
         }
         #endregion
 
         #region 2. 環境設定作業區
         #region 設定資料庫廠商
-        public MainService UseSQLite(string? tableName = null)
+        public MainService UseSQLite()
         {
-            _conn = new SQLiteConnection(_connectString);
-            _sqlProvider = new SqlProviderForSqlite(tableName);
-            GetAllFieldList();
-            SetCurrent(tableName);
+            _conn = new SqliteConnection(_connectString);
+            _sqlProvider = new SqlProviderForSqlite();
+            _tableNameList = GetAllTables();
             return this;
         }
-        public MainService UseMsSQL(string? tableName = null)
+
+        public MainService UseMsSQL()
         {
             _conn = new SqlConnection(_connectString);
-            _sqlProvider = new SqlProviderForMsSql(tableName);
-            GetAllFieldList();
-            SetCurrent(tableName);
+            _sqlProvider = new SqlProviderForMsSql();
+            _tableNameList = GetAllTables();
             return this;
         }
+
         #endregion
         #region 設定要處理的資料表
-        /// <summary>
-        /// 取得資料庫中所有資料表(包含view)
-        /// </summary>
-        /// <returns></returns>
-        public IEnumerable<string> GetTableNameList()
-        {
-            if (_tableNameList == null) SetTableNameList();
-            return _tableNameList ?? new List<string>();
+        ///// <summary>
+        ///// 取得資料庫中所有資料表(包含view)
+        ///// </summary>
+        ///// <returns></returns>
+        public IEnumerable<string>? GetTableNamesFromDb() => _tableNameList;
+        public IEnumerable<FieldBaseModel>? GetCurrentTableFields() => _currentTableFields;
 
-        }
-
-        public void SetCurrent(string? tableName)
+        public TableBaseModel? SetCurrentTable(string tableName)
         {
-            if (tableName != null)
+            if (tableName == null) return null;
+            _currentTableName = tableName;
+            _currentTableFields = CurrentTableFields(tableName);
+            _currentTable = new()
             {
-                _sqlProvider?.SetTableName(tableName);
-                var targetTable = (_fieldListWithTableName != null && _fieldListWithTableName.Any()) ? _fieldListWithTableName?.First(x => x.Key == tableName) : null;
-                _current = new()
-                {
-                    ConnectString = _connectString,
-                    TableName = tableName,
-                    Fields = targetTable?.Value,
-                    PkFieldList = targetTable?.Value.Where(x => x.IsKey.HasValue && x.IsKey.Value).Select(x => x.FieldName!)
-                };
-            }
+                Connection = _conn,
+                TableName = tableName,
+                Fields = _currentTableFields
+            };
+            return _currentTable;
         }
-        public TableBaseModel? GetCurrent()
-        {
-            return _current;
-        }
+        public TableBaseModel? GetCurrentTable() => _currentTable;
         #endregion
         #endregion
 
         #region 3. 主要功能區
 
         #region 控制管理類功能
-        public bool CheckHasRecord()
+        public bool CheckHasRecord(string tableName)
         {
             bool result = false;
 
@@ -110,7 +99,7 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForCheckRows();
+                        string? sql = _sqlProvider.GetSqlForCheckRows(tableName);
                         if (sql != null)
                         {
                             result = _conn.Query(sql).Any();
@@ -133,41 +122,25 @@ namespace DBService
         }
         #endregion
         #region 查詢類服務
-        public TableBaseModel? GetRecordByTable(string? tableName = null)
+        public TableBaseModel? GetRecordByTable(string tableName)
         {
 
-            TableBaseModel tableResult = new();
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
-
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-                        if (tableName != null) _sqlProvider.SetTableName(tableName);
-                        string? sql = _sqlProvider.GetSqlForAll();
+                        string? sql = _sqlProvider.GetSqlForAll(tableName);
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
                 catch (SqlException ex)
                 {
-
                     Console.WriteLine(ex.Message);
                 }
                 catch (InvalidOperationException ex)
@@ -175,43 +148,27 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-
             return tableResult;
-
         }
-        public TableBaseModel? GetRecordById(long id)
+        public TableBaseModel? GetRecordById(long id, string? tableName = null)
         {
-            TableBaseModel tableResult = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
-
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-                        string? sql = _sqlProvider.GetSqlById(id);
+                        string? sql = _sqlProvider.GetSqlById(tableName, id);
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
                 catch (SqlException ex)
                 {
-
                     Console.WriteLine(ex.Message);
                 }
                 catch (InvalidOperationException ex)
@@ -219,39 +176,23 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-
             return tableResult;
         }
-        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query, string? opertor = null)
+        public TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query, string? opertor = null, string? tableName = null)
         {
-            TableBaseModel tableResult = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
                 {
                     if (_conn.State != ConnectionState.Open) _conn.Open();
-
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-
-
-                        string? sql = (query.Value != null) ? _sqlProvider.GetSqlByKeyValue(query.Key, query.Value, opertor) : null;
+                        string? sql = (query.Value != null) ? _sqlProvider.GetSqlByKeyValue(tableName, query.Key, query.Value, opertor) : null;
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
                 catch (SqlException ex)
@@ -267,9 +208,11 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordByKeyValues(IEnumerable<KeyValuePair<string, object?>> query)
+        public TableBaseModel? GetRecordByKeyValues(IEnumerable<KeyValuePair<string, object?>> query, string? tableName = null)
         {
-            TableBaseModel tableResult = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
@@ -278,24 +221,10 @@ namespace DBService
 
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-
-                        string? sql = _sqlProvider.GetSqlByKeyValues(query);
+                        string? sql = _sqlProvider.GetSqlByKeyValues(tableName, query);
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
+
                     }
                 }
                 catch (SqlException ex)
@@ -311,9 +240,11 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordForAll(string? whereStr = null)
+        public TableBaseModel? GetRecordForAll(string? whereStr = null, string? tableName = null)
         {
-            TableBaseModel tableResult = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
@@ -322,24 +253,9 @@ namespace DBService
 
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-
-                        string? sql = _sqlProvider.GetSqlForAll(whereStr);
+                        string? sql = _sqlProvider.GetSqlForAll(tableName, whereStr);
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
                 catch (SqlException ex)
@@ -355,9 +271,11 @@ namespace DBService
 
             return tableResult;
         }
-        public TableBaseModel? GetRecordForField(string[] fields, string? whereStr = null)
+        public TableBaseModel? GetRecordForField(string[] fields, string? whereStr = null, string? tableName = null)
         {
-            TableBaseModel tableResult = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            TableBaseModel? tableResult = null;
             if (_conn != null)
             {
                 try
@@ -366,24 +284,9 @@ namespace DBService
 
                     if (_sqlProvider != null)
                     {
-                        List<RecordBaseModel> result = new();
-
-                        string? sql = _sqlProvider.GetSqlForFields(fields, whereStr);
+                        string? sql = _sqlProvider.GetSqlForFields(tableName, fields, whereStr);
                         var temp = (sql != null) ? _conn.Query(sql) : null;
-                        if (temp != null && temp.Any())
-                        {
-                            if (_current != null)
-                            {
-                                result.AddRange(MapToRecordBased(temp, _current.PkFieldList));
-                                _current.Records = result;
-                                tableResult = _current;
-                            }
-                            else
-                            {
-                                result.AddRange(MapToRecordBased(temp, null));
-                                tableResult.Records = result;
-                            }
-                        }
+                        tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
                 catch (SqlException ex)
@@ -396,12 +299,13 @@ namespace DBService
                     Console.WriteLine(ex.Message);
                 }
             }
-
             return tableResult;
         }
-        public IEnumerable<string> GetValueSetByFieldName(string fieldName)
+        public IEnumerable<string>? GetValueSetByFieldName(string fieldName, string? tableName = null)
         {
-            List<string> result = new();
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+            List<string> result = [];
             if (_conn != null)
             {
                 try
@@ -410,7 +314,7 @@ namespace DBService
 
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForValueSet(fieldName);
+                        string? sql = _sqlProvider.GetSqlForValueSet(tableName, fieldName);
                         var temp = (sql != null) ? _conn.Query<string>(sql) : null;
                         if (temp != null)
                         {
@@ -420,7 +324,6 @@ namespace DBService
                 }
                 catch (SqlException ex)
                 {
-
                     Console.WriteLine(ex.Message);
                 }
                 catch (InvalidOperationException ex)
@@ -432,9 +335,10 @@ namespace DBService
         }
         #endregion
         #region 新增更新刪除服務
-        public TableBaseModel? AddRecord(IEnumerable<KeyValuePair<string, object?>> source)
+        public TableBaseModel? AddRecord(IEnumerable<KeyValuePair<string, object?>> source, string? tableName = null)
         {
-
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
             TableBaseModel tableResult = new();
             if (_conn != null)
             {
@@ -443,20 +347,20 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForInsert(source);
+                        string? sql = _sqlProvider.GetSqlForInsert(tableName, source);
 
                         int resultId = sql != null ? _conn.Execute(sql) : 0;
                         if (resultId != 0)
                         {
-                            string? sql2 = _sqlProvider.GetSqlLastInsertId();
-                            var temp = (sql != null) ? _conn.Query(sql2) : null;
+                            string? sql2 = _sqlProvider.GetSqlLastInsertId(tableName);
+                            var temp = string.IsNullOrEmpty(sql2) ? null : _conn.Query(sql2);
 
                             if (temp != null && temp.Any())
                             {
                                 var t1 = (IEnumerable<KeyValuePair<string, object?>>)temp.First();
                                 var t2 = t1.First();
                                 var lastId = Convert.ToInt64(t2.Value);
-                                return GetRecordById(lastId);
+                                return GetRecordById(lastId, tableName);
                             }
                         }
                     }
@@ -474,8 +378,10 @@ namespace DBService
             return tableResult;
 
         }
-        public TableBaseModel UpdateRecordById(long id, IEnumerable<KeyValuePair<string, object?>> source)
+        public TableBaseModel? UpdateRecordById(long id, IEnumerable<KeyValuePair<string, object?>> source, string? tableName = null)
         {
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
             TableBaseModel tableResult = new();
             if (_conn != null)
             {
@@ -484,11 +390,11 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForUpdate(id, source);
+                        string? sql = _sqlProvider.GetSqlForUpdate(tableName, id, source);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
                         if (effectRow > 0)
                         {
-                            var temp = GetRecordById(id);
+                            var temp = GetRecordById(id, tableName);
                             if (temp != null)
                             {
                                 tableResult = temp;
@@ -509,8 +415,10 @@ namespace DBService
             return tableResult;
 
         }
-        public bool UpdateRecordByKeyValue(KeyValuePair<string, object?> query, IEnumerable<KeyValuePair<string, object?>> source)
+        public bool UpdateRecordByKeyValue(KeyValuePair<string, object?> query, IEnumerable<KeyValuePair<string, object?>> source, string? tableName = null)
         {
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return false;
 
             if (_conn != null)
             {
@@ -519,7 +427,7 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForUpdateByKey(query, source);
+                        string? sql = _sqlProvider.GetSqlForUpdateByKey(tableName, query, source);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
                         if (effectRow > 0)
                         {
@@ -540,8 +448,10 @@ namespace DBService
             return false;
 
         }
-        public bool DeleteRecordById(long id)
+        public bool DeleteRecordById(long id, string? tableName = null)
         {
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return false;
             if (_conn != null && id != 0)
             {
                 try
@@ -549,7 +459,7 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForDelete(id);
+                        string? sql = _sqlProvider.GetSqlForDelete(tableName, id);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
                         return effectRow > 0;
                     }
@@ -565,8 +475,10 @@ namespace DBService
             }
             return false;
         }
-        public bool DeleteRecordByKeyValue(KeyValuePair<string, object?> criteria)
+        public bool DeleteRecordByKeyValue(KeyValuePair<string, object?> criteria, string? tableName = null)
         {
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return false;
             if (_conn != null)
             {
                 try
@@ -574,7 +486,7 @@ namespace DBService
                     if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
-                        string? sql = _sqlProvider.GetSqlForDeleteByKey(criteria);
+                        string? sql = _sqlProvider.GetSqlForDeleteByKey(tableName, criteria);
                         int effectRow = sql != null ? _conn.Execute(sql) : 0;
                         return effectRow > 0;
                     }
@@ -595,110 +507,68 @@ namespace DBService
         #endregion
 
         #region 4. Private Method
-        /// <summary>
-        /// 取回資料庫中所有資料表與欄位
+        private TableBaseModel? MapToTableBaseModel(IEnumerable<dynamic>? target, string? tableName = null)
+        {
+            tableName ??= _currentTableName;
+            if (string.IsNullOrEmpty(tableName)) return null;
+
+            if (_sqlProvider == null || target == null) return null;
+            TableBaseModel tableResult = new();
+            List<RecordBaseModel> result = [.. _sqlProvider.MapToRecordBaseModel(target)];
+            tableResult.Records = result;
+            tableResult.TableName = tableName;
+            tableResult.Connection = _conn;
+            tableResult.Fields = _currentTableFields ?? CurrentTableFields(tableName);
+
+            return tableResult;
+        }
+
+        #region Init Process
+
+        /// 取回資料庫中所有資料表名稱
         /// </summary>
         /// <returns></returns>
-        private void GetAllFieldList()
+        private List<string> GetAllTables()
         {
-            if (_fieldListWithTableName == null || !_fieldListWithTableName.Any())
+           
+            List<string> result = [];
+            if (_sqlProvider != null && _conn != null)
             {
-                var tableList = GetTableNameList();
-                SetAllFieldList(tableList);
-            }
-        }
-        public static IEnumerable<RecordBaseModel> MapToRecordBased(IEnumerable<dynamic> target, IEnumerable<string>? PkFieldName, string? FkFieldId = null)
-        {
-            List<RecordBaseModel> result = new();
-
-            foreach (var item in target)
-            {
-                List<string> pkValue = new();
-                List<KeyValuePair<string, object>> recordValue = new();
-                RecordBaseModel record = new();
-                record.ParentKeyValue = FkFieldId;
-
-                if (item is IDictionary<string, object> recordTarget)
-                {
-                    if (PkFieldName != null)
-                    {
-                        pkValue.AddRange(from value in recordTarget
-                                         where PkFieldName.Contains(value.Key)
-                                         select value.Value as string);
-                        record.PkFieldValue = pkValue;
-                    }
-                    recordValue.AddRange(recordTarget);
-                    record.FieldValue = recordValue;
-                    _ = int.TryParse(recordTarget.First(x => x.Key == "Id").Value.ToString(), out int id);
-                    record.Id = id;
-                    result.Add(record);
-                }
-            }
-
-            return result;
-        }
-        public static IEnumerable<FieldBaseModel> MapToFieldBased(IEnumerable<dynamic> target)
-        {
-            List<FieldBaseModel> result = new();
-
-            foreach (var item in target)
-            {
-                if (item is IDictionary<string, object> targets)
-                {
-                    FieldBaseModel field = new()
-                    {
-                        FieldName = targets.Where(x => x.Key == "name").Select(x => x.Value as string).FirstOrDefault(),
-                        FieldType = targets.Where(x => x.Key == "type").Select(x => x.Value as string).FirstOrDefault()
-                    };
-                    var isPk = targets.Where(x => x.Key == "pk").Select(x => x.Value).FirstOrDefault();
-                    if (isPk is long pk1)
-                    {
-                        field.IsKey = pk1 == 1;
-                    }
-                    else
-                    {
-                        field.IsKey = false;
-                    }
-                    result.Add(field);
-                }
-            }
-
-            return result;
-        }
-        private void SetTableNameList()
-        {
-            if (_conn != null && _conn.State != ConnectionState.Open) _conn.Open();
-            if (_sqlProvider != null)
-            {
+                 _conn.Open();
                 var sqlStr = _sqlProvider.GetSqlTableNameList();
-                _tableNameList = _conn.Query<string>(sqlStr);
-            }
-        }
-        private void SetAllFieldList(IEnumerable<string> tableNames)
-        {
-            Dictionary<string, IEnumerable<FieldBaseModel>> _allFieldList = new();
-            if (_sqlProvider != null)
-            {
-                foreach (var tableName in tableNames)
+                if (sqlStr != null)
                 {
-                    var sql = _sqlProvider.GetSqlFieldsByName(tableName);
-
-                    var fields = _conn.Query(sql);
-                    if (fields != null)
-                    {
-
-                        var fieldList = MapToFieldBased(fields);
-                        if (fieldList != null)
-                        {
-                            _allFieldList.Add(tableName, fieldList);
-                        }
-                    }
+                    result.AddRange(_conn.Query<string>(sqlStr));
                 }
+                 _conn.Close();
             }
-            _fieldListWithTableName = _allFieldList;
+           
+            return result;
         }
+        /// <summary>
+        /// 取回資料表的所有欄位資訊
+        /// </summary>
+        /// <param name="tableName"></param>
+        /// <returns></returns>
+        private IEnumerable<FieldBaseModel>? CurrentTableFields(string tableName)
+        {
+            if (_sqlProvider == null || _conn == null) return null;
+            var sql = _sqlProvider.GetSqlFieldsByTableName(tableName);
+            var result = string.IsNullOrEmpty(sql)? null: _conn.Query(sql);
+            string? foreignSql = _sqlProvider.GetSqlForeignInfoByTableName(tableName);
+            var foreignness = string.IsNullOrEmpty(foreignSql)? null: _conn.Query(foreignSql);
+            if(result != null && foreignness != null)
+            {
+                return _sqlProvider.MapToFieldBaseModel(result, foreignness);
+            }
+            else
+            {
+                return null;
+            }
+            
 
-
+        }
+        #endregion
 
         #endregion
     }

@@ -1,4 +1,8 @@
-﻿using System.Text;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Common;
+using System.Reflection;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace DBService.Models
@@ -10,26 +14,67 @@ namespace DBService.Models
         {
             TableName = tableName;
         }
-        public string? ConnectString { get; set; }
+        public DbConnection? Connection { get; set; }
         public string? TableName { get; set; }
-        public IEnumerable<string>? PkFieldList { get; set; }
         public IEnumerable<FieldBaseModel>? Fields { get; set; }
         public IEnumerable<RecordBaseModel>? Records { get; set; }
 
+        public static TableBaseModel CreateTableBaseModel<T>() where T : TableDefBaseModel
+        {
+            string tableName = nameof(T);
+            List<FieldBaseModel> fieldList = [];
+
+            var properties = typeof(T).GetProperties();
+            if (properties != null && properties.Any())
+            {
+                foreach (var p in properties)
+                {
+                    FieldBaseModel field = new();
+                    if ( p.GetCustomAttribute<KeyAttribute>() != null)
+                    {
+                        field.IsPrimaryKey = true;
+                    }
+                    if (p.GetCustomAttribute<RequiredAttribute>() != null)
+                    {
+                        field.IsNotNull = true;
+                    }
+                    if(p.GetCustomAttribute<ForeignKeyAttribute>() is ForeignKeyAttribute fkey)
+                    {
+                        field.IsForeignKey = true;
+                        field.ForeignInfo = new ForeignBaseModel()
+                        {
+                            ComeFromTableName = fkey.Name,
+                            ComeFromFieldName = "Id",
+                            CurrentFieldName = p.Name
+                        };
+                    }
+                    field.FieldName = p.Name;
+                    field.FieldType = p.PropertyType.Name;
+                    fieldList.Add(field);
+                }
+            }
+            return new TableBaseModel()
+            {
+                TableName = tableName,
+                Fields = fieldList
+            };
+        }
         public JsonObject? GetMetaJsonObject()
         {
             StringBuilder sb = new();
             sb.Append('{');
-            sb.Append($"\"ConnectString\": \"{ConnectString}\",");
+
+            sb.Append($"\"ConnectString\": \"{Connection?.ConnectionString}\",");
             sb.Append($"\"TableName\": \"{TableName}\",");
-            sb.Append($"\"MetaData\": ");
+
+            sb.Append($"\"FieldDefine\": ");
             if (Fields != null && Fields.Any())
             {
                 sb.Append('[');
-                List<string> fs = new();
+                List<string> fs = [];
                 foreach (var item in Fields)
                 {
-                    fs.Add(item.ToJsonString());
+                    fs.Add(item.ToJsonString(true));
                 }
                 sb.Append(string.Join(',', fs));
                 sb.Append(']');
@@ -39,7 +84,8 @@ namespace DBService.Models
                 sb.Append("[]");
             }
             sb.Append('}');
-            MemoryStream stream = new(Encoding.UTF8.GetBytes(sb.ToString()));
+            string result = sb.ToString();
+            MemoryStream stream = new(Encoding.UTF8.GetBytes(result));
             return (JsonObject?)JsonNode.Parse(stream);
         }
         public JsonArray? GetRecordsJsonArray()
@@ -70,7 +116,7 @@ namespace DBService.Models
             StringBuilder sb = new();
             sb.Append('{');
 
-            sb.Append($"\"ConnectString\": \"{ConnectString}\",");
+            sb.Append($"\"ConnectString\": \"{Connection?.ConnectionString}\",");
             sb.Append($"\"TableName\": \"{TableName}\",");
             sb.Append($"\"RecordData\": ");
             if (Records != null && Records.Any())
@@ -99,25 +145,8 @@ namespace DBService.Models
             StringBuilder sb = new();
             sb.Append('{');
 
-            sb.Append($"\"ConnectString\": \"{ConnectString}\",");
+            sb.Append($"\"ConnectString\": \"{Connection?.ConnectionString}\",");
             sb.Append($"\"TableName\": \"{TableName}\",");
-            sb.Append("\"PrimaryKey\": ");
-            if (PkFieldList != null && PkFieldList.Any())
-            {
-                List<string> pkstring = new();
-
-                foreach (var pk in PkFieldList)
-                {
-                    pkstring.Add($"\"{pk}\"");
-                }
-                sb.Append($"[ {string.Join(',', pkstring)} ]");
-            }
-            else
-            {
-                sb.Append("[]");
-            }
-
-            sb.Append(',');
 
             sb.Append($"\"FieldDefine\": ");
             if (Fields != null && Fields.Any())
@@ -126,7 +155,6 @@ namespace DBService.Models
                 List<string> fs = new();
                 foreach (var item in Fields)
                 {
-
                     fs.Add(item.ToJsonString(true));
                 }
                 sb.Append(string.Join(',', fs));
@@ -136,13 +164,14 @@ namespace DBService.Models
             {
                 sb.Append("[]");
             }
-            sb.Append(',');
+            
 
-            sb.Append($"\"Data\": ");
-            if (Records != null && Records.Any())
+            if(Records != null && Records.Any())
             {
+                sb.Append(',');
+                sb.Append($"\"Data\": ");
                 sb.Append('[');
-                List<string> rs = new();
+                List<string> rs = [];
                 foreach (var item in Records)
                 {
                     rs.Add(item.ToJsonString(true));
@@ -151,14 +180,9 @@ namespace DBService.Models
 
                 sb.Append(']');
             }
-            else
-            {
-                sb.Append("[]");
-            }
-
             sb.Append('}');
-
-            MemoryStream stream = new(Encoding.UTF8.GetBytes(sb.ToString()));
+            var result = sb.ToString();
+            MemoryStream stream = new(Encoding.UTF8.GetBytes(result));
             return (JsonObject?)JsonNode.Parse(stream);
         }
 

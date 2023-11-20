@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace DBService.Models.Interface
 {
-    public interface IDataDefinition
+    public interface ISupportedDb
     {
-        string? GetSqlForCreateTable();
-        string? GetSqlForDropTable();
+        MainService UseMsSQL();
+        MainService UseSQLite();
     }
 }

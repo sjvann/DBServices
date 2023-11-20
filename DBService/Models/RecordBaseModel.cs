@@ -1,23 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 
 namespace DBService.Models
 {
     public class RecordBaseModel
     {
-        public IEnumerable<string>? PkFieldValue { get; set; }
-        public string? ParentKeyValue { get; set; }
         public int Id { get; set; }
         public IEnumerable<KeyValuePair<string, object>>? FieldValue { get; set; }
         public T? GetObject<T>() where T : class
         {
             if (FieldValue == null) return default;
-            List<KeyValuePair<string, JsonNode?>> targets = new();
+            List<KeyValuePair<string, JsonNode?>> targets = [];
             foreach (var item in FieldValue)
             {
                 JsonNode? newValue = JsonValue.Create(item.Value);
@@ -35,24 +29,30 @@ namespace DBService.Models
         {
 
             StringBuilder sb = new();
-            sb.Append('{');
-            if (FieldValue != null && FieldValue.Any())
+            if(FieldValue != null && FieldValue.Any())
             {
-                List<string> oneRecord = new();
-                foreach (var one in FieldValue)
+                sb.Append('{');
+                if (FieldValue != null && FieldValue.Any())
                 {
-                    if (!ignoreNull && one.Value != null)
+                    List<string> oneRecord = [];
+                    foreach (var one in FieldValue)
                     {
-                        oneRecord.Add(CheckType(one.Key, one.Value));
+                        if(ignoreNull && one.Value == null)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                             oneRecord.Add(CheckType(one.Key, one.Value));
+                        }
                     }
+                    sb.Append(string.Join(',', oneRecord));
                 }
-                sb.Append(string.Join(',', oneRecord));
+                sb.Append('}');
             }
-            sb.Append('}');
-
             return sb.ToString();
         }
-        private string CheckType(string key, object? value)
+        private static string CheckType(string key, object? value)
         {
             if (value == null)
             {
