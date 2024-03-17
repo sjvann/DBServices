@@ -1,10 +1,9 @@
-﻿
-using DBService.Models;
-using DBService.Models.Interface;
-using System.ComponentModel.DataAnnotations;
+﻿using DBServices.Models;
+using DBServices.Models.Enum;
+using DBServices.Models.Interface;
 using System.Data;
 
-namespace DBService.SqlStringGenerator
+namespace DBServices.SqlStringGenerator
 {
     public abstract class SqlProviderBase : ISqlProviderBase
     {
@@ -15,8 +14,7 @@ namespace DBService.SqlStringGenerator
         public abstract string? GetSqlForTruncate(string tableName);
         public abstract string? GetSqlForCheckTableExist(string tableName);
         public abstract string? GetSqlTableNameList(bool includeView = true);
-        public abstract string? GetSqlForCreateTable(TableBaseModel dbModel);
-        public abstract string? GetSqlForAlterTable(TableBaseModel dbModel);
+
         public abstract string? ConvertDataTypeToDb(string dataType);
         public abstract string? GetSqlFieldsByTableName(string tableName);
         public abstract string? GetSqlForeignInfoByTableName(string tableName);
@@ -27,16 +25,15 @@ namespace DBService.SqlStringGenerator
         #endregion
 
         #region DCL
-
         public string? GetSqlForCheckRows(string tableName)
         {
             if (tableName == null) return null;
             return $"SELECT Count(*) FROM {tableName};";
         }
-
         #endregion
         #region DDL
-
+        public abstract string? GetSqlForCreateTable(TableBaseModel dbModel);
+        public abstract string? GetSqlForAlterTable(TableBaseModel dbModel);
         public string? GetSqlForDropTable(string tableName)
         {
             if (tableName == null) return null;
@@ -78,7 +75,7 @@ namespace DBService.SqlStringGenerator
             return whereStr == null ? $"SELECT {fieldsStr} FROM {tableName}" : $"SELECT {fieldsStr} FROM {tableName} WHERE {whereStr};";
 
         }
-        public string? GetSqlByKeyValue(string tableName, string key, object value, string? operators = null)
+        public string? GetSqlByKeyValue(string tableName, string key, object value, EnumQueryOperator? operators = null)
         {
             if (tableName == null) return null;
             var queryString = MapForKeyValue(new KeyValuePair<string, object?>(key, value), operators);
@@ -87,13 +84,13 @@ namespace DBService.SqlStringGenerator
         public string? GetSqlByKeyValues(string tableName, IDictionary<string, object?> values)
         {
             if (tableName == null) return null;
-            var queryString = MapForKeyValues(values);
+            var queryString = MapForQueryKeyValues(values);
             return $"SELECT * FROM {tableName} WHERE {queryString};";
         }
         public string? GetSqlByKeyValues(string tableName, IEnumerable<KeyValuePair<string, object?>> values)
         {
             if (tableName == null) return null;
-            string queryString = MapForKeyValues(values);
+            string queryString = MapForQueryKeyValues(values);
             return $"SELECT * FROM {tableName} WHERE {queryString};";
         }
 
@@ -159,14 +156,12 @@ namespace DBService.SqlStringGenerator
 
         #endregion
 
-
-
         #region Private Methed - Utility
-        private static string MapForKeyValue(KeyValuePair<string, object?> source, string? @operator = null)
+        private static string MapForKeyValue(KeyValuePair<string, object?> source, EnumQueryOperator? @operator = null)
         {
             var key = source.Key;
             var value = source.Value;
-            string op = @operator ?? "=";
+            string op = CheckOperation(@operator);
             if (value is DateTime n1)
             {
                 return $"{key} {op} '{n1:yyyy-MM-dd}'";
@@ -194,18 +189,38 @@ namespace DBService.SqlStringGenerator
                 return string.Empty;
             }
         }
+
         private static string MapForKeyValues(IEnumerable<KeyValuePair<string, object?>> source)
         {
             List<string> setClause = [];
             foreach (var item in source)
             {
-                string map = MapForKeyValue(item);
-                if (map != null)
+                if (item.Value != null)
                 {
-                    setClause.Add(map);
+                    string map = MapForKeyValue(item);
+                    if (map != null)
+                    {
+                        setClause.Add(map);
+                    }
                 }
             }
             return string.Join(',', setClause);
+        }
+        private static string MapForQueryKeyValues(IEnumerable<KeyValuePair<string, object?>> source)
+        {
+            List<string> setClause = [];
+            foreach (var item in source)
+            {
+                if (item.Value != null)
+                {
+                    string map = MapForKeyValue(item);
+                    if (map != null)
+                    {
+                        setClause.Add(map);
+                    }
+                }
+            }
+            return string.Join(" AND ", setClause);
         }
         private static string MapForInsertValue(IEnumerable<object?> source)
         {
@@ -308,6 +323,22 @@ namespace DBService.SqlStringGenerator
 
         }
 
+
+        private static string CheckOperation(EnumQueryOperator? @operator)
+        {
+            return @operator switch
+            {
+                EnumQueryOperator.Equal => "=",
+                EnumQueryOperator.NotEqual => "<>",
+                EnumQueryOperator.GreaterThan => ">",
+                EnumQueryOperator.GreaterThanOrEqual => ">=",
+                EnumQueryOperator.LessThan => "<",
+                EnumQueryOperator.LessThanOrEqual => "<=",
+                EnumQueryOperator.Like => "LIKE",
+                EnumQueryOperator.NotLike => "NOT LIKE",
+                _ => "=",
+            };
+        }
 
 
 

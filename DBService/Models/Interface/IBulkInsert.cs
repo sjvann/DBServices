@@ -1,8 +1,8 @@
-﻿namespace DBService.Models.Interface
+﻿namespace DBServices.Models.Interface
 {
     public interface IBulkInsert
     {
-        public string GetSqlForBlukAdd();
+        public string GetSqlForBulkAdd();
         public string[] GetFields();
     }
 }

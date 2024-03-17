@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DBService.Models
+namespace DBServices.Models
 {
     public class ForeignBaseModel
     {

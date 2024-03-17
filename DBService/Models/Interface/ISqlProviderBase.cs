@@ -1,11 +1,11 @@
-﻿
+﻿using DBServices.Models.Enum;
 using System.ComponentModel.DataAnnotations;
 
-namespace DBService.Models.Interface
+namespace DBServices.Models.Interface
 {
     public interface ISqlProviderBase
     {
-        #region DataCcontrol
+        #region DataCcontrol DCL
         string? ConvertDataTypeToDb(string dataType);
 
         /// <summary>
@@ -32,13 +32,9 @@ namespace DBService.Models.Interface
         /// <param name="tableName"></param>
         /// <returns></returns>
         string? GetSqlForTruncate(string tableName);
-        /// <summary>
-        /// 刪除資料表
-        /// </summary>
-        /// <returns></returns>
-        string? GetSqlForDropTable(string tableName);
+
         #endregion
-        #region DataDefinition
+        #region DataDefinition DDL
         /// <summary>
         /// 新增資料表
         /// </summary>
@@ -51,9 +47,13 @@ namespace DBService.Models.Interface
         /// <param name="dbModel"></param>
         /// <returns></returns>
         string? GetSqlForAlterTable(TableBaseModel dbModel);
-
+        /// <summary>
+        /// 刪除資料表
+        /// </summary>
+        /// <returns></returns>
+        string? GetSqlForDropTable(string tableName);
         #endregion
-        #region DataManipulation
+        #region DataManipulation DML
         /// <summary>
         /// 刪除某筆特定資料
         /// </summary>
@@ -87,31 +87,7 @@ namespace DBService.Models.Interface
         /// <returns></returns>
         string? GetSqlForUpdateByKey(string tableName, KeyValuePair<string, object?> criteria, IEnumerable<KeyValuePair<string, object?>> source);
         #endregion
-        #region DataMeta
-        /// <summary>
-        /// 取回資料庫所有資料表
-        /// </summary>
-        /// <param name="includeView"></param>
-        /// <returns></returns>
-        string? GetSqlTableNameList(bool includeView = true);
-
-        /// <summary>
-        /// 取得所有欄位清單
-        /// </summary>
-        /// <param name="tableName"></param>
-        /// <returns></returns>
-        string? GetSqlFieldsByTableName(string tableName);
-        IEnumerable<FieldBaseModel>? MapToFieldBaseModel(IEnumerable<dynamic> target, IEnumerable<dynamic> foreignness);
-        /// <summary>
-        /// 取得外來鍵資訊
-        /// </summary>
-        /// <param name="tableName"></param>
-        /// <returns></returns>
-        string? GetSqlForeignInfoByTableName(string tableName);
-        IEnumerable<ForeignBaseModel>? MapToForeignBaseModel(IEnumerable<dynamic> target);
-        IEnumerable<RecordBaseModel>? MapToRecordBaseModel(IEnumerable<dynamic> target);
-        #endregion
-        #region Data Query
+        #region DataQuery DQL
         /// <summary>
         /// 取回特定紀錄
         /// </summary>
@@ -127,7 +103,7 @@ namespace DBService.Models.Interface
         /// <param name="value"></param>
         /// <param name="operators"></param>
         /// <returns></returns>
-        string? GetSqlByKeyValue(string tableName, string key, object value, string? operators = null);
+        string? GetSqlByKeyValue(string tableName, string key, object value, EnumQueryOperator? @operators = null);
         /// <summary>
         /// 依據條件取回紀錄
         /// </summary>
@@ -187,6 +163,30 @@ namespace DBService.Models.Interface
         /// <param name="manySideKeyName"></param>
         /// <returns></returns>
         string? GetSqlForRightJoin(string oneSideTableName, string oneSideKeyName, string manySideTableName, string manySideKeyName);
+        #endregion
+        #region DataMeta
+        /// <summary>
+        /// 取回資料庫所有資料表
+        /// </summary>
+        /// <param name="includeView"></param>
+        /// <returns></returns>
+        string? GetSqlTableNameList(bool includeView = true);
+
+        /// <summary>
+        /// 取得所有欄位清單
+        /// </summary>
+        /// <param name="tableName"></param>
+        /// <returns></returns>
+        string? GetSqlFieldsByTableName(string tableName);
+        IEnumerable<FieldBaseModel>? MapToFieldBaseModel(IEnumerable<dynamic> target, IEnumerable<dynamic> foreignness);
+        /// <summary>
+        /// 取得外來鍵資訊
+        /// </summary>
+        /// <param name="tableName"></param>
+        /// <returns></returns>
+        string? GetSqlForeignInfoByTableName(string tableName);
+        IEnumerable<ForeignBaseModel>? MapToForeignBaseModel(IEnumerable<dynamic> target);
+        IEnumerable<RecordBaseModel>? MapToRecordBaseModel(IEnumerable<dynamic> target);
         #endregion
     }
 }

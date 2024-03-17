@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
-namespace DBService.Util
+namespace DBServices.Util
 {
     public class JsonUtil
     {

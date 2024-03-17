@@ -1,6 +1,3 @@
-using DBService;
-using DBService.Models.Interface;
-using System.Reflection;
 using WebService;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,7 +16,7 @@ builder.Services.AddSwaggerGen(c => {
     var xmlFilename = "MyApiDoc.xml";
     c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
 });
-var connectString = builder.Configuration.GetConnectionString("default")??"Data Source=c://temp//Test.db;Version=3;";
+var connectString = builder.Configuration.GetConnectionString("default")??"Data Source=c://temp//Test.db;";
 var serverTypeName = builder.Configuration.GetValue<string>("ServerType:Name")??"Sqlite";
 var app = builder.Build();
 

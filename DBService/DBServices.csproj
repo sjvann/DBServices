@@ -14,15 +14,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Models\DbModelBased.cs" />
-    <Compile Remove="Models\IDbModel.cs" />
-    <Compile Remove="Models\Interface\ITableSqlService.cs" />
+    <Compile Remove="MainService - 複製.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.21" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.2" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Dapper" Version="2.1.28" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.2" />
+    <PackageReference Include="MySql.Data" Version="8.3.0" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="3.21.130" />
   </ItemGroup>
 
 </Project>

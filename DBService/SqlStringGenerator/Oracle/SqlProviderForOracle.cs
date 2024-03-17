@@ -1,11 +1,11 @@
 ﻿using DBServices.Models;
 using System.Text;
 
-namespace DBServices.SqlStringGenerator.Sqlite
+namespace DBServices.SqlStringGenerator.Oracle
 {
-    public class SqlProviderForSqlite : SqlProviderBase
+    public class SqlProviderForOracle : SqlProviderBase
     {
-        public SqlProviderForSqlite() { }
+        public SqlProviderForOracle() { }
 
 
         public override string? GetSqlForCheckTableExist(string tableName)

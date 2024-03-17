@@ -1,8 +1,6 @@
-﻿
-using DBService;
-using DBService.Models;
-using DBService.Models.Enum;
-using DBService.Models.Interface;
+﻿using DBServices;
+using DBServices.Models;
+using DBServices.Models.Interface;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -23,8 +21,11 @@ namespace WebService
         /// <param name="server">資料庫種類</param>
         public static void UseDbWebService(this WebApplication app, string connectString, string server)
         {
-            IDbService db = SetupServer(connectString, server);
-            
+            IDbService? db = SetupServer(connectString, server);
+            if(db == null)
+            {
+                return;
+            }   
             app.MapGet("/meta", () => GetAllTableName(db));
             var resourceName = app.MapGroup("/{resourceName}");
             resourceName.MapGet("/fieldSet", ([FromRoute] string resourceName) => GetMetaData(resourceName, db));
@@ -50,8 +51,8 @@ namespace WebService
         /// <param name="db"></param>
         /// <returns></returns>
         public static IResult DeleteData(string resourceName, int id, IDbService db)
-        {
-            db.SetCurrent(resourceName);
+        {  
+            db.SetCurrentTableName(resourceName);
             if (db.GetRecordById(id) == null) return Results.NotFound();
             if (db.DeleteRecordById(id))
             {
@@ -72,9 +73,9 @@ namespace WebService
         /// <param name="payload">該紀錄有更新的部分</param>
         ///         /// <param name="db"></param>
         /// <returns></returns>
-        private static IResult PutData(string resourceName, int id,  dynamic payload, IDbService db)
+        private static IResult PutData(string resourceName, int id, dynamic payload, IDbService db)
         {
-            db.SetCurrent(resourceName);
+            db.SetCurrentTableName(resourceName);
             if (db.GetRecordById(id) == null) return Results.NotFound();
 
             MemoryStream ms = new(Encoding.UTF8.GetBytes(payload.GetRawText()));
@@ -82,7 +83,7 @@ namespace WebService
             if (result is JsonObject one)
             {
                 IEnumerable<KeyValuePair<string, object?>> kps = one.Select(x => new KeyValuePair<string, object?>(x.Key, x.Value));
-               var updated = db.UpdateRecordById(id, kps);
+                var updated = db.UpdateRecordById(id, kps);
                 if (updated != null)
                 {
                     return Results.Ok(updated.GetRecordsJsonObject());
@@ -108,14 +109,14 @@ namespace WebService
         /// <returns></returns>
         private static IResult PostData(string resourceName, dynamic payload, IDbService db)
         {
-            db.SetCurrent(resourceName);
+            db.SetCurrentTableName(resourceName);
             MemoryStream ms = new(Encoding.UTF8.GetBytes(payload.GetRawText()));
             var result = JsonNode.Parse(ms);
             if (result is JsonObject one)
             {
                 IEnumerable<KeyValuePair<string, object?>> kps = one.Select(x => new KeyValuePair<string, object?>(x.Key, x.Value));
-                var r = db.AddRecord(kps);
-                if(r != null)
+                var r = db.InsertRecord(kps);
+                if (r != null)
                 {
                     var id = r.Records?.First().Id;
                     return Results.Created($"/{resourceName}/{id}", r.GetRecordsJsonObject());
@@ -140,9 +141,8 @@ namespace WebService
         /// <param name="db"></param>
         /// <returns></returns>
         private static IResult GetDataById(string resourceName, int id, IDbService db)
-        {
-            db.SetCurrent(resourceName);
-            var result = db.GetRecordById(id);
+        {   
+            var result = db.GetRecordById(id, resourceName);
             if (result != null)
             {
                 var resultString = result.GetRecordsJsonObject();
@@ -164,23 +164,22 @@ namespace WebService
         /// <param name="db"></param>
         /// <returns></returns>
         private static IResult GetDataQuery(string resourceName, QueryModel query, IDbService db)
-        {
-            db.SetCurrent(resourceName);
+        {  
             TableBaseModel? result;
             if (query != null && query.Key != null && query.Value != null)
             {
                 KeyValuePair<string, object?> queryKeyValue = new(query.Key, query.Value);
-                result = db.GetRecordByKeyValue(queryKeyValue);
+                result = db.GetRecordByKeyValue(queryKeyValue,null, resourceName);
             }
             else
             {
-                result = db.GetRecordByTable(resourceName);
+                result = db.GetRecordByTableName(resourceName);
             }
 
             if (result != null)
             {
                 var resultString = result.GetRecordsJsonObject();
-
+                
                 return Results.Ok(resultString);
             }
             else
@@ -197,7 +196,7 @@ namespace WebService
         /// <returns>資料表名稱清單</returns>
         private static IResult GetAllTableName(IDbService db)
         {
-            var tableNames = db.GetTableNameList();
+            var tableNames = db.GetAllTableNames();
             if (tableNames != null)
             {
                 return Results.Ok(tableNames);
@@ -215,8 +214,7 @@ namespace WebService
         /// <returns>回傳TableBaseModel類別</returns>
         private static IResult GetMetaData(string resourceName, IDbService db)
         {
-            db.SetCurrent(resourceName);
-            TableBaseModel? result = db.GetCurrent();
+            TableBaseModel? result = db.GetRecordByTableName(resourceName);
             if (result != null)
             {
 
@@ -237,8 +235,8 @@ namespace WebService
         /// <returns></returns>
         private static IResult GetMetaValueSet(string resourceName, string fieldName, IDbService db)
         {
-            db.SetCurrent(resourceName);
-            var valueSet = db.GetValueSetByFieldName(fieldName);
+           
+            var valueSet = db.GetValueSetByFieldName(fieldName, resourceName);
             if (valueSet != null && valueSet.Any())
             {
                 return Results.Ok(valueSet);
@@ -250,24 +248,20 @@ namespace WebService
         }
         #endregion
 
-        private static IDbService SetupServer(string connectString, string serverName)
+        private static IDbService? SetupServer(string connectString, string serverName)
         {
-            var db =  MainService.GetInstance(connectString);
-            var result = Enum.TryParse(serverName, out EnumSupportedServer server);
-            if (result)
-            {
-                switch (server)
-                {
-                    case EnumSupportedServer.SqlServer:
-                        db.UseMsSQL();
-                        break;
-                    case EnumSupportedServer.Sqlite:
-                        db.UseSQLite();
-                        break;
-                }
-            }
-            return db;
-        }      
+            return serverName switch
+            { 
+
+                "SqlServer" => MainService.UseMsSQL(connectString),
+                "Sqlite" => MainService.UseSQLite(connectString),
+                "MySQL" => MainService.UseMySQL(connectString),
+                "Oracle" => MainService.UseOracle(connectString),
+                _ => null
+            };
+
+
+        }
         #endregion
     }
 }

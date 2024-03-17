@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DBService.Models
+namespace DBServices.Models
 {
     public class FieldBaseModel
     {
@@ -26,15 +26,15 @@ namespace DBService.Models
                 if (!string.IsNullOrEmpty(FieldType)) { sb.Append($"\"FieldType\": \"{FieldType}\","); }
                 sb.Append($"\"IsNotNull\": \"{IsNotNull}\",");
                 sb.Append($"\"IsPK\": \"{IsPrimaryKey}\",");
-               
-                if(ForeignInfo != null)
+
+                if (ForeignInfo != null)
                 {
-                     sb.Append($"\"IsFK\": \"{IsForeignKey}\",");
+                    sb.Append($"\"IsFK\": \"{IsForeignKey}\",");
                     sb.Append($"\"ForeignInfo\": {ForeignInfo.ToJsonString()}");
                 }
                 else
                 {
-                     sb.Append($"\"IsFK\": \"{IsForeignKey}\"");
+                    sb.Append($"\"IsFK\": \"{IsForeignKey}\"");
                 }
             }
             else

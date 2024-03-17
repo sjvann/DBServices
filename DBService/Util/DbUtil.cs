@@ -1,5 +1,4 @@
-﻿
-namespace DBService.Util
+﻿namespace DBServices.Util
 {
     public static class DbUtil
     {
@@ -8,11 +7,11 @@ namespace DBService.Util
             try
             {
                 File.Copy(sourceFile, destinateFile, true);
-               
+
             }
             catch (IOException e)
             {
-               Console.WriteLine(e.ToString());
+                Console.WriteLine(e.ToString());
             }
         }
     }

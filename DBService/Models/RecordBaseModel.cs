@@ -2,11 +2,11 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace DBService.Models
+namespace DBServices.Models
 {
     public class RecordBaseModel
     {
-        public int Id { get; set; }
+        public long Id { get; set; }
         public IEnumerable<KeyValuePair<string, object>>? FieldValue { get; set; }
         public T? GetObject<T>() where T : class
         {
@@ -22,14 +22,14 @@ namespace DBService.Models
             }
             JsonObject result = new(targets);
 
-            var objectResult = JsonSerializer.Deserialize<T>(result);
+            var objectResult = result.Deserialize<T>();
             return objectResult;
         }
         public string ToJsonString(bool ignoreNull = false)
         {
 
             StringBuilder sb = new();
-            if(FieldValue != null && FieldValue.Any())
+            if (FieldValue != null && FieldValue.Any())
             {
                 sb.Append('{');
                 if (FieldValue != null && FieldValue.Any())
@@ -37,13 +37,13 @@ namespace DBService.Models
                     List<string> oneRecord = [];
                     foreach (var one in FieldValue)
                     {
-                        if(ignoreNull && one.Value == null)
+                        if (ignoreNull && one.Value == null)
                         {
                             continue;
                         }
                         else
                         {
-                             oneRecord.Add(CheckType(one.Key, one.Value));
+                            oneRecord.Add(CheckType(one.Key, one.Value));
                         }
                     }
                     sb.Append(string.Join(',', oneRecord));
@@ -58,7 +58,7 @@ namespace DBService.Models
             {
                 return $"\"{key}\": null";
             }
-            else if (value is Int16 or Int32 or Int64 or long)
+            else if (value is short or int or long or long)
             {
                 return $"\"{key}\": {value}";
             }
