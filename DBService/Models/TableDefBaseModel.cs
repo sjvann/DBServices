@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Runtime.CompilerServices;
 
 namespace DBServices.Models
 {
@@ -12,6 +13,7 @@ namespace DBServices.Models
         protected TableDefBaseModel(string? userName = null)
         {
             CreatedDate ??= DateTime.UtcNow;
+            LastModifyDate = DateTime.UtcNow;
             CreatorName = userName;
 
         }
@@ -21,10 +23,22 @@ namespace DBServices.Models
         public long Id { get; set; }
         [Required]
         public DateTime? CreatedDate { get; set; }
-        public DateTime? LastModifyDate { get; set; } = DateTime.UtcNow;
+        public DateTime? LastModifyDate { get; set; }
         public string? CreatorName { get; set; }
-
-        public abstract IEnumerable<KeyValuePair<string, object?>> GetKeyValuePairs(bool withKey = false);
-
+    }
+    public static class TableDefBaseModelExtension
+    {
+        public static IEnumerable<KeyValuePair<string, object?>> GetKeyValuePairs(this TableDefBaseModel source, bool withKey = false)
+        {
+            var properties = source.GetType().GetProperties();
+            List<KeyValuePair<string, object?>> target = [];
+            foreach (var p in properties)
+            {
+                if (p.Name == "Id" && !withKey) continue;
+                target.Add(new(p.Name, p.GetValue(source)));
+            }
+            return target;
+        }
     }
 }
+

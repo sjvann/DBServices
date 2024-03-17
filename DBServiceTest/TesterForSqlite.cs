@@ -1,5 +1,3 @@
-using DBServices.Models;
-using DBServices.Test;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace DBServices.Tests
@@ -12,6 +10,5 @@ namespace DBServices.Tests
         public TesterForSqlite() : base(MainService.UseSQLite(connString))
         {
         }
-       
     }
 }

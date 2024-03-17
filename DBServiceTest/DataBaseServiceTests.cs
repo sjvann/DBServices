@@ -76,7 +76,6 @@ namespace DBServices.Tests
             }
         }
         #endregion
-
         #region DQL
         [TestMethod()]
         public virtual void GetRecordByIdTest()
@@ -103,7 +102,6 @@ namespace DBServices.Tests
                 Name = "EE",
                 Age = 11
             };
-            
             _db.InsertRecord(target.GetKeyValuePairs(), "PersonTable");
             var result = _db.GetRecordByKeyValue(newValue, null, "PersonTable");
 
@@ -148,8 +146,6 @@ namespace DBServices.Tests
             Assert.IsNotNull(result);
         }
         #endregion
-
-
         #region DML
         [TestMethod]
         public virtual void InsertDataTest()
@@ -238,7 +234,6 @@ namespace DBServices.Tests
 
         }
         #endregion
-
         #region Private Methods
         private int CreateNewTable<T>() where T : TableDefBaseModel
         {
@@ -252,7 +247,5 @@ namespace DBServices.Tests
 
 
         #endregion
-
-
     }
 }
