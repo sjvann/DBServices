@@ -1,4 +1,5 @@
-﻿using DBServices.Models;
+﻿
+using DbServices.Core.Models;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DBServiceTest.Models

@@ -1,5 +1,6 @@
 ﻿
-using DBServices.Models;
+
+using DbServices.Core.Models;
 
 namespace DBServiceTest.Models
 {

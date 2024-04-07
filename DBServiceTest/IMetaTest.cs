@@ -1,4 +1,4 @@
-﻿namespace DBServices.Test
+﻿namespace DBServiceTest
 {
     public interface IMetaTest
     {

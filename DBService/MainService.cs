@@ -1,5 +1,6 @@
 ﻿
-using DBServices.Models.Interface;
+using DbServices.Core.Models.Interface;
+using DbServices.Provider.Sqlite;
 
 namespace DBServices
 {
@@ -9,6 +10,12 @@ namespace DBServices
     public static class MainService
     {
         #region 設定資料庫廠商
+
+        public static IDbService UseDataBase(string connectString, Func<string, IDbService> providerService)
+        {
+            return providerService(connectString);
+        }
+
         /// <summary>
         /// 使用SQLite資料庫
         /// </summary>
@@ -16,7 +23,7 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseSQLite(string connectString)
         {
-            return new SqliteService(connectString);
+            return new ProviderService(connectString);
         }
         /// <summary>
         /// 使用MsSQL資料庫
@@ -25,8 +32,7 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseMsSQL(string connectString)
         {
-            return new MsSqlService(connectString);
-
+            return new ProviderService(connectString);
         }
         /// <summary>
         /// 使用MySQL資料庫
@@ -36,7 +42,7 @@ namespace DBServices
 
         public static IDbService UseMySQL(string connectString)
         {
-            return new MySqlService(connectString);
+            return new ProviderService(connectString);
         }
         /// <summary>
         /// 使用Oracle資料庫
@@ -45,7 +51,7 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseOracle(string connectString)
         {
-           return new OracleService(connectString);
+            return new ProviderService(connectString);
         }
         #endregion
 

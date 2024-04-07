@@ -1,6 +1,6 @@
-﻿using DBServices;
-using DBServices.Models;
-using DBServices.Models.Interface;
+﻿using DbServices.Core.Models;
+using DbServices.Core.Models.Interface;
+using DBServices;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -253,10 +253,10 @@ namespace WebService
             return serverName switch
             { 
 
-                "SqlServer" => MainService.UseMsSQL(connectString),
+               // "SqlServer" => MainService.UseMsSQL(connectString),
                 "Sqlite" => MainService.UseSQLite(connectString),
-                "MySQL" => MainService.UseMySQL(connectString),
-                "Oracle" => MainService.UseOracle(connectString),
+               // "MySQL" => MainService.UseMySQL(connectString),
+                //"Oracle" => MainService.UseOracle(connectString),
                 _ => null
             };
 

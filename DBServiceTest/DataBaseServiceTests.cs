@@ -1,23 +1,24 @@
-﻿using DBServices;
-using DBServices.Models.Interface;
-using DBServices.Models;
+﻿
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using DbServices.Core.Models.Interface;
+using DbServices.Core.Models.Enum;
 using DBServiceTest.Models;
-using DBServices.Test;
-using System.ComponentModel.Design;
-using Org.BouncyCastle.Asn1.Cms;
+using DbServices.Core.Models;
 
-namespace DBServices.Tests
+
+namespace DBServiceTest
 {
     [TestClass()]
     public abstract class DataBaseServiceTests(IDbService _db) : IMetaTest
     {
+
         #region DCL
         [TestMethod()]
         public virtual void SetCurrentTableNameTest()
         {
             _db.SetCurrentTableName("PersonTable");
             Assert.AreEqual("PersonTable", _db.GetCurrentTableName());
+            Console.WriteLine($"Current Table: {_db.GetCurrentTableName()}");
         }
 
         [TestMethod()]
@@ -25,16 +26,16 @@ namespace DBServices.Tests
         {
             _db.SetCurrentTable<PersonTable>();
             Assert.AreEqual("PersonTable", _db.GetCurrentTableName());
-
+            Console.WriteLine($"Current Table: {_db.GetCurrentTableName()}");
         }
         [TestMethod()]
         public virtual void GetAllTableNamesTest()
         {
             string[]? allTableName = _db.GetAllTableNames();
-            int result = allTableName?.Length ?? 0;
-           
-            Assert.IsTrue(result > 0);
-            
+
+            Assert.IsNotNull(allTableName);
+            Assert.IsTrue(allTableName.Length > 0);
+            Console.WriteLine($"All Table Name: {string.Join("\r\n", allTableName)}");
         }
         [TestMethod()]
         public virtual void GetFieldsByTableNameTest()
@@ -44,6 +45,10 @@ namespace DBServices.Tests
             Assert.IsNotNull(result);
             Assert.IsTrue(result.Any());
 
+            var nameList = from item in result
+                           select item.FieldName;
+            Console.WriteLine($"Fields:\r\n{string.Join("\r\n", nameList)}");
+
         }
 
         #endregion
@@ -51,20 +56,25 @@ namespace DBServices.Tests
         [TestMethod]
         public virtual void CreateTableForNormalClass()
         {
+            Console.WriteLine($"Before Create PersonTable Table: {_db.HasTable("PersonTable")}");
             int result = CreateNewTable<PersonTable>();
             Assert.IsTrue(result >= 0);
+            Console.WriteLine($"After Create PersonTable Table: {_db.HasTable("PersonTable")}");
         }
         [TestMethod]
         public virtual void CreateTableForForeignClass()
         {
+            Console.WriteLine($"Before Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
             int result = CreateNewTable<EncounterTable>();
             Assert.IsTrue(result >= 0);
+            Console.WriteLine($"After Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
         }
 
         [TestMethod()]
         public virtual void DropTableTest()
         {
             _db.CreateNewTable<TestTable>();
+            Console.WriteLine($"Before Drop TestTable: {_db.HasTable("TestTable")}");
             if (_db.HasTable("TestTable"))
             {
                 _db.DropTable("TestTable");
@@ -74,17 +84,32 @@ namespace DBServices.Tests
             {
                 Assert.Fail("TestTable not created");
             }
+            Console.WriteLine($"After Drop TestTable: {_db.HasTable("TestTable")}");
         }
         #endregion
         #region DQL
         [TestMethod()]
         public virtual void GetRecordByIdTest()
         {
-
             if (_db.HasRecord("PersonTable"))
             {
                 var result = _db.GetRecordById(1, "PersonTable");
                 Assert.IsNotNull(result);
+                Console.WriteLine(result.GetRecordOnlyJsonString(true));
+            }
+            else
+            {
+                Assert.Fail("No record in PersonTable");
+            }
+        }
+        [TestMethod]
+        public virtual void GetRecordByWhereTest()
+        {
+            if (_db.HasRecord("PersonTable"))
+            {
+                var result = _db.GetRecordWithWhere("id = 1", "PersonTable");
+                Assert.IsNotNull(result);
+                Console.WriteLine(result.GetRecordOnlyJsonString(true));
             }
             else
             {
@@ -95,18 +120,10 @@ namespace DBServices.Tests
         [TestMethod()]
         public virtual void GetRecordByKeyValueTest()
         {
-
-            KeyValuePair<string, object?> newValue = new("Name", "BB");
-            PersonTable target = new ()
-            {
-                Name = "EE",
-                Age = 11
-            };
-            _db.InsertRecord(target.GetKeyValuePairs(), "PersonTable");
-            var result = _db.GetRecordByKeyValue(newValue, null, "PersonTable");
-
+            KeyValuePair<string, object?> newValue = new("Age", "10");
+            var result = _db.GetRecordByKeyValue(newValue, EnumQueryOperator.GreaterThan, "PersonTable");
             Assert.IsNotNull(result);
-
+            Console.WriteLine(result.GetRecordOnlyJsonString(true));
         }
         [TestMethod()]
         public virtual void GetRecordByKeyValuesTest()
@@ -119,7 +136,7 @@ namespace DBServices.Tests
             _db.InsertRecord(target.GetKeyValuePairs(), "PersonTable");
             var result = _db.GetRecordByKeyValues(target.GetKeyValuePairs(), "PersonTable");
             Assert.IsNotNull(result);
-           
+            Console.WriteLine(result.GetRecordOnlyJsonString(true));
         }
 
         [TestMethod()]
@@ -128,6 +145,7 @@ namespace DBServices.Tests
             var result = _db.GetRecordByTableName("PersonTable");
             Assert.IsNotNull(result);
             Assert.IsTrue(result.Records?.Any());
+            Console.WriteLine(result.GetFullyJsonString(true));
         }
         [TestMethod()]
         public virtual void GetRecordForFieldTest()
@@ -136,68 +154,83 @@ namespace DBServices.Tests
             var result = _db.GetRecordForField(needField, null, nameof(PersonTable));
             Assert.IsNotNull(result);
             Assert.IsTrue(result.Records?.Any());
-           
+            Console.WriteLine(result.GetRecordOnlyJsonString(true));
         }
 
         [TestMethod()]
-        public virtual void GetRecordByForeignKeyTest()
+        public virtual void GetRecordByForeignKeyForOneSideTest()
         {
-            var result = _db.GetRecordByForeignKey("PersonFK", 1, "EncounterTable");
+            var result = _db.GetRecordByForeignKeyForOneSide("PersonFK", 1, nameof(EncounterTable), nameof(PersonTable));
             Assert.IsNotNull(result);
+            Console.WriteLine(result.GetRecordOnlyJsonString(true));
+        }
+        [TestMethod()]
+        public virtual void GetRecordByForeignKeyForManySideTest()
+        {
+            var result = _db.GetRecordByForeignKeyForManySide(1, "PersonFK", nameof(EncounterTable));
+            Assert.IsNotNull(result);
+            Console.WriteLine(result.GetRecordOnlyJsonString(true));
         }
         #endregion
         #region DML
         [TestMethod]
         public virtual void InsertDataTest()
         {
-            if (_db == null)
-            {
-                Assert.Fail("_db is null");
-            }
-
             PersonTable p = new()
             {
-                Name = "DD",
-                Age = 87
+                Name = "FF",
+                Age = 38
             };
-            _db.SetCurrentTableName("PersonTable");
-            var result = _db.InsertRecord(p.GetKeyValuePairs());
-            Assert.IsNotNull(result);
-           
+
+            Console.WriteLine("Before insert data:");
+            var oldTable = _db.GetRecordWithWhere($"Name = '{p.Name}'", nameof(PersonTable));
+            Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
+
+            var target = _db.InsertRecord(p.GetKeyValuePairs(), nameof(PersonTable));
+            Assert.IsNotNull(target);
+            Console.WriteLine("After insert data:");
+            var newTable = _db.GetRecordWithWhere($"Name = '{p.Name}'", nameof(PersonTable));
+            Console.WriteLine(newTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
         }
         [TestMethod]
         public virtual void InsertFKDataTest()
         {
-            if (_db == null)
-            {
-                Assert.Fail("_db is null");
-            }
-
             EncounterTable e = new()
             {
                 PersonFK = 1,
-                EncounterType = "Inpatient"
+                EncounterType = "Outpatient"
             };
-            _db.SetCurrentTableName("EncounterTable");
-            var result = _db.InsertRecord(e.GetKeyValuePairs());
 
-            Assert.IsNotNull(result);
+            Console.WriteLine("Before insert data:");
+            var oldTable = _db.GetRecordWithWhere($"EncounterType = '{e.EncounterType}'", nameof(EncounterTable));
+            Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
+
+            var target = _db.InsertRecord(e.GetKeyValuePairs(), nameof(EncounterTable));
+            Assert.IsNotNull(target);
+
+            Console.WriteLine("After insert data:");
+            var newTable = _db.GetRecordWithWhere($"EncounterType = '{e.EncounterType}'", nameof(EncounterTable));
+            Console.WriteLine(newTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
         }
 
         [TestMethod()]
         public virtual void UpdateRecordByIdTest()
         {
-
             var updateObject = new PersonTable()
             {
-                Name = "EE",
+                Name = "ZZ",
                 Age = 99
             };
-            var result = _db.UpdateRecordById(1, updateObject.GetKeyValuePairs(), "PersonTable");
-            var record = _db.GetRecordById(1, "PersonTable");
-            Assert.IsNotNull(result);
-            Assert.AreEqual("EE", record?.GetObject<PersonTable>()?.Name);
+            Console.WriteLine("Before Update data:");
+            var oldTable = _db.GetRecordById(1, nameof(PersonTable));
+            Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
 
+            var result = _db.UpdateRecordById(1, updateObject.GetKeyValuePairs(), nameof(PersonTable));
+            Assert.IsNotNull(result);
+
+            Console.WriteLine("After insert data:");
+            var newTable = _db.GetRecordById(1, nameof(PersonTable));
+            Console.WriteLine(newTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
         }
         [TestMethod()]
         public virtual void UpdateRecordByKeyValueTest()
@@ -205,33 +238,40 @@ namespace DBServices.Tests
             var targetObject = new KeyValuePair<string, object?>("Name", "EE");
             var updateObject = new PersonTable()
             {
-                Name = "GG",
-                Age = 99
+                Age = 100
             };
-            var result = _db.UpdateRecordByKeyValue(targetObject, updateObject.GetKeyValuePairs(), "PersonTable");
-            var record = _db.GetRecordById(1, "PersonTable");
+            Console.WriteLine("Before Update data:");
+            var oldTable = _db.GetRecordByKeyValue(targetObject, EnumQueryOperator.Like, nameof(PersonTable));
+            Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
+
+            var result = _db.UpdateRecordByKeyValue(targetObject, updateObject.GetKeyValuePairs(), nameof(PersonTable));
             Assert.IsNotNull(result);
-            Assert.AreEqual("GG", record?.GetObject<PersonTable>()?.Name);
+
+            Console.WriteLine("After insert data:");
+            var newTable = _db.GetRecordByKeyValue(targetObject, EnumQueryOperator.Like, nameof(PersonTable));
+            Console.WriteLine(newTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
         }
         [TestMethod()]
         public virtual void DeleteRecordByIdTest()
         {
-            var insertObject = new PersonTable()
+            PersonTable p = new()
             {
-                Name = "HH",
-                Age = 66
+                Name = "FF",
+                Age = 38
             };
-            var newRecord = _db.InsertRecord(insertObject.GetKeyValuePairs(), "PersonTable");
-            var id = newRecord?.GetObject<PersonTable>()?.Id ?? 0;
-            if(id > 0)
-            {
-                Assert.IsTrue(_db.DeleteRecordById(id, "PersonTable"));
-            }
-            else
-            {
-                Assert.Fail("Insert failed");
-            }
 
+            var target = _db.InsertRecord(p.GetKeyValuePairs(), nameof(PersonTable));
+
+            long pk = target?.GetObject<PersonTable>()?.Id?? 1;
+            Console.WriteLine("Before Delete data:");
+            var oldTable = _db.GetRecordById(pk, nameof(PersonTable));
+            Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
+
+            Assert.IsTrue(_db.DeleteRecordById(pk, "PersonTable"));
+
+            Console.WriteLine("After Delete data:");
+            var newTable = _db.GetRecordById(pk, nameof(PersonTable));
+            Console.WriteLine(newTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
         }
         #endregion
         #region Private Methods

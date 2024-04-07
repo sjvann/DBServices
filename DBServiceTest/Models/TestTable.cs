@@ -1,4 +1,4 @@
-﻿using DBServices.Models;
+﻿using DbServices.Core.Models;
 using Microsoft.Identity.Client;
 
 namespace DBServiceTest.Models
