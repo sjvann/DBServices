@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Authors>sjvann</Authors>
-    <Version>5.0.0</Version>
+    <Version>6.0.0</Version>
     <Title>資料庫服務器</Title>
     <Description>透過資料庫連線字串，提供各項資料庫操作功能。
 並可將查詢結果轉換成json結構輸出。</Description>
