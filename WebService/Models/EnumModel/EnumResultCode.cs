@@ -5,7 +5,7 @@
 
         Success,
         NoFound,
-        Failue,
+        Failure,
         Error,
         Unknow
 

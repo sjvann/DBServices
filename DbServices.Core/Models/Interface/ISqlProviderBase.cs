@@ -109,6 +109,9 @@ namespace DbServices.Core.Models.Interface
         /// </summary>
         /// <param name="values"></param>
         /// <returns></returns>
+        string? GetSqlByWhere(string tableName, string whereString); 
+        string? GetSqlByWhereIn(string tableName, string queryField, object[] queryValue);
+        string? GetSqlByWhereBetween(string tableName, string queryField, object startQueryValue, object endQueryValue);
         string? GetSqlByKeyValues(string tableName, IDictionary<string, object?> values);
         /// <summary>
         /// 依據條件取回紀錄

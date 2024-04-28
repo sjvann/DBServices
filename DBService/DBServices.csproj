@@ -18,11 +18,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MySql.Data" Version="8.3.0" />
-    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="3.21.130" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />
     <ProjectReference Include="..\DbServices.Provider.Sqlite\DbServices.Provider.Sqlite.csproj" />
   </ItemGroup>
