@@ -199,6 +199,35 @@ namespace DbServices.Core
             return result;
         }
 
+        public int CreateNewTable(IEnumerable<FieldBaseModel> tableDefine, string? tableName = null)
+        {
+            int result = 0;
+            tableName ??= _currentTableName;
+            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
+           
+            try
+            {
+                if (_conn.State != ConnectionState.Open) _conn.Open();
+
+                string? sql = _sqlProvider.GetSqlForCreateTable(tableName, tableDefine);
+                if (!string.IsNullOrEmpty(sql))
+                {
+                    result = _conn.Execute(sql);
+                }
+
+            }
+            catch (SqlException ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+
+            return result;
+        }
+
         public int DropTable(string tableName)
         {
             int result = 0;

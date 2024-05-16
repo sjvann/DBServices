@@ -1,6 +1,6 @@
-﻿namespace DbServices.Core.Util
+﻿namespace DbServices.Core.Utility
 {
-    public static class DbUtil
+    public static class DbUtility
     {
         public static void CopyDbFile(string sourceFile, string destinateFile)
         {

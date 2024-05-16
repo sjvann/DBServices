@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json.Nodes;
-using System.Threading.Tasks;
+﻿using System.Text.Json.Nodes;
 
-namespace DbServices.Core.Util
+namespace DbServices.Core.Utility
 {
-    public class JsonUtil
+    public static class JsonUtility
     {
         public static T? MappingJson<T>(JsonNode? source)
         {
@@ -29,51 +24,50 @@ namespace DbServices.Core.Util
                         switch (property.PropertyType.Name)
                         {
                             case "Int32":
-                                if (CheckNullValue<int>(value) is int intvalue)
+                                if (CheckNullValue<int>(value) is int intValue)
                                 {
-                                    property.SetValue(temp, intvalue);
+                                    property.SetValue(temp, intValue);
                                 }
                                 break;
                             case "Int64":
-                                if (CheckNullValue<long>(value) is long longvalue)
+                                if (CheckNullValue<long>(value) is long longValue)
                                 {
-                                    property.SetValue(temp, longvalue);
+                                    property.SetValue(temp, longValue);
                                 }
                                 break;
                             case "Decimal":
-                                if (CheckNullValue<decimal>(value) is decimal decimalvalue)
+                                if (CheckNullValue<decimal>(value) is decimal decimalValue)
                                 {
-                                    property.SetValue(temp, decimalvalue);
+                                    property.SetValue(temp, decimalValue);
                                 }
                                 break;
                             case "String":
-                                if (CheckNullValue<string>(value) is string stringvalue)
+                                if (CheckNullValue<string>(value) is string stringValue)
                                 {
-                                    property.SetValue(temp, stringvalue);
+                                    property.SetValue(temp, stringValue);
                                 }
 
                                 break;
                             case "Boolean":
-                                if (CheckNullValue<bool>(value) is bool boolvalue)
+                                if (CheckNullValue<bool>(value) is bool boolValue)
                                 {
-                                    property.SetValue(temp, boolvalue);
+                                    property.SetValue(temp, boolValue);
                                 }
-                                else if (CheckNullValue<int>(value) is int intboolvalue)
+                                else if (CheckNullValue<int>(value) is int intBoolValue)
                                 {
-                                    property.SetValue(temp, intboolvalue == 1);
+                                    property.SetValue(temp, intBoolValue == 1);
                                 }
                                 break;
                             case "DateTime":
-                                if (CheckNullValue<DateTime>(value) is DateTime datetimevalue)
+                                if (CheckNullValue<DateTime>(value) is DateTime datetimeValue)
                                 {
-                                    property.SetValue(temp, datetimevalue);
+                                    property.SetValue(temp, datetimeValue);
                                 }
-                                else if (CheckNullValue<string>(value) is string stringdatetimevalue)
+                                else if (CheckNullValue<string>(value) is string stringDatetimeValue)
                                 {
-                                    if (DateTime.TryParse(stringdatetimevalue, out DateTime dateTime))
-                                    {
-                                        property.SetValue(temp, dateTime);
-                                    }
+                                   
+                                        property.SetValue(temp, DateTime.Parse(stringDatetimeValue));
+                                    
                                 }
                                 break;
                             case "Double":
@@ -104,43 +98,43 @@ namespace DbServices.Core.Util
             switch (typeName)
             {
                 case "Int32":
-                    if (CheckNullValue<int>(value) is int intvalue)
+                    if (CheckNullValue<int>(value) is int intValue)
                     {
-                        return intvalue;
+                        return intValue;
                     }
                     return default;
                 case "Int64":
-                    if (CheckNullValue<long>(value) is long longvalue)
+                    if (CheckNullValue<long>(value) is long longValue)
                     {
-                        return longvalue;
+                        return longValue;
                     }
                     return default;
                 case "Decimal":
-                    if (CheckNullValue<decimal>(value) is decimal decimalvalue)
+                    if (CheckNullValue<decimal>(value) is decimal decimalValue)
                     {
-                        return decimalvalue;
+                        return decimalValue;
                     }
                     return default;
                 case "String":
-                    if (CheckNullValue<string>(value) is string stringvalue)
+                    if (CheckNullValue<string>(value) is string stringValue)
                     {
-                        return stringvalue;
+                        return stringValue;
                     }
                     return default;
                 case "Boolean":
-                    if (CheckNullValue<bool>(value) is bool boolvalue)
+                    if (CheckNullValue<bool>(value) is bool boolValue)
                     {
-                        return boolvalue;
+                        return boolValue;
                     }
-                    else if (CheckNullValue<int>(value) is int intboolvalue)
+                    else if (CheckNullValue<int>(value) is int intboolValue)
                     {
-                        return intboolvalue == 1;
+                        return intboolValue == 1;
                     }
                     return default;
                 case "DateTime":
-                    if (CheckNullValue<DateTime>(value) is DateTime datetimevalue)
+                    if (CheckNullValue<DateTime>(value) is DateTime datetimeValue)
                     {
-                        return datetimevalue;
+                        return datetimeValue;
                     }
                     else if (CheckNullValue<string>(value) is string stringdatetimevalue)
                     {

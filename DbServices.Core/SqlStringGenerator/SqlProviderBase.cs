@@ -35,6 +35,7 @@ namespace DbServices.Core.SqlStringGenerator
         #endregion
         #region DDL
         public abstract string? GetSqlForCreateTable(TableBaseModel dbModel);
+        public abstract string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine);
         public abstract string? GetSqlForAlterTable(TableBaseModel dbModel);
         public abstract string? GetSqlForDropTable(string tableName);
 
@@ -108,30 +109,30 @@ namespace DbServices.Core.SqlStringGenerator
                 string[]? qArray = (from item in queryValue
                                     select $"'{(string)item}'").ToArray();
                 newQueryInString = string.Join(',', qArray);
-               
+
             }
-             return $"SELECT * FORM {tableName} WHERE {queryField} IN ({newQueryInString});";
+            return $"SELECT * FORM {tableName} WHERE {queryField} IN ({newQueryInString});";
         }
         public string? GetSqlByWhere(string tableName, string whereString)
         {
-              if (string.IsNullOrEmpty(tableName)) return null;
-              return $"SELECT * FORM {tableName} WHERE {whereString};";
+            if (string.IsNullOrEmpty(tableName)) return null;
+            return $"SELECT * FORM {tableName} WHERE {whereString};";
         }
 
         public string? GetSqlByWhereBetween(string tableName, string queryField, object startQueryValue, object endQueryValue)
         {
 
             if (string.IsNullOrEmpty(tableName)) return null;
-           
-            if(startQueryValue.IsNumber() || endQueryValue.IsNumber())
+
+            if (startQueryValue.IsNumber() || endQueryValue.IsNumber())
             {
                 return $"SELECT * FORM {tableName} WHERE  {queryField} BETWEEN {startQueryValue} AND {endQueryValue};";
             }
             else
             {
-                 return $"SELECT * FORM {tableName} WHERE  {queryField} BETWEEN '{startQueryValue}' AND '{endQueryValue}';";
+                return $"SELECT * FORM {tableName} WHERE  {queryField} BETWEEN '{startQueryValue}' AND '{endQueryValue}';";
             }
-           
+
         }
 
         #region One-Many
@@ -380,7 +381,7 @@ namespace DbServices.Core.SqlStringGenerator
             };
         }
 
- 
+
 
 
 

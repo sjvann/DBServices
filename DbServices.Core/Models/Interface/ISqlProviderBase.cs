@@ -41,12 +41,15 @@ namespace DbServices.Core.Models.Interface
         /// <param name="dbModel"></param>
         /// <returns></returns>
         string? GetSqlForCreateTable(TableBaseModel dbModel);
+        public abstract string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine);
         /// <summary>
         /// 更新資料表
         /// </summary>
         /// <param name="dbModel"></param>
         /// <returns></returns>
+        /// 
         string? GetSqlForAlterTable(TableBaseModel dbModel);
+
         /// <summary>
         /// 刪除資料表
         /// </summary>
@@ -109,7 +112,7 @@ namespace DbServices.Core.Models.Interface
         /// </summary>
         /// <param name="values"></param>
         /// <returns></returns>
-        string? GetSqlByWhere(string tableName, string whereString); 
+        string? GetSqlByWhere(string tableName, string whereString);
         string? GetSqlByWhereIn(string tableName, string queryField, object[] queryValue);
         string? GetSqlByWhereBetween(string tableName, string queryField, object startQueryValue, object endQueryValue);
         string? GetSqlByKeyValues(string tableName, IDictionary<string, object?> values);

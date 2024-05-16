@@ -11,11 +11,8 @@
     <Description>透過資料庫連線字串，提供各項資料庫操作功能。
 並可將查詢結果轉換成json結構輸出。</Description>
     <PackageProjectUrl>https://github.com/sjvann/DBServices/tree/master/DBService</PackageProjectUrl>
+    <SignAssembly>False</SignAssembly>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Remove="MainService - 複製.cs" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />

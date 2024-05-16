@@ -33,8 +33,6 @@ namespace DbServices.Provider.Sqlite.SqlStringGenerator
             return $"DELETE FROM {tableName}; VACUUM;";
         }
 
-
-
         public override string? GetSqlForCreateTable(TableBaseModel dbModel)
         {
             if (dbModel == null || string.IsNullOrEmpty(dbModel.TableName) || dbModel.Fields == null) return null;
@@ -47,6 +45,18 @@ namespace DbServices.Provider.Sqlite.SqlStringGenerator
                 return null;
             }
 
+        }
+        public override string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine)
+        {
+            if (tableDefine == null ||  !tableDefine.Any()) return null;
+            if (CreateColumnDef(tableDefine) is string cd)
+            {
+                return $"CREATE TABLE IF NOT EXISTS {tableName} ({cd});";
+            }
+            else
+            {
+                return null;
+            }
         }
         public override string? GetSqlForDropTable(string tableName)
         {

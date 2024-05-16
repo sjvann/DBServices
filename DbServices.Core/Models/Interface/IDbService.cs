@@ -88,6 +88,7 @@ namespace DbServices.Core.Models.Interface
         bool DeleteRecordById(long id, string? tableName = null);
         bool DeleteRecordByKeyValue(KeyValuePair<string, object?> criteria, string? tableName = null);
         int CreateNewTable<T>() where T : TableDefBaseModel;
+        int CreateNewTable(IEnumerable<FieldBaseModel> tableDefine, string? tableName = null);
         int DropTable(string tableName);
         /// <summary>
         /// 執行StoredProcedure

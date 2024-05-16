@@ -20,6 +20,9 @@ namespace DbServices.Core.Models
         [Required]
         public long Id { get; set; }
         [Required]
+        public string? TitleName { get; set; }
+        public string? AliasName { get; set; }
+        [Required]
         public DateTime? CreatedDate { get; set; }
         public DateTime? LastModifyDate { get; set; }
         public string? CreatorName { get; set; }
@@ -36,6 +39,10 @@ namespace DbServices.Core.Models
                 target.Add(new(p.Name, p.GetValue(source)));
             }
             return target;
+        }
+        public static string GetTitleName(this TableDefBaseModel source)
+        {
+            return source.TitleName??"TitleName";
         }
     }
 }

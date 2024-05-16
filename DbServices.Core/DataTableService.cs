@@ -5,8 +5,15 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DbServices.Core
 {
-    public abstract class DataTableService<T>(IDbService db) : IDataTableService<T> where T : TableDefBaseModel
+    public abstract class DataTableService<T> : IDataTableService<T> where T : TableDefBaseModel
     {
+        private readonly IDbService db;
+        protected DataTableService(IDbService db)
+        {
+            this.db = db;
+            InitialTable();
+        }
+
 
         public int CreateNewTable()
         {
@@ -201,6 +208,14 @@ namespace DbServices.Core
                 return default;
             }
         }
+        private void InitialTable()
+        {
+            if (!db.HasTable(typeof(T).Name))
+            {
+                db.CreateNewTable<T>();
+            }
+        }
+
         #endregion
     }
 }
