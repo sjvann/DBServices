@@ -1,5 +1,4 @@
 ﻿using DbServices.Core.Models.Enum;
-using System.ComponentModel.DataAnnotations;
 
 namespace DbServices.Core.Models.Interface
 {
