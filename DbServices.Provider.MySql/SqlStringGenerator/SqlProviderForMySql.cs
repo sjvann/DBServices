@@ -34,22 +34,6 @@ namespace DBServices.SqlStringGenerator.MySql
         }
 
 
-
-        public override string? GetSqlForCreateTable(TableBaseModel dbModel)
-        {
-            if (dbModel == null || string.IsNullOrEmpty(dbModel.TableName) || dbModel.Fields == null) return null;
-            if (CreateColumnDef(dbModel.Fields) is string cd)
-            {
-                return $"CREATE TABLE IF NOT EXISTS {dbModel.TableName} ({cd});";
-            }
-            else
-            {
-                return null;
-            }
-
-        }
-
-
         public override string GetSqlFieldsByTableName(string tableName)
         {
             return $"SELECT * FROM pragma_table_info('{tableName}')";
@@ -215,6 +199,24 @@ namespace DBServices.SqlStringGenerator.MySql
         public override string? GetSqlForDropTable(string tableName)
         {
             throw new NotImplementedException();
+        }
+
+        public override string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine)
+        {
+            throw new NotImplementedException();
+        }
+        public override string? GetSqlForCreateTable(TableBaseModel dbModel)
+        {
+            if (dbModel == null || string.IsNullOrEmpty(dbModel.TableName) || dbModel.Fields == null) return null;
+            if (CreateColumnDef(dbModel.Fields) is string cd)
+            {
+                return $"CREATE TABLE IF NOT EXISTS {dbModel.TableName} ({cd});";
+            }
+            else
+            {
+                return null;
+            }
+
         }
 
         #endregion

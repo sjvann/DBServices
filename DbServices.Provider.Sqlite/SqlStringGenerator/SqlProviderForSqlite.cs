@@ -214,6 +214,7 @@ namespace DbServices.Provider.Sqlite.SqlStringGenerator
             "Decimal" => "TEXT",
             "Double" => "REAL",
             "Guid" => "TEXT",
+            "Int" => "INTEGER", 
             "Int16" => "INTEGER",
             "Int32" => "INTEGER",
             "Int64" => "INTEGER",

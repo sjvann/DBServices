@@ -58,6 +58,11 @@ namespace DbServices.Provider.MsSql.SqlStringGenerator
             }
         }
 
+        public override string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine)
+        {
+            throw new NotImplementedException();
+        }
+
         public override string? GetSqlForDropTable(string tableName)
         {
             throw new NotImplementedException();

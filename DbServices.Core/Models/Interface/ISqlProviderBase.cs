@@ -81,6 +81,7 @@ namespace DbServices.Core.Models.Interface
         /// <param name="id"></param>
         /// <param name="source"></param>
         /// <returns></returns>
+        string? GetSqlForBulkInsert(string tableName, IEnumerable<IEnumerable<KeyValuePair<string, object?>>> source);
         string? GetSqlForUpdate(string tableName, long id, IEnumerable<KeyValuePair<string, object?>> source);
         /// <summary>
         /// 更新紀錄,滿足條件者

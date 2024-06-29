@@ -24,7 +24,7 @@ namespace DbServices.Core.Models
             if (source is JsonObject oneField)
             {
 
-                result.FieldType = oneField["FieldName"]?.AsValue().GetValue<string>();
+                result.FieldName = oneField["FieldName"]?.AsValue().GetValue<string>();
                 result.FieldType = oneField["FieldType"]?.AsValue().GetValue<string>();
                 result.IsNotNull = oneField["IsNotNull"]?.AsValue().GetValue<bool>() ?? false;
                 result.IsPrimaryKey = oneField["IsPrimaryKey"]?.AsValue().GetValue<bool>() ?? false;

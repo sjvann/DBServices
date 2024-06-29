@@ -201,7 +201,7 @@ namespace DbServices.Core
 
         public int CreateNewTable(IEnumerable<FieldBaseModel> tableDefine, string? tableName = null)
         {
-            int result = 0;
+            int result = 1;
             tableName ??= _currentTableName;
             if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
            
@@ -212,9 +212,8 @@ namespace DbServices.Core
                 string? sql = _sqlProvider.GetSqlForCreateTable(tableName, tableDefine);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    result = _conn.Execute(sql);
+                    _conn.Execute(sql);
                 }
-
             }
             catch (SqlException ex)
             {

@@ -35,19 +35,7 @@ namespace DbServices.Provider.Oracle.SqlStringGenerator
 
 
 
-        public override string? GetSqlForCreateTable(TableBaseModel dbModel)
-        {
-            if (dbModel == null || string.IsNullOrEmpty(dbModel.TableName) || dbModel.Fields == null) return null;
-            if (CreateColumnDef(dbModel.Fields) is string cd)
-            {
-                return $"CREATE TABLE IF NOT EXISTS {dbModel.TableName} ({cd});";
-            }
-            else
-            {
-                return null;
-            }
 
-        }
 
         public override string GetSqlFieldsByTableName(string tableName)
         {
@@ -212,6 +200,23 @@ namespace DbServices.Provider.Oracle.SqlStringGenerator
         }
 
         public override string? GetSqlForDropTable(string tableName)
+        {
+            throw new NotImplementedException();
+        }
+        public override string? GetSqlForCreateTable(TableBaseModel dbModel)
+        {
+            if (dbModel == null || string.IsNullOrEmpty(dbModel.TableName) || dbModel.Fields == null) return null;
+            if (CreateColumnDef(dbModel.Fields) is string cd)
+            {
+                return $"CREATE TABLE IF NOT EXISTS {dbModel.TableName} ({cd});";
+            }
+            else
+            {
+                return null;
+            }
+
+        }
+        public override string? GetSqlForCreateTable(string tableName, IEnumerable<FieldBaseModel> tableDefine)
         {
             throw new NotImplementedException();
         }

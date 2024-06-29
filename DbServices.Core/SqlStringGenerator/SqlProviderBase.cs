@@ -4,6 +4,7 @@ using DbServices.Core.Models.Enum;
 using DbServices.Core.Models.Interface;
 using System.Data;
 using System.Globalization;
+using System.Text;
 
 namespace DbServices.Core.SqlStringGenerator
 {
@@ -167,6 +168,27 @@ namespace DbServices.Core.SqlStringGenerator
             return $"INSERT INTO {tableName} ({fieldStr}) VALUES ({valueStr}) ;";
 
         }
+
+        public string? GetSqlForBulkInsert(string tableName, IEnumerable<IEnumerable<KeyValuePair<string, object?>>> source)
+        {
+            StringBuilder sql = new();
+            sql.Append($"INSERT INTO {tableName} (");
+            sql.Append(string.Join(',', source.First().Select(x => x.Key)));
+            sql.Append(") VALUES ");
+            foreach (var item in source)
+            {
+                sql.Append('(');
+                sql.Append(string.Join(',', item.Select(x => x.Value)));
+                sql.Append(')');
+                if (!source.Last().Equals(item))
+                {
+                    sql.Append(',');
+                }
+            }
+            return sql.ToString();
+        }
+
+
         public string? GetSqlForUpdate(string tableName, long id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (tableName == null) return null;
@@ -380,7 +402,6 @@ namespace DbServices.Core.SqlStringGenerator
                 _ => "=",
             };
         }
-
 
 
 
