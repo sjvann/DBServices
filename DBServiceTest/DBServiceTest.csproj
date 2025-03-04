@@ -33,4 +33,8 @@
     </None>
   </ItemGroup>
 
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="dotnet pack -c Release -o . ; Copy-Item -Path &quot;*.nupkg&quot; -Destination &quot;c:\nugets&quot;" />
+  </Target>
+
 </Project>
