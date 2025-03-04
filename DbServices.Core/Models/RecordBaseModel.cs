@@ -10,7 +10,7 @@ namespace DbServices.Core.Models
         public IEnumerable<KeyValuePair<string, object>>? FieldValue { get; set; }
         public object? GetFieldValue(string fieldName)
         {
-            if (FieldValue == null) return null;
+            if (FieldValue == null) return default;
             var result = FieldValue.Where(x => x.Key == fieldName).Select(x => x.Value).FirstOrDefault();
             return result;
         }

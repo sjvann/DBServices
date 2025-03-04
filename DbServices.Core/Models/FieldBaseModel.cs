@@ -1,10 +1,5 @@
-﻿using Microsoft.IdentityModel.Protocols;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json.Nodes;
-using System.Threading.Tasks;
 
 namespace DbServices.Core.Models
 {
@@ -24,11 +19,11 @@ namespace DbServices.Core.Models
             if (source is JsonObject oneField)
             {
 
-                result.FieldName = oneField["FieldName"]?.AsValue().GetValue<string>();
-                result.FieldType = oneField["FieldType"]?.AsValue().GetValue<string>();
-                result.IsNotNull = oneField["IsNotNull"]?.AsValue().GetValue<bool>() ?? false;
-                result.IsPrimaryKey = oneField["IsPrimaryKey"]?.AsValue().GetValue<bool>() ?? false;
-                result.IsForeignKey = oneField["IsForeignKey"]?.AsValue().GetValue<bool>() ?? false;
+                result.FieldName = oneField[nameof(FieldName)]?.AsValue().GetValue<string>();
+                result.FieldType = oneField[nameof(FieldType)]?.AsValue().GetValue<string>();
+                result.IsNotNull = oneField[nameof(IsNotNull)]?.AsValue().GetValue<bool>() ?? false;
+                result.IsPrimaryKey = oneField[nameof(IsPrimaryKey)]?.AsValue().GetValue<bool>() ?? false;
+                result.IsForeignKey = oneField[nameof(IsForeignKey)]?.AsValue().GetValue<bool>() ?? false;
             }
             return result;
         }
