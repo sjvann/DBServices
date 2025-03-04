@@ -1,6 +1,4 @@
-﻿
-using DbServices.Core.Models.Interface;
-using DbServices.Provider.Sqlite;
+﻿using DbServices.Core.Models.Interface;
 
 namespace DBServices
 {
@@ -23,7 +21,8 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseSQLite(string connectString)
         {
-            return new ProviderService(connectString);
+           return  new DbServices.Provider.Sqlite.ProviderService(connectString);
+          
         }
         /// <summary>
         /// 使用MsSQL資料庫
@@ -32,7 +31,7 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseMsSQL(string connectString)
         {
-            return new ProviderService(connectString);
+            return new DbServices.Provider.MsSql.ProviderService(connectString);
         }
         /// <summary>
         /// 使用MySQL資料庫
@@ -42,7 +41,7 @@ namespace DBServices
 
         public static IDbService UseMySQL(string connectString)
         {
-            return new ProviderService(connectString);
+            return new DbServices.Provider.MySql.ProviderService(connectString);
         }
         /// <summary>
         /// 使用Oracle資料庫
@@ -51,7 +50,7 @@ namespace DBServices
         /// <returns>DataBaseService</returns>
         public static IDbService UseOracle(string connectString)
         {
-            return new ProviderService(connectString);
+            return new DbServices.Provider.Oracle.ProviderService(connectString);
         }
         #endregion
 

@@ -5,7 +5,7 @@ using MySql.Data.MySqlClient;
 
 
 
-namespace DBServices
+namespace DbServices.Provider.MySql
 {
     public class ProviderService : DataBaseService
     {

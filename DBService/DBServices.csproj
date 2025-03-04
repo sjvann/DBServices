@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />
+    <ProjectReference Include="..\DbServices.Provider.MsSql\DbServices.Provider.MsSql.csproj" />
+    <ProjectReference Include="..\DbServices.Provider.MySql\DbServices.Provider.MySql.csproj" />
+    <ProjectReference Include="..\DbServices.Provider.Oracle\DbServices.Provider.Oracle.csproj" />
     <ProjectReference Include="..\DbServices.Provider.Sqlite\DbServices.Provider.Sqlite.csproj" />
   </ItemGroup>
 
