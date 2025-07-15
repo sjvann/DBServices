@@ -3,7 +3,7 @@ using DbServices.Core.Models;
 using DbServices.Core.SqlStringGenerator;
 using System.Text;
 
-namespace DBServices.SqlStringGenerator.MySql
+namespace DbServices.Provider.MySql.SqlStringGenerator
 {
     public class SqlProviderForMySql : SqlProviderBase
     {

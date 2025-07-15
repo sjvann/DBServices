@@ -1,7 +1,10 @@
 ﻿
 using DbServices.Core;
+using DbServices.Core.Configuration;
+using DbServices.Core.Services;
 using DbServices.Provider.MsSql.SqlStringGenerator;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace DbServices.Provider.MsSql
 {
@@ -14,5 +17,13 @@ namespace DbServices.Provider.MsSql
             _tableNameList = GetAllTableNames();
         }
 
+        public ProviderService(DbServiceOptions options, ILogger<DataBaseService>? logger = null, 
+            IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null) 
+            : base(options, logger, validationService, retryPolicyService)
+        {
+            _conn = new SqlConnection(options.ConnectionString);
+            _sqlProvider = new SqlProviderForMsSql();
+            _tableNameList = GetAllTableNames();
+        }
     }
 }
