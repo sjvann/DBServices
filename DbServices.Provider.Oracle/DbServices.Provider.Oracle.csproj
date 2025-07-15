@@ -5,6 +5,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>DbServices.Provider.Oracle</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>sjvann</Authors>
+    <Company>DBServices</Company>
+    <Description>DbServices Oracle 資料庫提供者 - 支援 Oracle Database 的現代化 ORM 解決方案</Description>
+    <PackageTags>dapper;orm;oracle;database;async;dotnet9</PackageTags>
+    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <Copyright>Copyright © 2025 sjvann</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

@@ -56,13 +56,17 @@ DBServices/
 
 ## 📦 安裝
 
-### NuGet 套件 (即將推出)
+### NuGet 套件
 ```bash
-dotnet add package DBServices
-dotnet add package DBServices.Provider.Sqlite
-dotnet add package DBServices.Provider.SqlServer
-dotnet add package DBServices.Provider.MySQL
-dotnet add package DBServices.Provider.Oracle
+# 主套件 (包含所有提供者)
+dotnet add package DbServices
+
+# 或個別安裝
+dotnet add package DbServices.Core
+dotnet add package DbServices.Provider.Sqlite
+dotnet add package DbServices.Provider.SqlServer
+dotnet add package DbServices.Provider.MySQL
+dotnet add package DbServices.Provider.Oracle
 ```
 
 ### 原始碼安裝
