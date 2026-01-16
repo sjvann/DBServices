@@ -2,11 +2,11 @@
 
 **現代化多資料庫 ORM 工具包**
 
-[![.NET 9.0](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/9.0)
+[![.NET 10.0](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![Dapper](https://img.shields.io/badge/Dapper-2.1.35-blue.svg)](https://github.com/DapperLib/Dapper)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.txt)
 
-DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL 和 Oracle 資料庫。本專案採用 .NET 9 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務等現代化功能。
+DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL 和 Oracle 資料庫。本專案採用 .NET 10 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務等現代化功能。
 
 ## 🏗️ 系統架構
 
@@ -267,7 +267,7 @@ dotnet test --filter "TestCategory=Integration"
 
 ## 📋 需求
 
-- .NET 9.0 或更高版本
+- .NET 10.0 或更高版本
 - 支援的資料庫系統之一
 
 ## 📄 授權
@@ -276,7 +276,7 @@ dotnet test --filter "TestCategory=Integration"
 
 ## 🔄 版本歷史
 
-- **v2.0.0** (2025-07) - .NET 9 升級，新增現代化功能
+- **v2.0.0** (2025-07) - .NET 10 升級，新增現代化功能
 - **v1.x** - 初始版本，基本功能實作
 
 ## 📞 支援

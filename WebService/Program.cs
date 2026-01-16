@@ -1,21 +1,11 @@
 using WebService;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c => {
-    c.SwaggerDoc("v1",
-        new Microsoft.OpenApi.Models.OpenApiInfo
-        {
-            Title = "資料庫轉微服務",
-            Version = "v1",
-            Description = "本模組是將資料庫中資料表或檢視中的紀錄，可以透過RESTful Servicef型式提供資料服務"
-        });
-    var xmlFilename = "MyApiDoc.xml";
-    c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
-});
+// .NET 10: use the built-in OpenAPI endpoints (Swagger UI is typically provided by Scalar).
+builder.Services.AddOpenApi();
 var connectString = builder.Configuration.GetConnectionString("default")??"Data Source=c://temp//Test.db;";
 var serverTypeName = builder.Configuration.GetValue<string>("ServerType:Name")??"Sqlite";
 var app = builder.Build();
@@ -23,8 +13,9 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
+    // Scalar UI (default route: /scalar)
+    app.MapScalarApiReference();
 }
 
 

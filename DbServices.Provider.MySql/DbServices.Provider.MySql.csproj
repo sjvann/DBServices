@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -12,7 +12,7 @@
     <Authors>sjvann</Authors>
     <Company>DBServices</Company>
     <Description>DbServices MySQL 資料庫提供者 - 支援 MySQL/MariaDB 的現代化 ORM 解決方案</Description>
-    <PackageTags>dapper;orm;mysql;mariadb;database;async;dotnet9</PackageTags>
+	<PackageTags>dapper;orm;mysql;mariadb;database;async;dotnet10</PackageTags>
     <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MySql.Data" Version="8.3.0" />
+    <PackageReference Include="MySql.Data" Version="9.5.0" />
   </ItemGroup>
 
   <ItemGroup>

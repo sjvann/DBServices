@@ -11,6 +11,22 @@ namespace DBServiceTest
     [TestClass()]
     public abstract class DataBaseServiceTests(IDbService _db) : IMetaTest
     {
+		[TestInitialize]
+		public void TestInit()
+		{
+			// Make each test independent from any pre-existing Test.db content.
+			// Create deterministic schema + seed data used by DQL/DML tests.
+			_db.DropTable(nameof(EncounterTable));
+			_db.DropTable(nameof(PersonTable));
+			_db.CreateNewTable<PersonTable>();
+			_db.CreateNewTable<EncounterTable>();
+
+			var p = new PersonTable { Name = "EE", Age = 20 };
+			_db.InsertRecord(p.GetKeyValuePairs(), nameof(PersonTable));
+
+			var e = new EncounterTable { PersonFK = 1, EncounterType = "Seed" };
+			_db.InsertRecord(e.GetKeyValuePairs(), nameof(EncounterTable));
+		}
 
         #region DCL
         [TestMethod()]

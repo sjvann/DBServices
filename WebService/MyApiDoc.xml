@@ -17,6 +17,76 @@
             <param name="connectString">資料庫連練字串</param>
             <param name="server">資料庫種類</param>
         </member>
+        <member name="M:WebService.DbWebService.DeleteDataAsync(System.String,System.Int32,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步刪除資料表某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">該紀錄唯一編碼</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.PutDataAsync(System.String,System.Int32,System.Object,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步更新資料表某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">該紀錄唯一編碼</param>
+            <param name="payload">該紀錄有更新的部分</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.PostDataAsync(System.String,System.Object,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步新增資料表紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="payload">新增資料別內容(JSON)</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetDataByIdAsync(System.String,System.Int32,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步由ID取得某紀錄
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="id">某紀錄唯一編碼</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetDataQueryAsync(System.String,WebService.Models.QueryModel,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步使用QueryModel建立Key-Values來查詢資料
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="query">查詢條件</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetAllTableNameAsync(DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步取回資料庫中所有資料表名稱
+            </summary>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetMetaDataAsync(System.String,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步取得資料表欄位資訊
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
+        <member name="M:WebService.DbWebService.GetMetaValueSetAsync(System.String,System.String,DbServices.Core.Models.Interface.IDbService)">
+            <summary>
+            非同步取得欄位值集合
+            </summary>
+            <param name="resourceName">資料表名稱</param>
+            <param name="fieldName">欄位名稱</param>
+            <param name="db"></param>
+            <returns></returns>
+        </member>
         <member name="M:WebService.DbWebService.DeleteData(System.String,System.Int32,DbServices.Core.Models.Interface.IDbService)">
             <summary>
             刪除資料表某紀錄
@@ -86,6 +156,157 @@
             <param name="fieldName">欄位名稱</param>
             <param name="db"></param>
             <returns></returns>
+        </member>
+        <member name="T:WebService.Models.EnumModel.EnumResultCode">
+            <summary>
+            API 回應結果代碼列舉，用於標示請求處理的狀態。
+            </summary>
+        </member>
+        <member name="F:WebService.Models.EnumModel.EnumResultCode.Success">
+            <summary>
+            請求成功處理。
+            </summary>
+        </member>
+        <member name="F:WebService.Models.EnumModel.EnumResultCode.NoFound">
+            <summary>
+            找不到指定的資源或資料。
+            </summary>
+        </member>
+        <member name="F:WebService.Models.EnumModel.EnumResultCode.Failure">
+            <summary>
+            請求處理失敗（業務邏輯層面的失敗）。
+            </summary>
+        </member>
+        <member name="F:WebService.Models.EnumModel.EnumResultCode.Error">
+            <summary>
+            發生錯誤（系統層面的錯誤）。
+            </summary>
+        </member>
+        <member name="F:WebService.Models.EnumModel.EnumResultCode.Unknow">
+            <summary>
+            未知的狀態或無法判斷的結果。
+            </summary>
+        </member>
+        <member name="T:WebService.Models.QueryModel">
+            <summary>
+            查詢參數模型，用於封裝 HTTP 請求中的鍵值查詢參數。
+            </summary>
+            <remarks>
+            此類別支援 ASP.NET Core 的自訂模型繫結，可直接從 Query String 綁定參數。
+            </remarks>
+        </member>
+        <member name="P:WebService.Models.QueryModel.Key">
+            <summary>
+            取得或設定查詢的鍵名。
+            </summary>
+            <value>查詢參數的鍵名字串，可為 <c>null</c>。</value>
+        </member>
+        <member name="P:WebService.Models.QueryModel.Value">
+            <summary>
+            取得或設定查詢的值。
+            </summary>
+            <value>查詢參數的值字串，可為 <c>null</c>。</value>
+        </member>
+        <member name="M:WebService.Models.QueryModel.BindAsync(Microsoft.AspNetCore.Http.HttpContext)">
+            <summary>
+            從 HTTP 請求的 Query String 中綁定並建立 <see cref="T:WebService.Models.QueryModel"/> 實例。
+            </summary>
+            <param name="context">目前的 HTTP 上下文。</param>
+            <returns>
+            包含從 Query String 解析出之 <see cref="P:WebService.Models.QueryModel.Key"/> 與 <see cref="P:WebService.Models.QueryModel.Value"/> 的 <see cref="T:WebService.Models.QueryModel"/> 實例。
+            </returns>
+            <example>
+            <code>
+            // URL: /api/query?Key=name&amp;Value=test
+            // 會自動綁定為 QueryModel { Key = "name", Value = "test" }
+            </code>
+            </example>
+        </member>
+        <member name="T:WebService.Models.ResultMessage">
+            <summary>
+            API 統一回應訊息模型，用於封裝所有 API 端點的回應格式。
+            </summary>
+            <remarks>
+            此類別提供一致的 API 回應結構，包含狀態碼、呼叫方法、訊息說明及資料內容。
+            </remarks>
+        </member>
+        <member name="P:WebService.Models.ResultMessage.Code">
+            <summary>
+            取得或設定回應的結果代碼。
+            </summary>
+            <value>
+            代表處理結果的狀態碼字串，通常對應 <see cref="T:WebService.Models.EnumModel.EnumResultCode"/> 的值。
+            </value>
+        </member>
+        <member name="P:WebService.Models.ResultMessage.Method">
+            <summary>
+            取得或設定呼叫的 API 方法名稱。
+            </summary>
+            <value>被呼叫的 API 端點或方法名稱。</value>
+        </member>
+        <member name="P:WebService.Models.ResultMessage.Message">
+            <summary>
+            取得或設定回應的訊息說明。
+            </summary>
+            <value>描述處理結果的訊息文字，可用於顯示給使用者或記錄用途。</value>
+        </member>
+        <member name="P:WebService.Models.ResultMessage.Data">
+            <summary>
+            取得或設定回應的資料內容。
+            </summary>
+            <value>
+            API 回傳的實際資料物件，型別依據不同 API 端點而異。
+            當沒有資料回傳時為 <c>null</c>。
+            </value>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Type)">
+            <summary>
+            Generates a documentation comment ID for a type.
+            Example: T:Namespace.Outer+Inner`1 becomes T:Namespace.Outer.Inner`1
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Reflection.PropertyInfo)">
+            <summary>
+            Generates a documentation comment ID for a property.
+            Example: P:Namespace.ContainingType.PropertyName or for an indexer P:Namespace.ContainingType.Item(System.Int32)
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Type,System.String)">
+            <summary>
+            Generates a documentation comment ID for a property given its container type and property name.
+            Example: P:Namespace.ContainingType.PropertyName
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.CreateDocumentationId(System.Reflection.MethodInfo)">
+            <summary>
+            Generates a documentation comment ID for a method (or constructor).
+            For example:
+              M:Namespace.ContainingType.MethodName(ParamType1,ParamType2)~ReturnType
+              M:Namespace.ContainingType.#ctor(ParamType)
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.GetTypeDocId(System.Type,System.Boolean,System.Boolean)">
+            <summary>
+            Generates a documentation ID string for a type.
+            This method handles nested types (replacing '+' with '.'),
+            generic types, arrays, pointers, by-ref types, and generic parameters.
+            The <paramref name="includeGenericArguments"/> flag controls whether
+            constructed generic type arguments are emitted, while <paramref name="omitGenericArity"/>
+            controls whether the generic arity marker (e.g. "`1") is appended.
+            </summary>
+        </member>
+        <member name="M:Microsoft.AspNetCore.OpenApi.Generated.DocumentationCommentIdHelper.NormalizeDocId(System.String)">
+            <summary>
+            Normalizes a documentation comment ID to match the compiler-style format.
+            Strips the return type suffix for ordinary methods but retains it for conversion operators.
+            </summary>
+            <param name="docId">The documentation comment ID to normalize.</param>
+            <returns>The normalized documentation comment ID.</returns>
         </member>
     </members>
 </doc>

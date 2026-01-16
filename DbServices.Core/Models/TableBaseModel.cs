@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace DbServices.Core.Models
@@ -160,8 +161,13 @@ namespace DbServices.Core.Models
         {
             StringBuilder sb = new();
 
-            sb.Append($"\"ConnectString\": \"{ConnectionString}\",");
-            sb.Append($"\"TableName\": \"{TableName}\",");
+			// NOTE: Use JsonSerializer to properly escape backslashes, quotes, etc.
+			sb.Append("\"ConnectString\": ")
+			  .Append(JsonSerializer.Serialize(ConnectionString ?? string.Empty))
+			  .Append(',');
+			sb.Append("\"TableName\": ")
+			  .Append(JsonSerializer.Serialize(TableName ?? string.Empty))
+			  .Append(',');
             sb.Append($"\"FieldCount\": {Fields?.Count() ?? 0},");
             sb.Append($"\"RecordCount\": {Records?.Count() ?? 0}");
             return sb.ToString();

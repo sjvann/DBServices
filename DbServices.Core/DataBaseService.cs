@@ -46,6 +46,12 @@ namespace DbServices.Core
             _validationService = validationService;
             _retryPolicyService = retryPolicyService;
         }
+
+			private void RefreshTableNameList(bool includeView = true)
+			{
+				// IMPORTANT: schema can change after service construction (e.g., unit tests creating/dropping tables).
+				_tableNameList = GetAllTableNames(includeView);
+			}
         #region 前置處理服務
 
         public string? GetCurrentTableName() => _currentTableName;
@@ -55,11 +61,17 @@ namespace DbServices.Core
             {
                 _validationService?.ValidateTableName(tableName);
                 
-                if (_tableNameList == null || !_tableNameList.Contains(tableName))
-                {
-                    _logger?.LogError("資料表 {TableName} 不存在資料庫中", tableName);
-                    throw new TableNotFoundException(tableName);
-                }
+	                if (_tableNameList == null || !_tableNameList.Contains(tableName))
+	                {
+	                    // Refresh once in case schema changed since this service instance was created.
+	                    RefreshTableNameList();
+	                }
+
+	                if (_tableNameList == null || !_tableNameList.Contains(tableName))
+	                {
+	                    _logger?.LogError("資料表 {TableName} 不存在資料庫中", tableName);
+	                    throw new TableNotFoundException(tableName);
+	                }
                 else
                 {
                     _currentTableName = tableName;
@@ -232,6 +244,10 @@ namespace DbServices.Core
             {
                 Console.WriteLine(ex.Message);
             }
+			finally
+			{
+				RefreshTableNameList();
+			}
 
             return result;
         }
@@ -260,6 +276,10 @@ namespace DbServices.Core
             {
                 Console.WriteLine(ex.Message);
             }
+			finally
+			{
+				RefreshTableNameList();
+			}
 
             return result;
         }
@@ -288,6 +308,10 @@ namespace DbServices.Core
             {
                 Console.WriteLine(ex.Message);
             }
+			finally
+			{
+				RefreshTableNameList();
+			}
 
             return result;
         }

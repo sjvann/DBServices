@@ -3,6 +3,7 @@ using DbServices.Core.Models.Interface;
 using DbServices.Core.Exceptions;
 using DBServices;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -23,15 +24,18 @@ namespace WebService
         /// <param name="server">資料庫種類</param>
         public static void UseDbWebService(this WebApplication app, string connectString, string server)
         {
+            var logger = app.Services
+                .GetService<ILoggerFactory>()
+                ?.CreateLogger(nameof(DbWebService))
+                ?? app.Logger;
+
             IDbService? db = SetupServer(connectString, server);
             if(db == null)
             {
-                var logger = app.Services.GetService<ILogger<DbWebService>>();
                 logger?.LogError("無法初始化資料庫服務，伺服器類型: {ServerType}", server);
                 return;
             }   
-            
-            var logger = app.Services.GetService<ILogger<DbWebService>>();
+
             logger?.LogInformation("資料庫 Web 服務已啟動，伺服器類型: {ServerType}", server);
             
             app.MapGet("/meta", async () => await GetAllTableNameAsync(db));

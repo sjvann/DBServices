@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -12,7 +12,7 @@
     <Authors>sjvann</Authors>
     <Company>DBServices</Company>
     <Description>DbServices Oracle 資料庫提供者 - 支援 Oracle Database 的現代化 ORM 解決方案</Description>
-    <PackageTags>dapper;orm;oracle;database;async;dotnet9</PackageTags>
+	<PackageTags>dapper;orm;oracle;database;async;dotnet10</PackageTags>
     <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="3.21.130" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.26.0" />
   </ItemGroup>
 
   <ItemGroup>
