@@ -17,10 +17,15 @@ namespace DbServices.Provider.Sqlite
         }
 
         public ProviderService(DbServiceOptions options, ILogger<DataBaseService>? logger = null, 
-            IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null) 
-            : base(options, logger, validationService, retryPolicyService)
+            IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null,
+            ITableStructureCacheService? cacheService = null) 
+            : base(options, logger, validationService, retryPolicyService, cacheService)
         {
-            _conn = new SqliteConnection(options.ConnectionString);
+            // 套用連線池設定到連線字串（SQLite 使用快取模式）
+            var connectionString = DbServices.Core.Helpers.ConnectionStringHelper
+                .ApplyConnectionPoolSettings(options.ConnectionString, options);
+            
+            _conn = new SqliteConnection(connectionString);
             _sqlProvider = new SqlProviderForSqlite();
             _tableNameList = GetAllTableNames();
         }

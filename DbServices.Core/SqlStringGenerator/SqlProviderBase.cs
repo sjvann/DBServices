@@ -42,6 +42,12 @@ namespace DbServices.Core.SqlStringGenerator
 
         #endregion
         #region DQL
+        /// <summary>
+        /// 取得根據 ID 查詢的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <returns>SQL 語句</returns>
         public string? GetSqlById(string tableName, object id)
         {
             if (tableName == null) return null;
@@ -54,6 +60,22 @@ namespace DbServices.Core.SqlStringGenerator
                 return $"SELECT * FROM {tableName} WHERE Id = '{id}';";
             }
             return null;
+        }
+
+        /// <summary>
+        /// 取得根據 ID 查詢的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlById(string tableName, object id)
+        {
+            if (string.IsNullOrEmpty(tableName)) return null;
+            
+            var sql = $"SELECT * FROM {tableName} WHERE Id = @Id;";
+            var parameters = new { Id = id };
+            
+            return new ParameterizedSqlResult(sql, parameters);
         }
         public string? GetSqlForAll(string tableName, string? whereStr = null)
         {
@@ -76,11 +98,39 @@ namespace DbServices.Core.SqlStringGenerator
             return whereStr == null ? $"SELECT {fieldsStr} FROM {tableName}" : $"SELECT {fieldsStr} FROM {tableName} WHERE {whereStr};";
 
         }
+        /// <summary>
+        /// 取得根據單一鍵值查詢的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="key">欄位名稱</param>
+        /// <param name="value">欄位值</param>
+        /// <param name="operators">查詢運算子</param>
+        /// <returns>SQL 語句</returns>
         public string? GetSqlByKeyValue(string tableName, string key, object value, EnumQueryOperator? operators = null)
         {
             if (tableName == null) return null;
             var queryString = MapForKeyValue(new KeyValuePair<string, object?>(key, value), operators);
             return $"SELECT * FROM {tableName} WHERE {queryString};";
+        }
+
+        /// <summary>
+        /// 取得根據單一鍵值查詢的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="key">欄位名稱</param>
+        /// <param name="value">欄位值</param>
+        /// <param name="operators">查詢運算子（預設為等於）</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlByKeyValue(string tableName, string key, object? value, EnumQueryOperator? operators = null)
+        {
+            if (string.IsNullOrEmpty(tableName) || string.IsNullOrEmpty(key)) return null;
+
+            var op = CheckOperation(operators);
+            var parameterName = $"@{key}";
+            var sql = $"SELECT * FROM {tableName} WHERE {key} {op} {parameterName};";
+            var parameters = new Dictionary<string, object?> { [key] = value };
+
+            return new ParameterizedSqlResult(sql, parameters);
         }
         public string? GetSqlByKeyValues(string tableName, IDictionary<string, object?> values)
         {
@@ -88,11 +138,47 @@ namespace DbServices.Core.SqlStringGenerator
             var queryString = MapForQueryKeyValues(values);
             return $"SELECT * FROM {tableName} WHERE {queryString};";
         }
+        /// <summary>
+        /// 取得根據多個鍵值查詢的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="values">查詢條件（多個鍵值對）</param>
+        /// <returns>SQL 語句</returns>
         public string? GetSqlByKeyValues(string tableName, IEnumerable<KeyValuePair<string, object?>> values)
         {
             if (tableName == null) return null;
             string queryString = MapForQueryKeyValues(values);
             return $"SELECT * FROM {tableName} WHERE {queryString};";
+        }
+
+        /// <summary>
+        /// 取得根據多個鍵值查詢的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="values">查詢條件（多個鍵值對，使用 AND 連接）</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlByKeyValues(string tableName, IEnumerable<KeyValuePair<string, object?>> values)
+        {
+            if (string.IsNullOrEmpty(tableName) || values == null || !values.Any()) return null;
+
+            var conditions = new List<string>();
+            var parametersDict = new Dictionary<string, object?>();
+
+            foreach (var kvp in values)
+            {
+                if (string.IsNullOrEmpty(kvp.Key)) continue;
+                
+                var paramName = $"@{kvp.Key}";
+                conditions.Add($"{kvp.Key} = {paramName}");
+                parametersDict[kvp.Key] = kvp.Value;
+            }
+
+            if (!conditions.Any()) return null;
+
+            var whereClause = string.Join(" AND ", conditions);
+            var sql = $"SELECT * FROM {tableName} WHERE {whereClause};";
+
+            return new ParameterizedSqlResult(sql, parametersDict);
         }
         public string? GetSqlByWhereIn(string tableName, string queryField, object[] queryValue)
         {
@@ -112,12 +198,12 @@ namespace DbServices.Core.SqlStringGenerator
                 newQueryInString = string.Join(',', qArray);
 
             }
-            return $"SELECT * FORM {tableName} WHERE {queryField} IN ({newQueryInString});";
+            return $"SELECT * FROM {tableName} WHERE {queryField} IN ({newQueryInString});";
         }
         public string? GetSqlByWhere(string tableName, string whereString)
         {
             if (string.IsNullOrEmpty(tableName)) return null;
-            return $"SELECT * FORM {tableName} WHERE {whereString};";
+            return $"SELECT * FROM {tableName} WHERE {whereString};";
         }
 
         public string? GetSqlByWhereBetween(string tableName, string queryField, object startQueryValue, object endQueryValue)
@@ -127,11 +213,11 @@ namespace DbServices.Core.SqlStringGenerator
 
             if (startQueryValue.IsNumber() || endQueryValue.IsNumber())
             {
-                return $"SELECT * FORM {tableName} WHERE  {queryField} BETWEEN {startQueryValue} AND {endQueryValue};";
+                return $"SELECT * FROM {tableName} WHERE  {queryField} BETWEEN {startQueryValue} AND {endQueryValue};";
             }
             else
             {
-                return $"SELECT * FORM {tableName} WHERE  {queryField} BETWEEN '{startQueryValue}' AND '{endQueryValue}';";
+                return $"SELECT * FROM {tableName} WHERE  {queryField} BETWEEN '{startQueryValue}' AND '{endQueryValue}';";
             }
 
         }
@@ -159,6 +245,12 @@ namespace DbServices.Core.SqlStringGenerator
         #endregion
         #endregion
         #region DML
+        /// <summary>
+        /// 取得插入記錄的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="source">要插入的欄位和值</param>
+        /// <returns>SQL 語句</returns>
         public string? GetSqlForInsert(string tableName, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (tableName == null) return null;
@@ -167,6 +259,34 @@ namespace DbServices.Core.SqlStringGenerator
             string valueStr = MapForInsertValue(source.Select(x => x.Value));
             return $"INSERT INTO {tableName} ({fieldStr}) VALUES ({valueStr}) ;";
 
+        }
+
+        /// <summary>
+        /// 取得插入記錄的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="source">要插入的欄位和值</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlForInsert(string tableName, IEnumerable<KeyValuePair<string, object?>> source)
+        {
+            if (string.IsNullOrEmpty(tableName) || source == null || !source.Any()) return null;
+
+            var fields = source.Select(x => x.Key).ToList();
+            var fieldStr = string.Join(", ", fields);
+            var parameterNames = fields.Select(f => $"@{f}").ToList();
+            var valueStr = string.Join(", ", parameterNames);
+
+            var sql = $"INSERT INTO {tableName} ({fieldStr}) VALUES ({valueStr});";
+            
+            // 建立參數物件
+            var parametersDict = new Dictionary<string, object?>();
+            foreach (var item in source)
+            {
+                parametersDict[item.Key] = item.Value;
+            }
+            var parameters = parametersDict;
+
+            return new ParameterizedSqlResult(sql, parameters);
         }
 
         public string? GetSqlForBulkInsert(string tableName, IEnumerable<IEnumerable<KeyValuePair<string, object?>>> source)
@@ -189,12 +309,49 @@ namespace DbServices.Core.SqlStringGenerator
         }
 
 
+        /// <summary>
+        /// 取得根據 ID 更新記錄的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <param name="source">要更新的欄位和值</param>
+        /// <returns>SQL 語句</returns>
         public string? GetSqlForUpdate(string tableName, long id, IEnumerable<KeyValuePair<string, object?>> source)
         {
             if (tableName == null) return null;
             string setClause = MapForUpdateValue(source);
             return $"UPDATE {tableName} SET {setClause} WHERE id = {id} ;";
 
+        }
+
+        /// <summary>
+        /// 取得根據 ID 更新記錄的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <param name="source">要更新的欄位和值</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlForUpdate(string tableName, long id, IEnumerable<KeyValuePair<string, object?>> source)
+        {
+            if (string.IsNullOrEmpty(tableName) || source == null || !source.Any()) return null;
+
+            var setClauses = new List<string>();
+            var parametersDict = new Dictionary<string, object?> { ["Id"] = id };
+
+            foreach (var item in source)
+            {
+                if (string.IsNullOrEmpty(item.Key)) continue;
+                var paramName = $"@{item.Key}";
+                setClauses.Add($"{item.Key} = {paramName}");
+                parametersDict[item.Key] = item.Value;
+            }
+
+            if (!setClauses.Any()) return null;
+
+            var setClause = string.Join(", ", setClauses);
+            var sql = $"UPDATE {tableName} SET {setClause} WHERE Id = @Id;";
+
+            return new ParameterizedSqlResult(sql, parametersDict);
         }
         public string? GetSqlForUpdateByKey(string tableName, KeyValuePair<string, object?> criteria, IEnumerable<KeyValuePair<string, object?>> source)
         {
@@ -204,10 +361,32 @@ namespace DbServices.Core.SqlStringGenerator
             return $"UPDATE {tableName} SET {setClause} WHERE {whereStr} ;";
 
         }
+        /// <summary>
+        /// 取得根據 ID 刪除記錄的 SQL 語句（字串拼接方式，不建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <returns>SQL 語句</returns>
         public virtual string? GetSqlForDelete(string tableName, long id)
         {
             if (tableName == null) return null;
             return $"DELETE FROM {tableName} WHERE Id = {id} ;";
+        }
+
+        /// <summary>
+        /// 取得根據 ID 刪除記錄的參數化 SQL 語句（建議使用）
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="id">記錄 ID</param>
+        /// <returns>參數化 SQL 結果</returns>
+        public virtual ParameterizedSqlResult? GetParameterizedSqlForDelete(string tableName, long id)
+        {
+            if (string.IsNullOrEmpty(tableName)) return null;
+
+            var sql = $"DELETE FROM {tableName} WHERE Id = @Id;";
+            var parameters = new { Id = id };
+
+            return new ParameterizedSqlResult(sql, parameters);
         }
         public string? GetSqlForDeleteByKey(string tableName, KeyValuePair<string, object?> criteria)
         {

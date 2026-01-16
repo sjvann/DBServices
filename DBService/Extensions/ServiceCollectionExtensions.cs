@@ -147,6 +147,40 @@ namespace DBServices.Extensions
         }
 
         /// <summary>
+        /// 註冊 PostgreSQL 資料庫服務
+        /// </summary>
+        /// <param name="services">服務集合</param>
+        /// <param name="connectionString">連線字串</param>
+        /// <param name="configureOptions">設定選項委派</param>
+        /// <returns>服務集合</returns>
+        public static IServiceCollection AddPostgreSQLDbService(this IServiceCollection services, 
+            string connectionString, 
+            Action<DbServiceOptions>? configureOptions = null)
+        {
+            // 註冊核心服務
+            services.AddDbServices(options =>
+            {
+                options.ConnectionString = connectionString;
+                configureOptions?.Invoke(options);
+            });
+
+            // 註冊 PostgreSQL 特定服務
+            services.AddScoped<IDbService>(provider =>
+            {
+                var options = new DbServiceOptions { ConnectionString = connectionString };
+                configureOptions?.Invoke(options);
+                
+                var logger = provider.GetService<Microsoft.Extensions.Logging.ILogger<DbServices.Core.DataBaseService>>();
+                var validation = provider.GetService<DbServices.Core.Services.IValidationService>();
+                var retry = provider.GetService<DbServices.Core.Services.IRetryPolicyService>();
+                
+                return new DbServices.Provider.PostgreSQL.ProviderService(options, logger, validation, retry);
+            });
+
+            return services;
+        }
+
+        /// <summary>
         /// 註冊多個資料庫服務
         /// </summary>
         /// <param name="services">服務集合</param>
@@ -176,6 +210,7 @@ namespace DBServices.Extensions
                         DatabaseProvider.SqlServer => new DbServices.Provider.MsSql.ProviderService(options, logger, validation, retry),
                         DatabaseProvider.MySQL => new DbServices.Provider.MySql.ProviderService(options, logger, validation, retry),
                         DatabaseProvider.Oracle => new DbServices.Provider.Oracle.ProviderService(options, logger, validation, retry),
+                        DatabaseProvider.PostgreSQL => new DbServices.Provider.PostgreSQL.ProviderService(options, logger, validation, retry),
                         _ => throw new ArgumentException($"不支援的資料庫類型: {provider}")
                     };
                 });

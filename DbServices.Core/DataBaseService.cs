@@ -10,6 +10,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Data.Common;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,7 +22,13 @@ namespace DbServices.Core
     /// 本物件可提供整體資料庫的服務。若再已知資料表的下,可以透過DataTableService來提供資料表的服務。
     /// </summary>
     /// <param name="connectionString"></param>
-    public abstract class DataBaseService : IDbService, IDbServiceAsync, IDisposable
+    /// <summary>
+    /// 抽象資料庫服務類別
+    /// 由個別供應商的資料庫來繼承使用。
+    /// 個別供應服務物件,提供DbConnection,SqlProvider,TableNameList等基本資料。
+    /// 本物件可提供整體資料庫的服務。若在已知資料表的情況下,可以透過DataTableService來提供資料表的服務。
+    /// </summary>
+    public abstract class DataBaseService : IDbService, IDbServiceAsync, IAdvancedQueryService, IDisposable
     {
         protected DbConnection? _conn;
         protected SqlProviderBase? _sqlProvider;
@@ -30,8 +37,22 @@ namespace DbServices.Core
         protected readonly ILogger<DataBaseService>? _logger;
         protected readonly IValidationService? _validationService;
         protected readonly IRetryPolicyService? _retryPolicyService;
+        protected readonly ITableStructureCacheService? _cacheService;
         protected readonly DbServiceOptions _options;
         private bool _disposed = false;
+
+        /// <summary>
+        /// 取得資料庫連線（用於事務管理等進階功能）
+        /// </summary>
+        /// <returns>資料庫連線</returns>
+        public System.Data.Common.DbConnection? GetConnection()
+        {
+            if (_conn != null && _conn.State != ConnectionState.Open)
+            {
+                _conn.Open();
+            }
+            return _conn;
+        }
 
         protected DataBaseService(string connectionString)
         {
@@ -39,12 +60,21 @@ namespace DbServices.Core
         }
 
         protected DataBaseService(DbServiceOptions options, ILogger<DataBaseService>? logger = null, 
-            IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null)
+            IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null,
+            ITableStructureCacheService? cacheService = null)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _logger = logger;
             _validationService = validationService;
             _retryPolicyService = retryPolicyService;
+            
+            // 如果啟用快取，建立快取服務
+            if (options.EnableQueryCache)
+            {
+                _cacheService = cacheService ?? new TableStructureCacheService(
+                    options.CacheExpirationMinutes, 
+                    logger != null ? Microsoft.Extensions.Logging.Abstractions.NullLogger<TableStructureCacheService>.Instance : null);
+            }
         }
 
 			private void RefreshTableNameList(bool includeView = true)
@@ -94,6 +124,12 @@ namespace DbServices.Core
 
         #endregion
         #region 整體服務類
+        
+        /// <summary>
+        /// 檢查資料表是否存在
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <returns>如果資料表存在則返回 true，否則返回 false</returns>
         public bool HasTable(string tableName)
         {
             bool result = false;
@@ -118,6 +154,11 @@ namespace DbServices.Core
             }
             return result;
         }
+        /// <summary>
+        /// 檢查資料表是否有記錄
+        /// </summary>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>如果資料表有記錄則返回 true，否則返回 false</returns>
         public bool HasRecord(string? tableName = null)
         {
             bool result = false;
@@ -176,20 +217,46 @@ namespace DbServices.Core
         public virtual IEnumerable<FieldBaseModel>? GetFieldsByTableName(string tableName)
         {
             if (_sqlProvider == null || _conn == null || string.IsNullOrEmpty(tableName)) return null;
+
+            // 嘗試從快取取得
+            if (_cacheService != null && _options.EnableQueryCache)
+            {
+                var cachedFields = _cacheService.GetCachedFields(tableName);
+                if (cachedFields != null)
+                {
+                    _logger?.LogDebug("從快取取得資料表欄位資訊: {TableName}", tableName);
+                    return cachedFields;
+                }
+            }
+
+            // 從資料庫查詢
             var sql = _sqlProvider.GetSqlFieldsByTableName(tableName);
             var result = string.IsNullOrEmpty(sql) ? null : _conn.Query(sql);
             string? foreignSql = _sqlProvider.GetSqlForeignInfoByTableName(tableName);
             var foreignness = string.IsNullOrEmpty(foreignSql) ? null : _conn.Query(foreignSql);
+            
+            IEnumerable<FieldBaseModel>? fields = null;
             if (result != null && foreignness != null)
             {
-                return _sqlProvider.MapToFieldBaseModel(result, foreignness);
+                fields = _sqlProvider.MapToFieldBaseModel(result, foreignness);
+                
+                // 存入快取
+                if (_cacheService != null && _options.EnableQueryCache && fields != null)
+                {
+                    _cacheService.SetCachedFields(tableName, fields);
+                    _logger?.LogDebug("快取資料表欄位資訊: {TableName}", tableName);
+                }
             }
-            else
-            {
-                return null;
-            }
+
+            return fields;
         }
 
+        /// <summary>
+        /// 取得資料表中某欄位的所有不重複值
+        /// </summary>
+        /// <param name="fieldName">欄位名稱</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>欄位值的集合，如果查詢失敗則返回空集合</returns>
         public virtual IEnumerable<object>? GetValueSetByFieldName(string fieldName, string? tableName = null)
         {
             List<object> result = [];
@@ -252,6 +319,12 @@ namespace DbServices.Core
             return result;
         }
 
+        /// <summary>
+        /// 根據欄位定義建立新的資料表
+        /// </summary>
+        /// <param name="tableDefine">資料表的欄位定義集合</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>受影響的資料列數（通常為 0，因為 CREATE TABLE 不影響資料列）</returns>
         public int CreateNewTable(IEnumerable<FieldBaseModel> tableDefine, string? tableName = null)
         {
             int result = 1;
@@ -284,6 +357,11 @@ namespace DbServices.Core
             return result;
         }
 
+        /// <summary>
+        /// 刪除資料表
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <returns>受影響的資料列數（通常為 0，因為 DROP TABLE 不影響資料列）</returns>
         public int DropTable(string tableName)
         {
             int result = 0;
@@ -318,6 +396,12 @@ namespace DbServices.Core
 
         #endregion
         #region 查詢類
+        /// <summary>
+        /// 根據 ID 取得單筆記錄
+        /// </summary>
+        /// <param name="id">記錄 ID</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含記錄的 TableBaseModel，如果找不到則返回 null</returns>
         public virtual TableBaseModel? GetRecordById(long id, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -325,24 +409,52 @@ namespace DbServices.Core
             if (_conn == null || _sqlProvider == null || tableName == null) return tableResult;
             try
             {
+                _validationService?.ValidateTableName(tableName);
+                
                 if (_conn.State != ConnectionState.Open) _conn.Open();
 
-                string? sql = _sqlProvider.GetSqlById(tableName, id);
-                var temp = sql != null ? _conn.Query(sql) : null;
-                tableResult = MapToTableBaseModel(temp, tableName);
-
+                // 優先使用參數化查詢
+                var paramResult = _sqlProvider.GetParameterizedSqlById(tableName, id);
+                if (paramResult != null)
+                {
+                    var temp = _conn.Query(paramResult.Sql, paramResult.Parameters);
+                    tableResult = MapToTableBaseModel(temp, tableName);
+                    _logger?.LogDebug("使用參數化查詢取得記錄: Table={TableName}, Id={Id}", tableName, id);
+                }
+                else
+                {
+                    // 降級使用字串拼接（不建議）
+                    string? sql = _sqlProvider.GetSqlById(tableName, id);
+                    var temp = sql != null ? _conn.Query(sql) : null;
+                    tableResult = MapToTableBaseModel(temp, tableName);
+                    _logger?.LogWarning("使用字串拼接查詢（不建議）: Table={TableName}, Id={Id}", tableName, id);
+                }
             }
             catch (SqlException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "根據 ID 查詢記錄時發生資料庫錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Id={id}", ex);
             }
             catch (InvalidOperationException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "根據 ID 查詢記錄時發生無效操作錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Id={id}", ex);
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "根據 ID 查詢記錄時發生未預期的錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Id={id}", ex);
             }
             return tableResult;
         }
 
+        /// <summary>
+        /// 根據單一鍵值對查詢記錄
+        /// </summary>
+        /// <param name="query">查詢條件（鍵值對）</param>
+        /// <param name="giveOperator">查詢運算子（預設為等於）</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含符合條件記錄的 TableBaseModel，如果找不到則返回 null</returns>
         public virtual TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query, EnumQueryOperator? giveOperator = null, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -351,21 +463,43 @@ namespace DbServices.Core
 
             try
             {
+                _validationService?.ValidateTableName(tableName);
+                _validationService?.ValidateFieldName(query.Key);
+
                 if (_conn.State != ConnectionState.Open) _conn.Open();
 
-                string? sql = query.Value != null ? _sqlProvider.GetSqlByKeyValue(tableName, query.Key, query.Value, giveOperator) : null;
-                var temp = sql != null ? _conn.Query(sql) : null;
-                tableResult = MapToTableBaseModel(temp, tableName);
-
+                // 優先使用參數化查詢
+                var paramResult = _sqlProvider.GetParameterizedSqlByKeyValue(tableName, query.Key, query.Value, giveOperator);
+                if (paramResult != null)
+                {
+                    var temp = _conn.Query(paramResult.Sql, paramResult.Parameters);
+                    tableResult = MapToTableBaseModel(temp, tableName);
+                    _logger?.LogDebug("使用參數化查詢取得記錄: Table={TableName}, Key={Key}, Value={Value}", 
+                        tableName, query.Key, query.Value);
+                }
+                else if (query.Value != null)
+                {
+                    // 降級使用字串拼接（不建議）
+                    string? sql = _sqlProvider.GetSqlByKeyValue(tableName, query.Key, query.Value, giveOperator);
+                    var temp = sql != null ? _conn.Query(sql) : null;
+                    tableResult = MapToTableBaseModel(temp, tableName);
+                    _logger?.LogWarning("使用字串拼接查詢（不建議）: Table={TableName}, Key={Key}", tableName, query.Key);
+                }
             }
             catch (SqlException ex)
             {
-
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "根據鍵值查詢記錄時發生資料庫錯誤: Table={TableName}, Key={Key}", tableName, query.Key);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Key={query.Key}", ex);
             }
             catch (InvalidOperationException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "根據鍵值查詢記錄時發生無效操作錯誤: Table={TableName}, Key={Key}", tableName, query.Key);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Key={query.Key}", ex);
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "根據鍵值查詢記錄時發生未預期的錯誤: Table={TableName}, Key={Key}", tableName, query.Key);
+                throw new DbServiceException($"查詢記錄失敗: {tableName}, Key={query.Key}", ex);
             }
 
             return tableResult;
@@ -401,6 +535,11 @@ namespace DbServices.Core
         }
 
 
+        /// <summary>
+        /// 取得資料表的所有記錄
+        /// </summary>
+        /// <param name="tableName">資料表名稱</param>
+        /// <returns>包含所有記錄的 TableBaseModel，如果查詢失敗則返回 null</returns>
         public virtual TableBaseModel? GetRecordByTableName(string tableName)
         {
             if (string.IsNullOrEmpty(tableName)) return null;
@@ -429,6 +568,13 @@ namespace DbServices.Core
             return tableResult;
         }
 
+        /// <summary>
+        /// 根據 WHERE 條件字串查詢記錄
+        /// </summary>
+        /// <param name="whereStr">WHERE 子句內容（不包含 WHERE 關鍵字）</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含符合條件記錄的 TableBaseModel，如果查詢失敗則返回 null</returns>
+        /// <remarks>此方法不建議使用，建議使用參數化查詢方法以避免 SQL 注入風險</remarks>
         public virtual TableBaseModel? GetRecordWithWhere(string whereStr, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -457,6 +603,14 @@ namespace DbServices.Core
             return tableResult;
         }
 
+        /// <summary>
+        /// 取得特定欄位的資料，可提供 WHERE 條件
+        /// </summary>
+        /// <param name="fields">要查詢的欄位名稱陣列</param>
+        /// <param name="whereStr">WHERE 子句內容（不包含 WHERE 關鍵字）。如果為 null 則查詢所有記錄</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含符合條件記錄的 TableBaseModel，如果查詢失敗則返回 null</returns>
+        /// <remarks>此方法不建議使用，建議使用參數化查詢方法以避免 SQL 注入風險</remarks>
         public virtual TableBaseModel? GetRecordForField(string[] fields, string? whereStr = null, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -500,6 +654,14 @@ namespace DbServices.Core
             return null;
         }
 
+        /// <summary>
+        /// 根據外來鍵取得一對多關係中的「多」方記錄
+        /// </summary>
+        /// <param name="oneSideId">「一」方記錄的 ID</param>
+        /// <param name="fkFieldName">外來鍵欄位名稱</param>
+        /// <param name="manySideTableName">「多」方資料表名稱</param>
+        /// <param name="oneSideTableName">「一」方資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含「多」方記錄的 TableBaseModel，如果找不到則返回 null</returns>
         public TableBaseModel? GetRecordByForeignKeyForManySide(int oneSideId, string fkFieldName, string manySideTableName, string? oneSideTableName = null)
         {
 
@@ -521,6 +683,13 @@ namespace DbServices.Core
             if (_conn == null) return 0;
             return _conn.Execute(sql);
         }
+        /// <summary>
+        /// 插入新記錄
+        /// </summary>
+        /// <param name="source">要插入的欄位和值</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>插入後的記錄（包含自動產生的 ID），如果插入失敗則返回 null</returns>
+        /// <remarks>此方法會自動取得插入後的記錄 ID，並返回完整的記錄資料</remarks>
         public virtual TableBaseModel? InsertRecord(IEnumerable<KeyValuePair<string, object?>> source, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -530,8 +699,22 @@ namespace DbServices.Core
             {
                 if (_conn.State != ConnectionState.Open) _conn.Open();
 
-                string? sql = _sqlProvider.GetSqlForInsert(tableName, source);
-                int resultId = sql != null ? _conn.Execute(sql) : 0;
+                // 優先使用參數化查詢
+                var paramResult = _sqlProvider.GetParameterizedSqlForInsert(tableName, source);
+                int resultId = 0;
+                
+                if (paramResult != null)
+                {
+                    resultId = _conn.Execute(paramResult.Sql, paramResult.Parameters);
+                    _logger?.LogDebug("使用參數化查詢插入記錄: Table={TableName}, AffectedRows={Rows}", tableName, resultId);
+                }
+                else
+                {
+                    // 降級使用字串拼接（不建議）
+                    string? sql = _sqlProvider.GetSqlForInsert(tableName, source);
+                    resultId = sql != null ? _conn.Execute(sql) : 0;
+                    _logger?.LogWarning("使用字串拼接插入（不建議）: Table={TableName}", tableName);
+                }
                 if (resultId != 0)
                 {
                     string? sql2 = _sqlProvider.GetSqlLastInsertId(tableName);
@@ -548,16 +731,30 @@ namespace DbServices.Core
             }
             catch (SqlException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "執行 SQL 插入操作時發生資料庫錯誤: {TableName}", tableName);
+                throw new DbServiceException($"插入記錄失敗: {tableName}", ex);
             }
             catch (InvalidOperationException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "執行 SQL 插入操作時發生無效操作錯誤: {TableName}", tableName);
+                throw new DbServiceException($"插入記錄失敗: {tableName}", ex);
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "執行 SQL 插入操作時發生未預期的錯誤: {TableName}", tableName);
+                throw new DbServiceException($"插入記錄失敗: {tableName}", ex);
             }
 
             return tableResult;
         }
 
+        /// <summary>
+        /// 根據 ID 更新記錄
+        /// </summary>
+        /// <param name="id">記錄 ID</param>
+        /// <param name="source">要更新的欄位和值</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>更新後的記錄，如果更新失敗則返回 null</returns>
         public virtual TableBaseModel? UpdateRecordById(long id, IEnumerable<KeyValuePair<string, object?>> source, string? tableName = null)
         {
             TableBaseModel? tableResult = null;
@@ -566,10 +763,28 @@ namespace DbServices.Core
 
             try
             {
+                _validationService?.ValidateTableName(tableName);
+                
                 if (_conn.State != ConnectionState.Open) _conn.Open();
 
-                string? sql = _sqlProvider.GetSqlForUpdate(tableName, id, source);
-                int effectRow = sql != null ? _conn.Execute(sql) : 0;
+                // 優先使用參數化查詢
+                var paramResult = _sqlProvider.GetParameterizedSqlForUpdate(tableName, id, source);
+                int effectRow = 0;
+                
+                if (paramResult != null)
+                {
+                    effectRow = _conn.Execute(paramResult.Sql, paramResult.Parameters);
+                    _logger?.LogDebug("使用參數化查詢更新記錄: Table={TableName}, Id={Id}, AffectedRows={Rows}", 
+                        tableName, id, effectRow);
+                }
+                else
+                {
+                    // 降級使用字串拼接（不建議）
+                    string? sql = _sqlProvider.GetSqlForUpdate(tableName, id, source);
+                    effectRow = sql != null ? _conn.Execute(sql) : 0;
+                    _logger?.LogWarning("使用字串拼接更新（不建議）: Table={TableName}, Id={Id}", tableName, id);
+                }
+                
                 if (effectRow > 0)
                 {
                     var temp = GetRecordById(id, tableName);
@@ -582,11 +797,18 @@ namespace DbServices.Core
             }
             catch (SqlException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "更新記錄時發生資料庫錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"更新記錄失敗: {tableName}, Id={id}", ex);
             }
             catch (InvalidOperationException ex)
             {
-                Console.WriteLine(ex.Message);
+                _logger?.LogError(ex, "更新記錄時發生無效操作錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"更新記錄失敗: {tableName}, Id={id}", ex);
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "更新記錄時發生未預期的錯誤: Table={TableName}, Id={Id}", tableName, id);
+                throw new DbServiceException($"更新記錄失敗: {tableName}, Id={id}", ex);
             }
 
             return tableResult;
@@ -1115,6 +1337,256 @@ namespace DbServices.Core
 
         #endregion
 
+        #region 進階查詢服務 (IAdvancedQueryService)
+
+        /// <summary>
+        /// 根據條件查詢記錄（支援分頁和排序）
+        /// </summary>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則查詢所有記錄</param>
+        /// <param name="options">查詢選項（排序、分頁等）。如果為 null 則使用預設選項</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含符合條件記錄的 TableBaseModel</returns>
+        public virtual TableBaseModel? GetRecordsWithOptions(
+            IEnumerable<KeyValuePair<string, object?>>? query = null,
+            QueryOptions? options = null,
+            string? tableName = null)
+        {
+            tableName ??= _currentTableName;
+            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return null;
+
+            try
+            {
+                _validationService?.ValidateTableName(tableName);
+                
+                if (_conn.State != ConnectionState.Open) _conn.Open();
+
+                // 建立基礎 SQL
+                var fields = options?.SelectFields != null && options.SelectFields.Any()
+                    ? string.Join(", ", options.SelectFields)
+                    : "*";
+
+                var sqlBuilder = new StringBuilder($"SELECT {fields} FROM {tableName}");
+
+                // 加入 WHERE 條件
+                object? parameters = null;
+                if (query != null && query.Any())
+                {
+                    var paramResult = _sqlProvider.GetParameterizedSqlByKeyValues(tableName, query);
+                    if (paramResult != null)
+                    {
+                        sqlBuilder.Append(" WHERE ").Append(paramResult.Sql.Replace("SELECT * FROM " + tableName + " WHERE ", ""));
+                        parameters = paramResult.Parameters;
+                    }
+                }
+
+                // 加入 ORDER BY
+                if (!string.IsNullOrEmpty(options?.OrderBy))
+                {
+                    _validationService?.ValidateFieldName(options.OrderBy);
+                    var direction = options.OrderByDescending ? "DESC" : "ASC";
+                    sqlBuilder.Append($" ORDER BY {options.OrderBy} {direction}");
+                }
+
+                // 加入分頁（LIMIT/OFFSET）
+                // 注意：不同資料庫的分頁語法不同，這裡使用通用方式
+                if (options?.Take.HasValue == true)
+                {
+                    sqlBuilder.Append($" LIMIT {options.Take.Value}");
+                }
+                if (options?.Skip.HasValue == true)
+                {
+                    sqlBuilder.Append($" OFFSET {options.Skip.Value}");
+                }
+
+                sqlBuilder.Append(';');
+                var sql = sqlBuilder.ToString();
+
+                // 執行查詢
+                var temp = parameters != null 
+                    ? _conn.Query(sql, parameters)
+                    : _conn.Query(sql);
+                
+                var result = MapToTableBaseModel(temp, tableName);
+                _logger?.LogDebug("進階查詢完成: Table={TableName}, RecordCount={Count}", 
+                    tableName, result?.Records?.Count() ?? 0);
+
+                return result;
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "進階查詢時發生錯誤: Table={TableName}", tableName);
+                throw new DbServiceException($"進階查詢失敗: {tableName}", ex);
+            }
+        }
+
+        /// <summary>
+        /// 查詢記錄總數
+        /// </summary>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則查詢所有記錄的總數</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>記錄總數</returns>
+        public virtual long GetRecordCount(IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
+        {
+            tableName ??= _currentTableName;
+            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return 0;
+
+            try
+            {
+                _validationService?.ValidateTableName(tableName);
+                
+                if (_conn.State != ConnectionState.Open) _conn.Open();
+
+                var sqlBuilder = new StringBuilder($"SELECT COUNT(*) as Count FROM {tableName}");
+
+                // 加入 WHERE 條件
+                object? parameters = null;
+                if (query != null && query.Any())
+                {
+                    var paramResult = _sqlProvider.GetParameterizedSqlByKeyValues(tableName, query);
+                    if (paramResult != null)
+                    {
+                        var whereClause = paramResult.Sql.Replace("SELECT * FROM " + tableName + " WHERE ", "");
+                        sqlBuilder.Append(" WHERE ").Append(whereClause.Replace(";", ""));
+                        parameters = paramResult.Parameters;
+                    }
+                }
+
+                sqlBuilder.Append(';');
+                var sql = sqlBuilder.ToString();
+
+                // 執行查詢
+                var result = parameters != null
+                    ? _conn.QueryFirstOrDefault<dynamic>(sql, parameters)
+                    : _conn.QueryFirstOrDefault<dynamic>(sql);
+
+                if (result != null && result is IDictionary<string, object> dict)
+                {
+                    var count = dict.ContainsKey("Count") ? Convert.ToInt64(dict["Count"]) : 0;
+                    _logger?.LogDebug("查詢記錄總數: Table={TableName}, Count={Count}", tableName, count);
+                    return count;
+                }
+
+                return 0;
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "查詢記錄總數時發生錯誤: Table={TableName}", tableName);
+                throw new DbServiceException($"查詢記錄總數失敗: {tableName}", ex);
+            }
+        }
+
+        /// <summary>
+        /// 查詢是否存在符合條件的記錄
+        /// </summary>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則檢查資料表是否有任何記錄</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>如果存在則返回 true，否則返回 false</returns>
+        public virtual bool Exists(IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
+        {
+            return GetRecordCount(query, tableName) > 0;
+        }
+
+        /// <summary>
+        /// 根據條件查詢單一記錄（如果有多筆則返回第一筆）
+        /// </summary>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則返回第一筆記錄</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>第一筆符合條件的記錄，如果找不到則返回 null</returns>
+        public virtual TableBaseModel? GetFirstRecord(IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
+        {
+            var options = new QueryOptions { Take = 1 };
+            return GetRecordsWithOptions(query, options, tableName);
+        }
+
+        /// <summary>
+        /// 根據條件查詢單一欄位的值
+        /// </summary>
+        /// <typeparam name="T">欄位值的類型</typeparam>
+        /// <param name="fieldName">欄位名稱</param>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則查詢第一筆記錄</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>欄位值，如果找不到則返回 default(T)</returns>
+        public virtual T? GetFieldValue<T>(string fieldName, IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
+        {
+            if (string.IsNullOrEmpty(fieldName)) return default(T);
+
+            try
+            {
+                _validationService?.ValidateFieldName(fieldName);
+                
+                var options = new QueryOptions 
+                { 
+                    SelectFields = new[] { fieldName },
+                    Take = 1 
+                };
+                
+                var result = GetRecordsWithOptions(query, options, tableName);
+                
+                if (result?.Records?.FirstOrDefault() is RecordBaseModel record)
+                {
+                    var value = record.GetFieldValue(fieldName);
+                    if (value != null)
+                    {
+                        return (T)Convert.ChangeType(value, typeof(T));
+                    }
+                }
+
+                return default(T);
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "查詢欄位值時發生錯誤: Table={TableName}, Field={FieldName}", tableName, fieldName);
+                throw new DbServiceException($"查詢欄位值失敗: {tableName}, Field={fieldName}", ex);
+            }
+        }
+
+        /// <summary>
+        /// 根據條件查詢多個欄位的值
+        /// </summary>
+        /// <param name="fieldNames">要查詢的欄位名稱陣列</param>
+        /// <param name="query">查詢條件（多個鍵值對，使用 AND 連接）。如果為 null 則查詢第一筆記錄</param>
+        /// <param name="tableName">資料表名稱（如果為 null 則使用當前設定的資料表）</param>
+        /// <returns>包含欄位值的字典，鍵為欄位名稱，值為欄位值。如果找不到則返回 null</returns>
+        public virtual Dictionary<string, object?>? GetFieldValues(string[] fieldNames, IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
+        {
+            if (fieldNames == null || !fieldNames.Any()) return null;
+
+            try
+            {
+                foreach (var fieldName in fieldNames)
+                {
+                    _validationService?.ValidateFieldName(fieldName);
+                }
+
+                var options = new QueryOptions 
+                { 
+                    SelectFields = fieldNames,
+                    Take = 1 
+                };
+                
+                var result = GetRecordsWithOptions(query, options, tableName);
+                
+                if (result?.Records?.FirstOrDefault() is RecordBaseModel record)
+                {
+                    var dict = new Dictionary<string, object?>();
+                    foreach (var fieldName in fieldNames)
+                    {
+                        dict[fieldName] = record.GetFieldValue(fieldName);
+                    }
+                    return dict;
+                }
+
+                return null;
+            }
+            catch (Exception ex) when (!(ex is DbServiceException))
+            {
+                _logger?.LogError(ex, "查詢多個欄位值時發生錯誤: Table={TableName}, Fields={Fields}", 
+                    tableName, string.Join(", ", fieldNames));
+                throw new DbServiceException($"查詢欄位值失敗: {tableName}", ex);
+            }
+        }
+
+        #endregion
 
     }
 }

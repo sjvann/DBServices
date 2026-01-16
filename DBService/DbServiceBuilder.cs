@@ -77,6 +77,12 @@ namespace DBServices
         /// </summary>
         /// <returns>資料庫服務</returns>
         IDbService BuildOracle();
+
+        /// <summary>
+        /// 建立 PostgreSQL 資料庫服務
+        /// </summary>
+        /// <returns>資料庫服務</returns>
+        IDbService BuildPostgreSQL();
     }
 
     /// <summary>
@@ -185,6 +191,18 @@ namespace DBServices
             else
             {
                 return new DbServices.Provider.Oracle.ProviderService(_options.ConnectionString);
+            }
+        }
+
+        public IDbService BuildPostgreSQL()
+        {
+            if (_logger is ILogger<DbServices.Core.DataBaseService> typedLogger)
+            {
+                return new DbServices.Provider.PostgreSQL.ProviderService(_options, typedLogger, _validationService, _retryPolicyService);
+            }
+            else
+            {
+                return new DbServices.Provider.PostgreSQL.ProviderService(_options.ConnectionString);
             }
         }
     }

@@ -19,6 +19,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DbServices.Provider.MySql",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DbServices.Provider.Oracle", "DbServices.Provider.Oracle\DbServices.Provider.Oracle.csproj", "{DDD4EF89-763B-41B8-9AAF-F7C6C77908BA}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DbServices.Provider.PostgreSQL", "DbServices.Provider.PostgreSQL\DbServices.Provider.PostgreSQL.csproj", "{95AB09AF-963E-48EE-B8AA-5B12DACC227F}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "方案項目", "方案項目", "{8DDC4786-5FC8-F15C-1CA5-9F41FD4BEB75}"
 	ProjectSection(SolutionItems) = preProject
 		README.md = README.md
@@ -60,6 +62,10 @@ Global
 		{DDD4EF89-763B-41B8-9AAF-F7C6C77908BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDD4EF89-763B-41B8-9AAF-F7C6C77908BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DDD4EF89-763B-41B8-9AAF-F7C6C77908BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95AB09AF-963E-48EE-B8AA-5B12DACC227F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95AB09AF-963E-48EE-B8AA-5B12DACC227F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95AB09AF-963E-48EE-B8AA-5B12DACC227F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95AB09AF-963E-48EE-B8AA-5B12DACC227F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -40,6 +40,7 @@
 | `DbServices.Provider.SqlServer` | 2.0.0 | SQL Server 資料庫提供者 |
 | `DbServices.Provider.MySQL` | 2.0.0 | MySQL 資料庫提供者 |
 | `DbServices.Provider.Oracle` | 2.0.0 | Oracle 資料庫提供者 |
+| `DbServices.Provider.PostgreSQL` | 2.0.0 | PostgreSQL 資料庫提供者 |
 
 ## 💻 安裝方式
 
@@ -58,6 +59,7 @@ dotnet add package DbServices.Provider.Sqlite
 dotnet add package DbServices.Provider.SqlServer
 dotnet add package DbServices.Provider.MySQL
 dotnet add package DbServices.Provider.Oracle
+dotnet add package DbServices.Provider.PostgreSQL
 ```
 
 ## 🔄 遷移指南
@@ -96,34 +98,67 @@ dotnet add package DbServices.Provider.Oracle
    });
    ```
 
-## 🆕 新增 API
+## 🆕 新增功能
+
+### PostgreSQL 支援
+- ✅ 完整的 PostgreSQL 18 支援
+- ✅ JSON/JSONB 類型支援
+- ✅ 自動主鍵識別
+- ✅ 完整的資料類型映射
+
+### 多資料庫管理
+- ✅ 同時連接多個資料庫
+- ✅ 資料彙整功能
+- ✅ 獨立的連線池管理
+
+### 事務管理
+- ✅ 完整的事務管理服務
+- ✅ 自動錯誤處理和回滾
+- ✅ 同步和非同步支援
+
+### 資料庫遷移
+- ✅ 版本化的資料庫結構管理
+- ✅ 執行和回滾遷移
+- ✅ 遷移到指定版本
+
+### 進階功能
+- ✅ 參數化查詢（防止 SQL 注入）
+- ✅ 進階查詢服務（分頁、排序、計數）
+- ✅ 資料表結構快取
+- ✅ 連線池自動管理
 
 ### 建構器模式
 ```csharp
 var dbService = MainService.CreateBuilder(connectionString)
-    .UseSQLite()
-    .WithLogging(logger)
-    .WithValidation()
-    .WithRetryPolicy()
-    .Build();
+    .UsePostgreSQL()
+    .WithConnectionPool(minPoolSize: 5, maxPoolSize: 50)
+    .WithQueryCache(enabled: true, expirationMinutes: 10)
+    .BuildPostgreSQL();
 ```
 
 ### 異步操作
 ```csharp
 // 所有操作都支援異步
 var tables = await db.GetAllTableNamesAsync();
-var records = await db.GetRecordsByQueryAsync(...);
+var records = await db.GetRecordByTableNameAsync("Users");
 ```
 
 ### 依賴注入
 ```csharp
+// 註冊多個資料庫
+services.AddMultipleDbServices(
+    ("primary", DatabaseProvider.PostgreSQL, connectionString1, null),
+    ("secondary", DatabaseProvider.SqlServer, connectionString2, null)
+);
+
+// 使用
 public class UserService
 {
-    private readonly IDbService _dbService;
+    private readonly IDbService _primaryDb;
     
-    public UserService(IDbService dbService)
+    public UserService([FromKeyedServices("primary")] IDbService primaryDb)
     {
-        _dbService = dbService;
+        _primaryDb = primaryDb;
     }
 }
 ```
@@ -137,10 +172,15 @@ public class UserService
 
 ## 📖 文件更新
 
-- 全新的 README.md 文件
-- 完整的 API 參考
-- 詳細的使用範例
-- 遷移指南
+- ✅ 全新的 README.md 文件
+- ✅ 完整的 API 參考（API_DOCUMENTATION.md）
+- ✅ 多資料庫管理指南（MULTI_DATABASE_GUIDE.md）
+- ✅ 效能調優指南（PERFORMANCE_TUNING.md）
+- ✅ 低優先級功能指南（LOW_PRIORITY_FEATURES_GUIDE.md）
+- ✅ 新增資料庫提供者指南（ADD_NEW_DATABASE_GUIDE.md）
+- ✅ 安全性最佳實踐（SECURITY_BEST_PRACTICES.md）
+- ✅ 詳細的使用範例
+- ✅ 遷移指南
 
 ## 🔗 相關連結
 

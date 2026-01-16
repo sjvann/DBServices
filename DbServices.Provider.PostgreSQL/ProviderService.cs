@@ -1,19 +1,18 @@
-﻿
 using DbServices.Core;
 using DbServices.Core.Configuration;
 using DbServices.Core.Services;
-using DbServices.Provider.MySql.SqlStringGenerator;
-using MySql.Data.MySqlClient;
+using DbServices.Provider.PostgreSQL.SqlStringGenerator;
+using Npgsql;
 using Microsoft.Extensions.Logging;
 
-namespace DbServices.Provider.MySql
+namespace DbServices.Provider.PostgreSQL
 {
     public class ProviderService : DataBaseService
     {
         public ProviderService(string connectionString) : base(connectionString)
         {
-            _conn = new MySqlConnection(connectionString);
-            _sqlProvider = new SqlProviderForMySql();
+            _conn = new NpgsqlConnection(connectionString);
+            _sqlProvider = new SqlProviderForPostgreSQL();
             _tableNameList = GetAllTableNames();
         }
 
@@ -26,9 +25,10 @@ namespace DbServices.Provider.MySql
             var connectionString = DbServices.Core.Helpers.ConnectionStringHelper
                 .ApplyConnectionPoolSettings(options.ConnectionString, options);
             
-            _conn = new MySqlConnection(connectionString);
-            _sqlProvider = new SqlProviderForMySql();
+            _conn = new NpgsqlConnection(connectionString);
+            _sqlProvider = new SqlProviderForPostgreSQL();
             _tableNameList = GetAllTableNames();
         }
     }
 }
+

@@ -118,6 +118,31 @@ namespace DBServices
             
             return new DbServices.Provider.Oracle.ProviderService(options, logger, validation, retry);
         }
+
+        /// <summary>
+        /// 使用PostgreSQL資料庫
+        /// </summary>
+        /// <param name="connectString"></param>
+        /// <returns>DataBaseService</returns>
+        public static IDbService UsePostgreSQL(string connectString)
+        {
+            return new DbServices.Provider.PostgreSQL.ProviderService(connectString);
+        }
+
+        /// <summary>
+        /// 使用PostgreSQL資料庫（進階版）
+        /// </summary>
+        /// <param name="options">資料庫服務設定選項</param>
+        /// <param name="serviceProvider">服務提供者（用於取得日誌和其他服務）</param>
+        /// <returns>DataBaseService</returns>
+        public static IDbService UsePostgreSQL(DbServiceOptions options, IServiceProvider? serviceProvider = null)
+        {
+            var logger = serviceProvider?.GetService<ILogger<DbServices.Core.DataBaseService>>();
+            var validation = serviceProvider?.GetService<IValidationService>();
+            var retry = serviceProvider?.GetService<IRetryPolicyService>();
+            
+            return new DbServices.Provider.PostgreSQL.ProviderService(options, logger, validation, retry);
+        }
         #endregion
 
         #region 非同步工廠方法
@@ -137,6 +162,7 @@ namespace DBServices
                 DatabaseProvider.SqlServer => UseMsSQL(connectionString),
                 DatabaseProvider.MySQL => UseMySQL(connectionString),
                 DatabaseProvider.Oracle => UseOracle(connectionString),
+                DatabaseProvider.PostgreSQL => UsePostgreSQL(connectionString),
                 _ => throw new ArgumentException($"不支援的資料庫類型: {providerType}")
             };
 
@@ -188,6 +214,7 @@ namespace DBServices
         SQLite,
         SqlServer,
         MySQL,
-        Oracle
+        Oracle,
+        PostgreSQL
     }
 }

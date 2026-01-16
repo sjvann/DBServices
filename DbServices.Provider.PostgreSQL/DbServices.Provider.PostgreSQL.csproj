@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>DbServices.Provider.PostgreSQL</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>sjvann</Authors>
+    <Company>DBServices</Company>
+    <Description>DbServices PostgreSQL 資料庫提供者 - 支援 PostgreSQL 18 的現代化 ORM 解決方案</Description>
+	<PackageTags>dapper;orm;postgresql;postgres;database;async;dotnet10</PackageTags>
+    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <Copyright>Copyright © 2025 sjvann</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="9.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />
+  </ItemGroup>
+
+</Project>
