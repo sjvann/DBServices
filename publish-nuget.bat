@@ -60,6 +60,9 @@ dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MyS
 echo 發布 DbServices.Provider.Oracle...
 dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
+echo 發布 DbServices.Provider.PostgreSQL...
+dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+
 REM 發布主套件
 echo 發布 DbServices...
 dotnet nuget push "DBService\bin\Release\DbServices.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json

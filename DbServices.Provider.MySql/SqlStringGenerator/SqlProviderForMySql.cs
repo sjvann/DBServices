@@ -216,6 +216,20 @@ WHERE kcu.TABLE_NAME = '{escapedTableName}'
         #endregion
         #region Private Method
 
+        /// <summary>
+        /// 轉義 SQL 識別符（表名、欄位名）以防止 SQL 注入
+        /// MySQL 使用反引號 ` 轉義識別符
+        /// </summary>
+        private static string EscapeSqlIdentifier(string identifier)
+        {
+            if (string.IsNullOrEmpty(identifier))
+                return string.Empty;
+
+            // MySQL 使用反引號轉義識別符
+            // 將反引號加倍以進行轉義
+            return identifier.Replace("`", "``");
+        }
+
         private string? CreateColumnDef(IEnumerable<FieldBaseModel> fields)
         {
             List<string> columns = [];

@@ -1459,10 +1459,31 @@ namespace DbServices.Core
                     ? _conn.QueryFirstOrDefault<dynamic>(sql, parameters)
                     : _conn.QueryFirstOrDefault<dynamic>(sql);
 
-                if (result != null && result is IDictionary<string, object> dict)
+                if (result != null)
                 {
-                    var count = dict.ContainsKey("Count") ? Convert.ToInt64(dict["Count"]) : 0;
-                    _logger?.LogDebug("查詢記錄總數: Table={TableName}, Count={Count}", tableName, count);
+                    long count = 0;
+                    if (result is IDictionary<string, object> dict)
+                    {
+                        count = dict.ContainsKey("Count") ? Convert.ToInt64(dict["Count"]) : 0;
+                    }
+                    else
+                    {
+                        // 嘗試直接轉換為 long
+                        try
+                        {
+                            count = Convert.ToInt64(result);
+                        }
+                        catch
+                        {
+                            // 轉換失敗，返回 0
+                            count = 0;
+                        }
+                    }
+                    
+                    if (_logger != null)
+                    {
+                        _logger.LogDebug("查詢記錄總數: Table={TableName}, Count={Count}", tableName, count);
+                    }
                     return count;
                 }
 

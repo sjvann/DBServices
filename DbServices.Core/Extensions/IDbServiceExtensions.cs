@@ -1,6 +1,8 @@
 using DbServices.Core.Helpers;
+using DbServices.Core.Models;
 using DbServices.Core.Models.Interface;
 using DbServices.Core.Services;
+using System.Reflection;
 using System.Text.Json;
 
 namespace DbServices.Core.Extensions
@@ -86,7 +88,7 @@ namespace DbServices.Core.Extensions
                         // 如果是 JSON 欄位，反序列化
                         try
                         {
-                            var deserialized = JsonSerializer.Deserialize(jsonString, prop.PropertyType);
+                            var deserialized = JsonHelper.Deserialize(prop.PropertyType, jsonString);
                             if (deserialized != null)
                             {
                                 prop.SetValue(obj, deserialized);

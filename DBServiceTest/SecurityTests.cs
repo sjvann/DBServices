@@ -11,7 +11,7 @@ namespace DBServiceTest
     [TestClass]
     public class SecurityTests
     {
-        private IValidationService _validationService;
+        private IValidationService _validationService = null!;
 
         [TestInitialize]
         public void TestInit()
@@ -20,48 +20,48 @@ namespace DBServiceTest
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_SQL_Injection_In_TableName()
         {
             // 測試表名中包含 SQL 注入字元的情況
             var maliciousTableName = "Users'; DROP TABLE Users; --";
-            _validationService.ValidateTableName(maliciousTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(maliciousTableName));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_SQL_Injection_In_TableName_With_Quotes()
         {
             // 測試表名中包含單引號
             var maliciousTableName = "Users' OR '1'='1";
-            _validationService.ValidateTableName(maliciousTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(maliciousTableName));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_SQL_Injection_In_TableName_With_Semicolon()
         {
             // 測試表名中包含分號
             var maliciousTableName = "Users; DELETE FROM Users";
-            _validationService.ValidateTableName(maliciousTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(maliciousTableName));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_Invalid_TableName_Format()
         {
             // 測試無效的表名格式（以數字開頭）
             var invalidTableName = "123InvalidTable";
-            _validationService.ValidateTableName(invalidTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(invalidTableName));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_TableName_With_Special_Characters()
         {
             // 測試包含特殊字元的表名
             var invalidTableName = "My-Table";
-            _validationService.ValidateTableName(invalidTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(invalidTableName));
         }
 
         [TestMethod]
@@ -85,12 +85,12 @@ namespace DBServiceTest
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_SQL_Injection_In_FieldName()
         {
             // 測試欄位名中包含 SQL 注入字元
             var maliciousFieldName = "Name'; DROP TABLE Users; --";
-            _validationService.ValidateFieldName(maliciousFieldName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateFieldName(maliciousFieldName));
         }
 
         [TestMethod]
@@ -114,12 +114,12 @@ namespace DBServiceTest
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_SQL_Injection_In_WhereClause()
         {
             // 測試 WHERE 子句中包含 SQL 注入字元
             var maliciousWhereClause = "Name = 'Test'; DROP TABLE Users; --";
-            _validationService.ValidateWhereClause(maliciousWhereClause);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateWhereClause(maliciousWhereClause));
         }
 
         [TestMethod]
@@ -151,20 +151,20 @@ namespace DBServiceTest
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_Empty_TableName()
         {
             // 測試空表名
-            _validationService.ValidateTableName("");
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(""));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(DbValidationException))]
         public void Should_Reject_TableName_Too_Long()
         {
             // 測試過長的表名（超過128字元）
             var longTableName = new string('A', 129);
-            _validationService.ValidateTableName(longTableName);
+            Assert.ThrowsExactly<DbValidationException>(() =>
+                _validationService.ValidateTableName(longTableName));
         }
     }
 }

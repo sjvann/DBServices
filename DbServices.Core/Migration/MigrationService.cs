@@ -281,13 +281,13 @@ CREATE TABLE IF NOT EXISTS {MigrationTableName} (
                 var records = _dbService.GetRecordByTableName(MigrationTableName);
                 if (records?.Records != null && records.Records.Any())
                 {
-                    var maxVersion = records.Records
-                        .Select(r => r.GetFieldValue<long>("Version"))
-                        .Where(v => v.HasValue)
-                        .Select(v => v!.Value)
-                        .DefaultIfEmpty(0)
-                        .Max();
-                    return maxVersion;
+                    var versions = records.Records
+                        .Select(r => r.GetFieldValue("Version"))
+                        .Where(v => v != null)
+                        .Select(v => Convert.ToInt64(v))
+                        .ToList();
+                    
+                    return versions.Any() ? versions.Max() : 0;
                 }
                 return 0;
             }
@@ -309,9 +309,9 @@ CREATE TABLE IF NOT EXISTS {MigrationTableName} (
                 if (records?.Records != null)
                 {
                     return records.Records
-                        .Select(r => r.GetFieldValue<long>("Version"))
-                        .Where(v => v.HasValue)
-                        .Select(v => v!.Value);
+                        .Select(r => r.GetFieldValue("Version"))
+                        .Where(v => v != null)
+                        .Select(v => Convert.ToInt64(v));
                 }
                 return Enumerable.Empty<long>();
             }

@@ -12,7 +12,7 @@
     <Authors>sjvann</Authors>
     <Company>DBServices</Company>
     <Description>現代化多資料庫 ORM 工具包核心庫 - 基於 Dapper 的高效能資料庫存取解決方案</Description>
-	<PackageTags>dapper;orm;database;sqlite;sqlserver;mysql;oracle;async;dotnet10</PackageTags>
+	<PackageTags>dapper;orm;database;sqlite;sqlserver;mysql;oracle;postgresql;async;dotnet10;transaction;migration</PackageTags>
     <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -20,7 +20,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Copyright>Copyright © 2025 sjvann</Copyright>
-	<PackageReleaseNotes>v2.0.0: .NET 10 升級，新增現代化功能包括異步支援、依賴注入、建構器模式、重試機制等</PackageReleaseNotes>
+	<PackageReleaseNotes>v2.0.0: .NET 10 升級，新增事務管理、資料庫遷移、多資料庫管理、連線池自動管理、進階查詢服務、參數化查詢等完整功能</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

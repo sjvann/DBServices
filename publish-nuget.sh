@@ -58,6 +58,12 @@ dotnet nuget push "DbServices.Provider.MySql/bin/Release/DbServices.Provider.MyS
 echo "Publishing DbServices.Provider.Oracle..."
 dotnet nuget push "DbServices.Provider.Oracle/bin/Release/DbServices.Provider.Oracle.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
+echo "Publishing DbServices.Provider.PostgreSQL..."
+dotnet nuget push "DbServices.Provider.PostgreSQL/bin/Release/DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+
+echo "Publishing DbServices..."
+dotnet nuget push "DBService/bin/Release/DbServices.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+
 # Publish main package
 echo "Publishing DbServices..."
 dotnet nuget push "DBService/bin/Release/DbServices.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json

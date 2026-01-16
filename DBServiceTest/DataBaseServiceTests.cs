@@ -1,10 +1,10 @@
-﻿
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using DbServices.Core.Models.Interface;
 using DbServices.Core.Models.Enum;
 using DBServiceTest.Models;
 using DbServices.Core.Models;
 
+[assembly: DoNotParallelize]
 
 namespace DBServiceTest
 {
@@ -21,10 +21,10 @@ namespace DBServiceTest
 			_db.CreateNewTable<PersonTable>();
 			_db.CreateNewTable<EncounterTable>();
 
-			var p = new PersonTable { Name = "EE", Age = 20 };
+			var p = new PersonTable { Name = "EE", Age = 20, TitleName = "TestPerson" };
 			_db.InsertRecord(p.GetKeyValuePairs(), nameof(PersonTable));
 
-			var e = new EncounterTable { PersonFK = 1, EncounterType = "Seed" };
+			var e = new EncounterTable { PersonFK = 1, EncounterType = "Seed", TitleName = "TestEncounter" };
 			_db.InsertRecord(e.GetKeyValuePairs(), nameof(EncounterTable));
 		}
 
@@ -50,7 +50,7 @@ namespace DBServiceTest
             string[]? allTableName = _db.GetAllTableNames();
 
             Assert.IsNotNull(allTableName);
-            Assert.IsTrue(allTableName.Length > 0);
+            Assert.IsNotEmpty(allTableName);
             Console.WriteLine($"All Table Name: {string.Join("\r\n", allTableName)}");
         }
         [TestMethod()]
@@ -74,7 +74,7 @@ namespace DBServiceTest
         {
             Console.WriteLine($"Before Create PersonTable Table: {_db.HasTable("PersonTable")}");
             int result = CreateNewTable<PersonTable>();
-            Assert.IsTrue(result >= 0);
+            Assert.IsGreaterThanOrEqualTo(result, 0);
             Console.WriteLine($"After Create PersonTable Table: {_db.HasTable("PersonTable")}");
         }
         [TestMethod]
@@ -82,7 +82,7 @@ namespace DBServiceTest
         {
             Console.WriteLine($"Before Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
             int result = CreateNewTable<EncounterTable>();
-            Assert.IsTrue(result >= 0);
+            Assert.IsGreaterThanOrEqualTo(result, 0);
             Console.WriteLine($"After Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
         }
 
@@ -147,7 +147,8 @@ namespace DBServiceTest
             PersonTable target = new()
             {
                 Name = "QQ",
-                Age = 88
+                Age = 88,
+                TitleName = "QQPerson"
             };
             _db.InsertRecord(target.GetKeyValuePairs(), "PersonTable");
             var result = _db.GetRecordByKeyValues(target.GetKeyValuePairs(), "PersonTable");
@@ -195,7 +196,8 @@ namespace DBServiceTest
             PersonTable p = new()
             {
                 Name = "FF",
-                Age = 38
+                Age = 38,
+                TitleName = "FFPerson"
             };
 
             Console.WriteLine("Before insert data:");
@@ -214,7 +216,8 @@ namespace DBServiceTest
             EncounterTable e = new()
             {
                 PersonFK = 1,
-                EncounterType = "Outpatient"
+                EncounterType = "Outpatient",
+                TitleName = "OutpatientEncounter"
             };
 
             Console.WriteLine("Before insert data:");
@@ -235,7 +238,8 @@ namespace DBServiceTest
             var updateObject = new PersonTable()
             {
                 Name = "ZZ",
-                Age = 99
+                Age = 99,
+                TitleName = "ZZPerson"
             };
             Console.WriteLine("Before Update data:");
             var oldTable = _db.GetRecordById(1, nameof(PersonTable));
@@ -261,7 +265,7 @@ namespace DBServiceTest
             Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);
 
             var result = _db.UpdateRecordByKeyValue(targetObject, updateObject.GetKeyValuePairs(), nameof(PersonTable));
-            Assert.IsNotNull(result);
+            Assert.IsTrue(result);
 
             Console.WriteLine("After insert data:");
             var newTable = _db.GetRecordByKeyValue(targetObject, EnumQueryOperator.Like, nameof(PersonTable));
@@ -273,12 +277,15 @@ namespace DBServiceTest
             PersonTable p = new()
             {
                 Name = "FF",
-                Age = 38
+                Age = 38,
+                TitleName = "DeleteTestPerson"
             };
 
             var target = _db.InsertRecord(p.GetKeyValuePairs(), nameof(PersonTable));
+            Assert.IsNotNull(target);
 
-            long pk = target?.GetObject<PersonTable>()?.Id?? 1;
+            // 使用 Records 直接獲取 Id，避免 DateTime 反序列化問題
+            long pk = (long)(target.Records?.FirstOrDefault()?.GetFieldValue("Id") ?? 1L);
             Console.WriteLine("Before Delete data:");
             var oldTable = _db.GetRecordById(pk, nameof(PersonTable));
             Console.WriteLine(oldTable?.GetRecordsJsonObjectString(true) ?? string.Empty);

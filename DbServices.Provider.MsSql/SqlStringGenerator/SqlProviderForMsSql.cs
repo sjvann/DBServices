@@ -238,6 +238,20 @@ ORDER BY c.ORDINAL_POSITION;";
 
         #region Private Methods
 
+        /// <summary>
+        /// 轉義 SQL 識別符（表名、欄位名）以防止 SQL 注入
+        /// MS SQL Server 使用方括號 [] 轉義識別符
+        /// </summary>
+        private static string EscapeSqlIdentifier(string identifier)
+        {
+            if (string.IsNullOrEmpty(identifier))
+                return string.Empty;
+
+            // MS SQL Server 使用方括號轉義識別符
+            // 將右方括號加倍以進行轉義
+            return identifier.Replace("]", "]]");
+        }
+
         private string CreateColumnDef(IEnumerable<FieldBaseModel> fields)
         {
 
