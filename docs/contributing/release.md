@@ -28,15 +28,27 @@
    - 解析版次並核對 `Directory.Build.props`
    - 建置、測試（略過 `TestCategory=Integration`）、打包 NuGet
    - 建立 GitHub Release（附 `.nupkg`）
-   - 若已設定 `NUGET_API_KEY`，推送到 NuGet.org
+   - 以 NuGet Trusted Publishing（OIDC）推送到 NuGet.org
    - 建置 DocFX 並部署 [GitHub Pages](https://sjvann.github.io/DBServices/)
 
 同一分支再次推送會更新同一個 `v{版次}` Release。NuGet 版本不可覆寫；已上架的版次會因 `--skip-duplicate` 被略過。
 
-## GitHub 設定
+## GitHub 與 NuGet 設定
 
 1. **Settings → Pages → Source** 選 **GitHub Actions**。
-2. （選用）**Settings → Secrets and variables → Actions** 新增 `NUGET_API_KEY`，工作流程才會推送 NuGet.org。
+2. 在 [nuget.org Trusted Publishing](https://www.nuget.org/account/TrustedPublishing) 新增政策（不必再建立長期 API Key）：
+
+   | 欄位 | 值 |
+   |------|-----|
+   | Policy Name | `DBServices GitHub Actions`（任意可辨識名稱） |
+   | Package Owner | `sjvann` |
+   | CI/CD Provider | GitHub Actions |
+   | Repository Owner | `sjvann` |
+   | Repository | `DBServices` |
+   | Workflow File | `release.yml`（只填檔名，不要含 `.github/workflows/`） |
+   | Environment | 空白（本倉庫未使用 GitHub Environment） |
+
+   工作流程會用 `NuGet/login@v1` 換成短效金鑰再 `dotnet nuget push`。首次成功推送後政策才會永久生效；若倉庫為私有，請在建立政策後 7 天內完成一次發行。
 
 也可在 Actions 開啟 **Release** → **Run workflow**。在 `Release/{版次}` 分支上執行會用分支名稱；在 `master` 上執行且未填版次時，會改用 `Directory.Build.props` 的 `<Version>`。版次仍須與該檔一致。
 
