@@ -290,7 +290,7 @@ namespace DbServices.Provider.PostgreSQL.SqlStringGenerator
         /// 轉義 SQL 識別符（表名、欄位名）以防止 SQL 注入
         /// 注意：這只是基本防護，表名應該已經通過 ValidationService 驗證
         /// </summary>
-        private static string EscapeSqlIdentifier(string identifier)
+        private static string EscapeSqlIdentifier(string? identifier)
         {
             if (string.IsNullOrEmpty(identifier))
                 return string.Empty;

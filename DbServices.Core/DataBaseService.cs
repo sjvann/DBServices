@@ -1,7 +1,11 @@
 ﻿using Dapper;
+using DbServices.Core.Catalog;
+using DbServices.Core.Connections;
+using DbServices.Core.Functions;
 using DbServices.Core.Models;
 using DbServices.Core.Models.Enum;
 using DbServices.Core.Models.Interface;
+using DbServices.Core.Session;
 using DbServices.Core.SqlStringGenerator;
 using DbServices.Core.Exceptions;
 using DbServices.Core.Services;
@@ -30,7 +34,9 @@ namespace DbServices.Core
     /// </summary>
     public abstract class DataBaseService : IDbService, IDbServiceAsync, IAdvancedQueryService, IDisposable
     {
-        protected DbConnection? _conn;
+        protected Func<DbConnection>? _connectionFactory;
+        protected DbConnection? _heldConnection;
+        protected IDbTransaction? _currentTransaction;
         protected SqlProviderBase? _sqlProvider;
         protected string[]? _tableNameList;
         protected string? _currentTableName;
@@ -40,18 +46,166 @@ namespace DbServices.Core
         protected readonly ITableStructureCacheService? _cacheService;
         protected readonly DbServiceOptions _options;
         private bool _disposed = false;
+        private IQuerySession? _session;
+        private IFunctionRegistry? _functions;
+        private ICatalogService? _catalog;
+
+        protected bool HasConnection => _connectionFactory != null || _heldConnection != null;
+
+        public IQuerySession GetSession() => _session ??= new QuerySession(this, Functions, Catalog);
+
+        public IFunctionRegistry Functions => _functions ??= FunctionRegistry.CreateDefault(this);
+
+        public ICatalogService Catalog => _catalog ??= new CatalogService(this);
 
         /// <summary>
-        /// 取得資料庫連線（用於事務管理等進階功能）
+        /// 取得（並持有）資料庫連線，供事務使用。一般查詢請走連線範圍，勿長活握著。
         /// </summary>
-        /// <returns>資料庫連線</returns>
-        public System.Data.Common.DbConnection? GetConnection()
+        public System.Data.Common.DbConnection? GetConnection() => AcquireHeldConnection();
+
+        public DbConnection AcquireHeldConnection()
         {
-            if (_conn != null && _conn.State != ConnectionState.Open)
+            if (_heldConnection != null)
             {
-                _conn.Open();
+                if (_heldConnection.State != ConnectionState.Open)
+                    _heldConnection.Open();
+                return _heldConnection;
             }
-            return _conn;
+
+            if (_connectionFactory == null)
+                throw new InvalidOperationException("連線工廠尚未設定。");
+
+            _heldConnection = _connectionFactory();
+            if (_heldConnection.State != ConnectionState.Open)
+                _heldConnection.Open();
+            return _heldConnection;
+        }
+
+        public void SetCurrentTransaction(IDbTransaction? transaction) => _currentTransaction = transaction;
+
+        public IDbTransaction? GetCurrentTransaction() => _currentTransaction;
+
+        public void ReleaseHeldConnection()
+        {
+            _currentTransaction = null;
+            if (_heldConnection != null)
+            {
+                _heldConnection.Dispose();
+                _heldConnection = null;
+            }
+        }
+
+        public virtual IReadOnlyList<string> ListDatabases()
+        {
+            var name = ExtractDatabaseName(_options.ConnectionString);
+            return string.IsNullOrEmpty(name) ? [] : [name];
+        }
+
+        public void ReloadCatalog()
+        {
+            _cacheService?.ClearAllCache();
+            RefreshTableNameList();
+        }
+
+        private static string ExtractDatabaseName(string connectionString)
+        {
+            if (string.IsNullOrWhiteSpace(connectionString)) return string.Empty;
+            foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var kv = part.Split('=', 2);
+                if (kv.Length != 2) continue;
+                if (kv[0].Equals("Database", StringComparison.OrdinalIgnoreCase)
+                    || kv[0].Equals("Initial Catalog", StringComparison.OrdinalIgnoreCase)
+                    || kv[0].Equals("Data Source", StringComparison.OrdinalIgnoreCase))
+                    return kv[1];
+            }
+            return string.Empty;
+        }
+
+        protected T WithConnection<T>(Func<DbConnection, IDbTransaction?, T> action)
+        {
+            if (_heldConnection != null)
+            {
+                if (_heldConnection.State != ConnectionState.Open)
+                    _heldConnection.Open();
+                return action(_heldConnection, _currentTransaction);
+            }
+
+            if (_connectionFactory == null)
+                throw new InvalidOperationException("連線工廠尚未設定。");
+
+            using var conn = _connectionFactory();
+            if (conn.State != ConnectionState.Open)
+                conn.Open();
+            return action(conn, _currentTransaction);
+        }
+
+        protected async Task<T> WithConnectionAsync<T>(Func<DbConnection, IDbTransaction?, Task<T>> action, CancellationToken cancellationToken = default)
+        {
+            if (_heldConnection != null)
+            {
+                if (_heldConnection.State != ConnectionState.Open)
+                    await _heldConnection.OpenAsync(cancellationToken);
+                return await action(_heldConnection, _currentTransaction);
+            }
+
+            if (_connectionFactory == null)
+                throw new InvalidOperationException("連線工廠尚未設定。");
+
+            var conn = _connectionFactory();
+            await using (conn)
+            {
+                if (conn.State != ConnectionState.Open)
+                    await conn.OpenAsync(cancellationToken);
+                return await action(conn, _currentTransaction);
+            }
+        }
+
+        protected IEnumerable<dynamic> DbQuery(string sql, object? param = null)
+            => WithConnection((c, tx) => c.Query(sql, param, tx, commandTimeout: _options.CommandTimeout));
+
+        protected IEnumerable<T> DbQuery<T>(string sql, object? param = null)
+            => WithConnection((c, tx) => c.Query<T>(sql, param, tx, commandTimeout: _options.CommandTimeout));
+
+        protected T? DbQueryFirstOrDefault<T>(string sql, object? param = null)
+            => WithConnection((c, tx) => c.QueryFirstOrDefault<T>(sql, param, tx, commandTimeout: _options.CommandTimeout));
+
+        protected int DbExecute(string sql, object? param = null, CommandType? commandType = null)
+            => WithConnection((c, tx) => c.Execute(sql, param, tx, _options.CommandTimeout, commandType));
+
+        protected Task<IEnumerable<dynamic>> DbQueryAsync(string sql, object? param = null, CancellationToken cancellationToken = default)
+            => WithConnectionAsync((c, tx) => c.QueryAsync(new CommandDefinition(sql, param, tx, _options.CommandTimeout, cancellationToken: cancellationToken)), cancellationToken);
+
+        protected Task<int> DbExecuteAsync(string sql, object? param = null, IDbTransaction? transaction = null, CancellationToken cancellationToken = default)
+            => WithConnectionAsync((c, tx) => c.ExecuteAsync(new CommandDefinition(sql, param, transaction ?? tx, _options.CommandTimeout, cancellationToken: cancellationToken)), cancellationToken);
+
+        public QueryResult QuerySql(string sql, object? parameters = null)
+        {
+            if (string.IsNullOrWhiteSpace(sql) || !HasConnection)
+                return QueryResult.Empty("SELECT");
+            var rows = DbQuery(sql, parameters);
+            return QueryResultMapper.FromDynamics(rows, QuerySession.FirstToken(sql).ToUpperInvariant());
+        }
+
+        public int ExecuteSql(string sql, object? parameters = null)
+        {
+            if (string.IsNullOrWhiteSpace(sql) || !HasConnection) return 0;
+            return DbExecute(sql, parameters);
+        }
+
+        public async Task<QueryResult> QuerySqlAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sql) || !HasConnection)
+                return QueryResult.Empty("SELECT");
+            var rows = await DbQueryAsync(sql, parameters, cancellationToken);
+            return QueryResultMapper.FromDynamics(rows, QuerySession.FirstToken(sql).ToUpperInvariant());
+        }
+
+        public Task<int> ExecuteSqlAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sql) || !HasConnection)
+                return Task.FromResult(0);
+            return DbExecuteAsync(sql, parameters, cancellationToken: cancellationToken);
         }
 
         protected DataBaseService(string connectionString)
@@ -133,17 +287,15 @@ namespace DbServices.Core
         public bool HasTable(string tableName)
         {
             bool result = false;
-            if (_conn == null || _sqlProvider == null) return result;
+            if (!HasConnection || _sqlProvider == null) return result;
             
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) _conn.Open();
                 string? sql = _sqlProvider.GetSqlForCheckTableExist(tableName);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    result = _conn.Query(sql).Any();
+                    result = DbQuery(sql).Any();
                     _logger?.LogDebug("檢查資料表存在性: {TableName} = {Exists}", tableName, result);
                 }
             }
@@ -163,14 +315,13 @@ namespace DbServices.Core
         {
             bool result = false;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
                 string? sql = _sqlProvider.GetSqlForCheckRows(tableName);
                 if (sql != null)
                 {
-                    result = _conn.Query(sql).Any();
+                    result = DbQuery(sql).Any();
                 }
             }
             catch (SqlException ex)
@@ -193,14 +344,13 @@ namespace DbServices.Core
         public virtual string[]? GetAllTableNames(bool includeView = true)
         {
             List<string> result = [];
-            if (_conn == null || _sqlProvider == null) return null;
+            if (!HasConnection || _sqlProvider == null) return null;
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
                 string? sqlStr = _sqlProvider.GetSqlTableNameList();
                 if (sqlStr != null)
                 {
-                    result.AddRange(_conn.Query<string>(sqlStr));
+                    result.AddRange(DbQuery<string>(sqlStr));
                 }
             }
             catch (SqlException ex)
@@ -216,7 +366,7 @@ namespace DbServices.Core
         }
         public virtual IEnumerable<FieldBaseModel>? GetFieldsByTableName(string tableName)
         {
-            if (_sqlProvider == null || _conn == null || string.IsNullOrEmpty(tableName)) return null;
+            if (_sqlProvider == null || !HasConnection || string.IsNullOrEmpty(tableName)) return null;
 
             // 嘗試從快取取得
             if (_cacheService != null && _options.EnableQueryCache)
@@ -231,9 +381,9 @@ namespace DbServices.Core
 
             // 從資料庫查詢
             var sql = _sqlProvider.GetSqlFieldsByTableName(tableName);
-            var result = string.IsNullOrEmpty(sql) ? null : _conn.Query(sql);
+            var result = string.IsNullOrEmpty(sql) ? null : DbQuery(sql);
             string? foreignSql = _sqlProvider.GetSqlForeignInfoByTableName(tableName);
-            var foreignness = string.IsNullOrEmpty(foreignSql) ? null : _conn.Query(foreignSql);
+            var foreignness = string.IsNullOrEmpty(foreignSql) ? null : DbQuery(foreignSql);
             
             IEnumerable<FieldBaseModel>? fields = null;
             if (result != null && foreignness != null)
@@ -261,12 +411,11 @@ namespace DbServices.Core
         {
             List<object> result = [];
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
                 string? sql = _sqlProvider.GetSqlForValueSet(tableName, fieldName);
-                var temp = sql != null ? _conn.Query<object>(sql) : null;
+                var temp = sql != null ? DbQuery<object>(sql) : null;
                 if (temp != null)
                 {
                     result.AddRange(temp);
@@ -290,16 +439,15 @@ namespace DbServices.Core
         public int CreateNewTable<T>() where T : TableDefBaseModel
         {
             int result = 0;
-            if (_conn == null || _sqlProvider == null) return result;
+            if (!HasConnection || _sqlProvider == null) return result;
             var dbSource = TableBaseModel.CreateTableBaseModel<T>();
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForCreateTable(dbSource);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    result = _conn.Execute(sql);
+                    result = DbExecute(sql);
                 }
 
             }
@@ -329,16 +477,15 @@ namespace DbServices.Core
         {
             int result = 1;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
            
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForCreateTable(tableName, tableDefine);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    _conn.Execute(sql);
+                    DbExecute(sql);
                 }
             }
             catch (SqlException ex)
@@ -365,16 +512,15 @@ namespace DbServices.Core
         public int DropTable(string tableName)
         {
             int result = 0;
-            if (_conn == null || _sqlProvider == null) return result;
+            if (!HasConnection || _sqlProvider == null) return result;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForDropTable(tableName);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    result = _conn.Execute(sql);
+                    result = DbExecute(sql);
                 }
 
             }
@@ -406,18 +552,16 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || tableName == null) return tableResult;
+            if (!HasConnection || _sqlProvider == null || tableName == null) return tableResult;
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 // 優先使用參數化查詢
                 var paramResult = _sqlProvider.GetParameterizedSqlById(tableName, id);
                 if (paramResult != null)
                 {
-                    var temp = _conn.Query(paramResult.Sql, paramResult.Parameters);
+                    var temp = DbQuery(paramResult.Sql, paramResult.Parameters);
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogDebug("使用參數化查詢取得記錄: Table={TableName}, Id={Id}", tableName, id);
                 }
@@ -425,7 +569,7 @@ namespace DbServices.Core
                 {
                     // 降級使用字串拼接（不建議）
                     string? sql = _sqlProvider.GetSqlById(tableName, id);
-                    var temp = sql != null ? _conn.Query(sql) : null;
+                    var temp = sql != null ? DbQuery(sql) : null;
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogWarning("使用字串拼接查詢（不建議）: Table={TableName}, Id={Id}", tableName, id);
                 }
@@ -459,20 +603,18 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
                 _validationService?.ValidateFieldName(query.Key);
 
-                if (_conn.State != ConnectionState.Open) _conn.Open();
-
                 // 優先使用參數化查詢
                 var paramResult = _sqlProvider.GetParameterizedSqlByKeyValue(tableName, query.Key, query.Value, giveOperator);
                 if (paramResult != null)
                 {
-                    var temp = _conn.Query(paramResult.Sql, paramResult.Parameters);
+                    var temp = DbQuery(paramResult.Sql, paramResult.Parameters);
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogDebug("使用參數化查詢取得記錄: Table={TableName}, Key={Key}, Value={Value}", 
                         tableName, query.Key, query.Value);
@@ -481,7 +623,7 @@ namespace DbServices.Core
                 {
                     // 降級使用字串拼接（不建議）
                     string? sql = _sqlProvider.GetSqlByKeyValue(tableName, query.Key, query.Value, giveOperator);
-                    var temp = sql != null ? _conn.Query(sql) : null;
+                    var temp = sql != null ? DbQuery(sql) : null;
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogWarning("使用字串拼接查詢（不建議）: Table={TableName}, Key={Key}", tableName, query.Key);
                 }
@@ -509,15 +651,14 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || tableName == null) return tableResult;
+            if (!HasConnection || _sqlProvider == null || tableName == null) return tableResult;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
 
                 string? sql = _sqlProvider.GetSqlByKeyValues(tableName, query);
-                var temp = sql != null ? _conn.Query(sql) : null;
+                var temp = sql != null ? DbQuery(sql) : null;
                 tableResult = MapToTableBaseModel(temp, tableName);
             }
             catch (SqlException ex)
@@ -544,15 +685,14 @@ namespace DbServices.Core
         {
             if (string.IsNullOrEmpty(tableName)) return null;
             TableBaseModel? tableResult = null;
-            if (_conn != null)
+            if (HasConnection)
             {
                 try
                 {
-                    if (_conn.State != ConnectionState.Open) _conn.Open();
                     if (_sqlProvider != null)
                     {
                         string? sql = _sqlProvider.GetSqlForAll(tableName);
-                        var temp = sql != null ? _conn.Query(sql) : null;
+                        var temp = sql != null ? DbQuery(sql) : null;
                         tableResult = MapToTableBaseModel(temp, tableName);
                     }
                 }
@@ -579,14 +719,13 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForAll(tableName, whereStr);
-                var temp = sql != null ? _conn.Query(sql) : null;
+                var temp = sql != null ? DbQuery(sql) : null;
                 tableResult = MapToTableBaseModel(temp, tableName);
 
             }
@@ -615,14 +754,13 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForFields(tableName, fields, whereStr);
-                var temp = sql != null ? _conn.Query(sql) : null;
+                var temp = sql != null ? DbQuery(sql) : null;
                 tableResult = MapToTableBaseModel(temp, tableName);
 
             }
@@ -674,14 +812,14 @@ namespace DbServices.Core
         #region 操作類
         public int ExecuteStoredProcedure(string spName, IEnumerable<KeyValuePair<string, object?>> parameters)
         {
-            if (_conn == null) return 0;
-            return _conn.Execute(spName, SetupParameter(parameters), commandType: CommandType.StoredProcedure);
+            if (!HasConnection) return 0;
+            return DbExecute(spName, SetupParameter(parameters), commandType: CommandType.StoredProcedure);
 
         }
         public int ExecuteSQL(string sql)
         {
-            if (_conn == null) return 0;
-            return _conn.Execute(sql);
+            if (!HasConnection) return 0;
+            return DbExecute(sql);
         }
         /// <summary>
         /// 插入新記錄
@@ -694,10 +832,9 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 // 優先使用參數化查詢
                 var paramResult = _sqlProvider.GetParameterizedSqlForInsert(tableName, source);
@@ -705,20 +842,20 @@ namespace DbServices.Core
                 
                 if (paramResult != null)
                 {
-                    resultId = _conn.Execute(paramResult.Sql, paramResult.Parameters);
+                    resultId = DbExecute(paramResult.Sql, paramResult.Parameters);
                     _logger?.LogDebug("使用參數化查詢插入記錄: Table={TableName}, AffectedRows={Rows}", tableName, resultId);
                 }
                 else
                 {
                     // 降級使用字串拼接（不建議）
                     string? sql = _sqlProvider.GetSqlForInsert(tableName, source);
-                    resultId = sql != null ? _conn.Execute(sql) : 0;
+                    resultId = sql != null ? DbExecute(sql) : 0;
                     _logger?.LogWarning("使用字串拼接插入（不建議）: Table={TableName}", tableName);
                 }
                 if (resultId != 0)
                 {
                     string? sql2 = _sqlProvider.GetSqlLastInsertId(tableName);
-                    var temp = string.IsNullOrEmpty(sql2) ? null : _conn.Query(sql2);
+                    var temp = string.IsNullOrEmpty(sql2) ? null : DbQuery(sql2);
 
                     if (temp != null && temp.Any())
                     {
@@ -759,13 +896,11 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 // 優先使用參數化查詢
                 var paramResult = _sqlProvider.GetParameterizedSqlForUpdate(tableName, id, source);
@@ -773,7 +908,7 @@ namespace DbServices.Core
                 
                 if (paramResult != null)
                 {
-                    effectRow = _conn.Execute(paramResult.Sql, paramResult.Parameters);
+                    effectRow = DbExecute(paramResult.Sql, paramResult.Parameters);
                     _logger?.LogDebug("使用參數化查詢更新記錄: Table={TableName}, Id={Id}, AffectedRows={Rows}", 
                         tableName, id, effectRow);
                 }
@@ -781,7 +916,7 @@ namespace DbServices.Core
                 {
                     // 降級使用字串拼接（不建議）
                     string? sql = _sqlProvider.GetSqlForUpdate(tableName, id, source);
-                    effectRow = sql != null ? _conn.Execute(sql) : 0;
+                    effectRow = sql != null ? DbExecute(sql) : 0;
                     _logger?.LogWarning("使用字串拼接更新（不建議）: Table={TableName}, Id={Id}", tableName, id);
                 }
                 
@@ -819,14 +954,13 @@ namespace DbServices.Core
 
             tableName ??= _currentTableName;
 
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return false;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return false;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForUpdateByKey(tableName, query, source);
-                int effectRow = sql != null ? _conn.Execute(sql) : 0;
+                int effectRow = sql != null ? DbExecute(sql) : 0;
                 if (effectRow > 0)
                 {
                     return true;
@@ -847,14 +981,13 @@ namespace DbServices.Core
         public virtual bool DeleteRecordById(long id, string? tableName = null)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName) || id == 0) return false;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName) || id == 0) return false;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForDelete(tableName, id);
-                int effectRow = sql != null ? _conn.Execute(sql) : 0;
+                int effectRow = sql != null ? DbExecute(sql) : 0;
                 return effectRow > 0;
 
             }
@@ -873,14 +1006,13 @@ namespace DbServices.Core
         public virtual bool DeleteRecordByKeyValue(KeyValuePair<string, object?> criteria, string? tableName = null)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return false;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return false;
 
             try
             {
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 string? sql = _sqlProvider.GetSqlForDeleteByKey(tableName, criteria);
-                int effectRow = sql != null ? _conn.Execute(sql) : 0;
+                int effectRow = sql != null ? DbExecute(sql) : 0;
                 return effectRow > 0;
             }
             catch (SqlException ex)
@@ -904,19 +1036,16 @@ namespace DbServices.Core
         public async Task<bool> HasTableAsync(string tableName, CancellationToken cancellationToken = default)
         {
             bool result = false;
-            if (_conn == null || _sqlProvider == null) return result;
+            if (!HasConnection || _sqlProvider == null) return result;
             
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
                     
                 string? sql = _sqlProvider.GetSqlForCheckTableExist(tableName);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    var queryResult = await _conn.QueryAsync(sql);
+                    var queryResult = await DbQueryAsync(sql);
                     result = queryResult.Any();
                     _logger?.LogDebug("非同步檢查資料表存在性: {TableName} = {Exists}", tableName, result);
                 }
@@ -931,7 +1060,7 @@ namespace DbServices.Core
 
         public async Task<string[]?> GetAllTableNamesAsync(bool includeView = true, CancellationToken cancellationToken = default)
         {
-            if (_conn == null || _sqlProvider == null) return null;
+            if (!HasConnection || _sqlProvider == null) return null;
 
             try
             {
@@ -956,13 +1085,11 @@ namespace DbServices.Core
 
         private async Task<string[]?> GetAllTableNamesInternalAsync(bool includeView, CancellationToken cancellationToken)
         {
-            if (_conn!.State != ConnectionState.Open) 
-                await _conn.OpenAsync(cancellationToken);
 
             string? sql = _sqlProvider!.GetSqlTableNameList(includeView);
             if (!string.IsNullOrEmpty(sql))
             {
-                var temp = await _conn.QueryAsync(sql);
+                var temp = await DbQueryAsync(sql);
                 var result = temp.Select(x => ((dynamic)x).TABLE_NAME?.ToString())
                                  .Where(name => !string.IsNullOrEmpty(name))
                                  .OfType<string>()
@@ -975,22 +1102,19 @@ namespace DbServices.Core
 
         public async Task<IEnumerable<FieldBaseModel>?> GetFieldsByTableNameAsync(string tableName, CancellationToken cancellationToken = default)
         {
-            if (_conn == null || _sqlProvider == null) return null;
+            if (!HasConnection || _sqlProvider == null) return null;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
-
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
 
                 string? sql = _sqlProvider.GetSqlFieldsByTableName(tableName);
                 string? sqlForeign = _sqlProvider.GetSqlForeignInfoByTableName(tableName);
 
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    var temp = await _conn.QueryAsync(sql);
-                    var tempForeign = !string.IsNullOrEmpty(sqlForeign) ? await _conn.QueryAsync(sqlForeign) : null;
+                    var temp = await DbQueryAsync(sql);
+                    var tempForeign = !string.IsNullOrEmpty(sqlForeign) ? await DbQueryAsync(sqlForeign) : null;
                     var result = _sqlProvider.MapToFieldBaseModel(temp, tempForeign ?? Enumerable.Empty<dynamic>());
                     _logger?.LogDebug("非同步取得資料表 {TableName} 的 {Count} 個欄位", tableName, result.Count());
                     return result;
@@ -1008,19 +1132,16 @@ namespace DbServices.Core
         {
             bool result = false;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return result;
             
             try
             {
                 _validationService?.ValidateTableName(tableName);
-
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
                     
                 string? sql = _sqlProvider.GetSqlForCheckRows(tableName);
                 if (sql != null)
                 {
-                    var queryResult = await _conn.QueryAsync(sql);
+                    var queryResult = await DbQueryAsync(sql);
                     result = queryResult.Any();
                     _logger?.LogDebug("非同步檢查資料表 {TableName} 是否有記錄: {HasRecord}", tableName, result);
                 }
@@ -1037,19 +1158,16 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || tableName == null) return tableResult;
+            if (!HasConnection || _sqlProvider == null || tableName == null) return tableResult;
             
             try
             {
                 _validationService?.ValidateTableName(tableName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = _sqlProvider.GetSqlById(tableName, id);
                 if (sql != null)
                 {
-                    var temp = await _conn.QueryAsync(sql);
+                    var temp = await DbQueryAsync(sql);
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogDebug("非同步取得資料表 {TableName} ID {Id} 的記錄", tableName, id);
                 }
@@ -1066,20 +1184,17 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
                 _validationService?.ValidateFieldName(query.Key);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = query.Value != null ? _sqlProvider.GetSqlByKeyValue(tableName, query.Key, query.Value, giveOperator) : null;
                 if (sql != null)
                 {
-                    var temp = await _conn.QueryAsync(sql);
+                    var temp = await DbQueryAsync(sql);
                     tableResult = MapToTableBaseModel(temp, tableName);
                     _logger?.LogDebug("非同步依據條件取得資料表 {TableName} 記錄: {Key}={Value}", tableName, query.Key, query.Value);
                 }
@@ -1097,25 +1212,22 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = _sqlProvider.GetSqlForInsert(tableName, source);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    int effectRow = await _conn.ExecuteAsync(sql);
+                    int effectRow = await DbExecuteAsync(sql);
                     if (effectRow > 0)
                     {
                         string? lastIdSql = _sqlProvider.GetSqlLastInsertId(tableName);
                         if (!string.IsNullOrEmpty(lastIdSql))
                         {
-                            var t1 = await _conn.QueryAsync(lastIdSql);
+                            var t1 = await DbQueryAsync(lastIdSql);
                             if (t1.Any())
                             {
                                 var t2 = t1.First();
@@ -1140,19 +1252,16 @@ namespace DbServices.Core
         {
             TableBaseModel? tableResult = null;
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return tableResult;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = _sqlProvider.GetSqlForUpdate(tableName, id, source);
                 if (sql != null)
                 {
-                    int effectRow = await _conn.ExecuteAsync(sql);
+                    int effectRow = await DbExecuteAsync(sql);
                     if (effectRow > 0)
                     {
                         tableResult = await GetRecordByIdAsync(id, tableName, cancellationToken);
@@ -1172,19 +1281,16 @@ namespace DbServices.Core
         public async Task<bool> DeleteRecordByIdAsync(long id, string? tableName = null, CancellationToken cancellationToken = default)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName) || id == 0) return false;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName) || id == 0) return false;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = _sqlProvider.GetSqlForDelete(tableName, id);
                 if (sql != null)
                 {
-                    int effectRow = await _conn.ExecuteAsync(sql);
+                    int effectRow = await DbExecuteAsync(sql);
                     bool result = effectRow > 0;
                     _logger?.LogInformation("非同步刪除資料表 {TableName} ID {Id} 的記錄: {Success}", tableName, id, result);
                     return result;
@@ -1202,20 +1308,17 @@ namespace DbServices.Core
         public async Task<IEnumerable<object>?> GetValueSetByFieldNameAsync(string fieldName, string? tableName = null, CancellationToken cancellationToken = default)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return null;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return null;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
                 _validationService?.ValidateFieldName(fieldName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 string? sql = _sqlProvider.GetSqlForValueSet(tableName, fieldName);
                 if (!string.IsNullOrEmpty(sql))
                 {
-                    var temp = await _conn.QueryAsync(sql);
+                    var temp = await DbQueryAsync(sql);
                     var result = temp.Select(x => (object)x.GetType().GetProperty(fieldName)?.GetValue(x, null)!).Distinct();
                     _logger?.LogDebug("非同步取得資料表 {TableName} 欄位 {FieldName} 的 {Count} 個不重複值", tableName, fieldName, result.Count());
                     return result;
@@ -1232,7 +1335,7 @@ namespace DbServices.Core
         public async Task<int> BulkInsertAsync(IEnumerable<IEnumerable<KeyValuePair<string, object?>>> records, string? tableName = null, CancellationToken cancellationToken = default)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return 0;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return 0;
 
             int totalInserted = 0;
             
@@ -1240,33 +1343,40 @@ namespace DbServices.Core
             {
                 _validationService?.ValidateTableName(tableName);
 
-                if (_conn.State != ConnectionState.Open) 
-                    await _conn.OpenAsync(cancellationToken);
-
                 var recordList = records.ToList();
-
-                // 使用交易確保資料一致性
-                using var transaction = _conn.BeginTransaction();
-                try
+                totalInserted = await WithConnectionAsync(async (conn, ambientTx) =>
                 {
-                    foreach (var record in recordList)
+                    var tx = ambientTx ?? conn.BeginTransaction();
+                    var ownsTx = ambientTx == null;
+                    try
                     {
-                        string? sql = _sqlProvider.GetSqlForInsert(tableName, record);
-                        if (!string.IsNullOrEmpty(sql))
+                        var inserted = 0;
+                        foreach (var record in recordList)
                         {
-                            int effectRow = await _conn.ExecuteAsync(sql, transaction: transaction);
-                            totalInserted += effectRow;
+                            string? sql = _sqlProvider.GetSqlForInsert(tableName, record);
+                            if (!string.IsNullOrEmpty(sql))
+                            {
+                                inserted += await conn.ExecuteAsync(new CommandDefinition(
+                                    sql, transaction: tx, cancellationToken: cancellationToken));
+                            }
                         }
+                        if (ownsTx)
+                            tx.Commit();
+                        return inserted;
                     }
-                    
-                    transaction.Commit();
-                    _logger?.LogInformation("批次新增 {Count} 筆記錄到資料表 {TableName}", totalInserted, tableName);
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                    catch
+                    {
+                        if (ownsTx)
+                            tx.Rollback();
+                        throw;
+                    }
+                    finally
+                    {
+                        if (ownsTx)
+                            tx.Dispose();
+                    }
+                }, cancellationToken);
+                _logger?.LogInformation("批次新增 {Count} 筆記錄到資料表 {TableName}", totalInserted, tableName);
             }
             catch (Exception ex)
             {
@@ -1293,7 +1403,7 @@ namespace DbServices.Core
             {
                 if (disposing)
                 {
-                    _conn?.Dispose();
+                    ReleaseHeldConnection();
                     _logger?.LogDebug("資料庫連線已釋放");
                 }
                 _disposed = true;
@@ -1328,7 +1438,7 @@ namespace DbServices.Core
             List<RecordBaseModel> result = [.. _sqlProvider.MapToRecordBaseModel(target)];
             tableResult.Records = result;
             tableResult.TableName = tableName;
-            tableResult.ConnectionString = _conn?.ConnectionString;
+            tableResult.ConnectionString = _options.ConnectionString;
             tableResult.Fields = GetFieldsByTableName(tableName);
 
             return tableResult;
@@ -1352,13 +1462,11 @@ namespace DbServices.Core
             string? tableName = null)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return null;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return null;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 // 建立基礎 SQL
                 var fields = options?.SelectFields != null && options.SelectFields.Any()
@@ -1387,24 +1495,12 @@ namespace DbServices.Core
                     sqlBuilder.Append($" ORDER BY {options.OrderBy} {direction}");
                 }
 
-                // 加入分頁（LIMIT/OFFSET）
-                // 注意：不同資料庫的分頁語法不同，這裡使用通用方式
-                if (options?.Take.HasValue == true)
-                {
-                    sqlBuilder.Append($" LIMIT {options.Take.Value}");
-                }
-                if (options?.Skip.HasValue == true)
-                {
-                    sqlBuilder.Append($" OFFSET {options.Skip.Value}");
-                }
-
-                sqlBuilder.Append(';');
-                var sql = sqlBuilder.ToString();
+                var sql = _sqlProvider.ApplyPaging(sqlBuilder.ToString(), options?.Skip, options?.Take);
 
                 // 執行查詢
                 var temp = parameters != null 
-                    ? _conn.Query(sql, parameters)
-                    : _conn.Query(sql);
+                    ? DbQuery(sql, parameters)
+                    : DbQuery(sql);
                 
                 var result = MapToTableBaseModel(temp, tableName);
                 _logger?.LogDebug("進階查詢完成: Table={TableName}, RecordCount={Count}", 
@@ -1428,13 +1524,11 @@ namespace DbServices.Core
         public virtual long GetRecordCount(IEnumerable<KeyValuePair<string, object?>>? query = null, string? tableName = null)
         {
             tableName ??= _currentTableName;
-            if (_conn == null || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return 0;
+            if (!HasConnection || _sqlProvider == null || string.IsNullOrEmpty(tableName)) return 0;
 
             try
             {
                 _validationService?.ValidateTableName(tableName);
-                
-                if (_conn.State != ConnectionState.Open) _conn.Open();
 
                 var sqlBuilder = new StringBuilder($"SELECT COUNT(*) as Count FROM {tableName}");
 
@@ -1456,8 +1550,8 @@ namespace DbServices.Core
 
                 // 執行查詢
                 var result = parameters != null
-                    ? _conn.QueryFirstOrDefault<dynamic>(sql, parameters)
-                    : _conn.QueryFirstOrDefault<dynamic>(sql);
+                    ? DbQueryFirstOrDefault<dynamic>(sql, parameters)
+                    : DbQueryFirstOrDefault<dynamic>(sql);
 
                 if (result != null)
                 {

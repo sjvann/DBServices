@@ -96,5 +96,9 @@ namespace DbServices.Core.Models.Interface
         /// <param name="cancellationToken">取消權杖</param>
         /// <returns></returns>
         Task<int> BulkInsertAsync(IEnumerable<IEnumerable<KeyValuePair<string, object?>>> records, string? tableName = null, CancellationToken cancellationToken = default);
+
+        Task<int> ExecuteSqlAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default);
+
+        Task<DbServices.Core.Session.QueryResult> QuerySqlAsync(string sql, object? parameters = null, CancellationToken cancellationToken = default);
     }
 }

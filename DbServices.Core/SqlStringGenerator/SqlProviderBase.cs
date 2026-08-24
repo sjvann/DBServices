@@ -77,6 +77,19 @@ namespace DbServices.Core.SqlStringGenerator
             
             return new ParameterizedSqlResult(sql, parameters);
         }
+        /// <summary>
+        /// 為查詢加上分頁。預設 LIMIT/OFFSET；SQL Server／Oracle 請覆寫。
+        /// </summary>
+        public virtual string ApplyPaging(string sqlWithoutTerminator, int? skip, int? take)
+        {
+            var sql = sqlWithoutTerminator.Trim().TrimEnd(';');
+            if (take.HasValue)
+                sql += $" LIMIT {take.Value}";
+            if (skip.HasValue)
+                sql += $" OFFSET {skip.Value}";
+            return sql + ";";
+        }
+
         public string? GetSqlForAll(string tableName, string? whereStr = null)
         {
             if (tableName == null) return null;

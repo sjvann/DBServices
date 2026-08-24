@@ -1,5 +1,4 @@
-﻿
-using DbServices.Core;
+﻿using DbServices.Core;
 using DbServices.Core.Configuration;
 using DbServices.Core.Services;
 using DbServices.Provider.MySql.SqlStringGenerator;
@@ -12,21 +11,20 @@ namespace DbServices.Provider.MySql
     {
         public ProviderService(string connectionString) : base(connectionString)
         {
-            _conn = new MySqlConnection(connectionString);
+            _connectionFactory = () => new MySqlConnection(connectionString);
             _sqlProvider = new SqlProviderForMySql();
             _tableNameList = GetAllTableNames();
         }
 
-        public ProviderService(DbServiceOptions options, ILogger<DataBaseService>? logger = null, 
+        public ProviderService(DbServiceOptions options, ILogger<DataBaseService>? logger = null,
             IValidationService? validationService = null, IRetryPolicyService? retryPolicyService = null,
-            ITableStructureCacheService? cacheService = null) 
+            ITableStructureCacheService? cacheService = null)
             : base(options, logger, validationService, retryPolicyService, cacheService)
         {
-            // 套用連線池設定到連線字串
             var connectionString = DbServices.Core.Helpers.ConnectionStringHelper
                 .ApplyConnectionPoolSettings(options.ConnectionString, options);
-            
-            _conn = new MySqlConnection(connectionString);
+
+            _connectionFactory = () => new MySqlConnection(connectionString);
             _sqlProvider = new SqlProviderForMySql();
             _tableNameList = GetAllTableNames();
         }

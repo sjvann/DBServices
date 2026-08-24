@@ -40,10 +40,11 @@ namespace DbServices.Core.Services
             {
                 if (_dbService is DataBaseService baseService)
                 {
-                    var connection = baseService.GetConnection();
+                    var connection = baseService.AcquireHeldConnection();
                     if (connection != null && connection.State == ConnectionState.Open)
                     {
                         _transaction = connection.BeginTransaction();
+                        baseService.SetCurrentTransaction(_transaction);
                         _logger?.LogInformation("事務已開始");
                         return true;
                     }
@@ -83,6 +84,7 @@ namespace DbServices.Core.Services
                 _logger?.LogInformation("事務已提交");
                 _transaction?.Dispose();
                 _transaction = null;
+                ReleaseServiceConnection();
                 return true;
             }
             catch (Exception ex)
@@ -101,6 +103,7 @@ namespace DbServices.Core.Services
                 {
                     _transaction?.Dispose();
                     _transaction = null;
+                    ReleaseServiceConnection();
                 }
                 return false;
             }
@@ -123,6 +126,7 @@ namespace DbServices.Core.Services
                 _logger?.LogInformation("事務已回滾");
                 _transaction?.Dispose();
                 _transaction = null;
+                ReleaseServiceConnection();
                 return true;
             }
             catch (Exception ex)
@@ -130,8 +134,15 @@ namespace DbServices.Core.Services
                 _logger?.LogError(ex, "回滾事務時發生錯誤");
                 _transaction?.Dispose();
                 _transaction = null;
+                ReleaseServiceConnection();
                 return false;
             }
+        }
+
+        private void ReleaseServiceConnection()
+        {
+            if (_dbService is DataBaseService baseService)
+                baseService.ReleaseHeldConnection();
         }
 
         /// <summary>
@@ -269,6 +280,8 @@ namespace DbServices.Core.Services
                         }
                     }
                     _transaction?.Dispose();
+                    _transaction = null;
+                    ReleaseServiceConnection();
                 }
                 _disposed = true;
             }

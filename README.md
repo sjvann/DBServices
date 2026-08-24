@@ -30,8 +30,11 @@ DBServices/
 │   ├── Oracle/                  # Oracle 提供者
 │   └── PostgreSQL/              # PostgreSQL 提供者
 ├── WebService/                  # Web API 服務
+├── DbServices.Cli/              # dbsql（SQL 與函數 CLI）
 └── DBServiceTest/               # 單元測試
 ```
+
+底層契約見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：所有客戶端走 `IQuerySession`（Query／Call／Utility），連線每次從 pool 取出、用完歸還。
 
 ## 🚀 主要功能
 
@@ -82,6 +85,28 @@ git clone https://github.com/sjvann/DBServices.git
 cd DBServices
 dotnet build
 ```
+
+## 💻 dbsql CLI
+
+```bash
+dotnet run --project DbServices.Cli -- -p sqlite -c "Data Source=test.db"
+dbsql> SELECT * FROM Users LIMIT 10;
+dbsql> \dt
+dbsql> \d Users
+dbsql> \call get Users 1
+dbsql> \fn query --table Users --Name John
+dbsql> \q
+
+# 單次
+dotnet run --project DbServices.Cli -- -p sqlite -c "Data Source=test.db" -q "SELECT * FROM Users"
+dotnet run --project DbServices.Cli -- -p sqlite -c "Data Source=test.db" --fn get --arg table=Users --arg id=1 --format json
+```
+
+`\` 指令只在客戶端展開，不進 Session grammar。輸出可用 `--format table|json|csv`。
+
+## 🔌 作為 EZIE 元件
+
+AI_EZIE 元件庫增強包：`ezie.dbservices.catalog`／`query`／`crud`。說明見 [AI_EZIE docs/ezie/dbservices-pack.md](https://github.com/sjvann/AI_EZIE/blob/main/docs/ezie/dbservices-pack.md)。連線只填 EZIE 連線目錄的 `connectionId`，不要在 Config 放明文連線字串。
 
 ## 🔧 快速開始
 

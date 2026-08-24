@@ -9,17 +9,29 @@ namespace DbServices.Provider.Oracle.SqlStringGenerator
     {
         public SqlProviderForOracle() { }
 
+        public override string ApplyPaging(string sqlWithoutTerminator, int? skip, int? take)
+        {
+            var sql = sqlWithoutTerminator.Trim().TrimEnd(';');
+            if (!skip.HasValue && !take.HasValue)
+                return sql + ";";
+            if (!sql.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase))
+                sql += " ORDER BY 1";
+            sql += $" OFFSET {skip ?? 0} ROWS";
+            if (take.HasValue)
+                sql += $" FETCH NEXT {take.Value} ROWS ONLY";
+            return sql + ";";
+        }
 
         public override string? GetSqlForCheckTableExist(string tableName)
         {
             if (tableName == null) return null;
-            return $"SELECT name FROM sqlite_master WHERE type='table' AND name='{tableName}' ;";
-
+            return $"SELECT table_name FROM user_tables WHERE table_name = UPPER('{tableName}')";
         }
         public override string GetSqlTableNameList(bool includeView = true)
         {
-            string whereStr = includeView ? $"type in ('table', 'view')" : $"type = 'table'";
-            return $"SELECT name FROM pragma_table_list WHERE {whereStr} AND name NOT LIKE 'sqlite_%'";
+            return includeView
+                ? "SELECT table_name AS name FROM user_tables UNION ALL SELECT view_name AS name FROM user_views"
+                : "SELECT table_name AS name FROM user_tables";
         }
 
 
@@ -30,7 +42,7 @@ namespace DbServices.Provider.Oracle.SqlStringGenerator
 
         public override string? GetSqlForTruncate(string tableName)
         {
-            return $"DELETE FROM {tableName}; VACUUM;";
+            return $"TRUNCATE TABLE {tableName}";
         }
 
 
@@ -39,12 +51,27 @@ namespace DbServices.Provider.Oracle.SqlStringGenerator
 
         public override string GetSqlFieldsByTableName(string tableName)
         {
-            return $"SELECT * FROM pragma_table_info('{tableName}')";
+            return $@"SELECT c.column_name AS name, c.data_type AS type,
+                CASE WHEN c.nullable = 'N' THEN 1 ELSE 0 END AS notnull,
+                CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END AS pk
+                FROM user_tab_columns c
+                LEFT JOIN (
+                    SELECT cc.column_name
+                    FROM user_constraints uc
+                    JOIN user_cons_columns cc ON uc.constraint_name = cc.constraint_name
+                    WHERE uc.constraint_type = 'P' AND uc.table_name = UPPER('{tableName}')
+                ) pk ON c.column_name = pk.column_name
+                WHERE c.table_name = UPPER('{tableName}')
+                ORDER BY c.column_id";
         }
 
         public override string GetSqlForeignInfoByTableName(string tableName)
         {
-            return $"SELECT * FROM pragma_Foreign_key_list('{tableName}')";
+            return $@"SELECT cc.column_name AS ""from"", rc.table_name AS ""table"", rc.column_name AS ""to""
+                FROM user_constraints uc
+                JOIN user_cons_columns cc ON uc.constraint_name = cc.constraint_name
+                JOIN user_cons_columns rc ON uc.r_constraint_name = rc.constraint_name
+                WHERE uc.constraint_type = 'R' AND uc.table_name = UPPER('{tableName}')";
         }
         #region Mapping to BaseModel
         public override IEnumerable<FieldBaseModel> MapToFieldBaseModel(IEnumerable<dynamic> target, IEnumerable<dynamic> foreignness)

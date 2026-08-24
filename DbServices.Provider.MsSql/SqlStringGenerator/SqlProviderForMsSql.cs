@@ -9,6 +9,19 @@ namespace DbServices.Provider.MsSql.SqlStringGenerator
     {
         public SqlProviderForMsSql() { }
 
+        public override string ApplyPaging(string sqlWithoutTerminator, int? skip, int? take)
+        {
+            var sql = sqlWithoutTerminator.Trim().TrimEnd(';');
+            if (!skip.HasValue && !take.HasValue)
+                return sql + ";";
+            if (!sql.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase))
+                sql += " ORDER BY (SELECT NULL)";
+            sql += $" OFFSET {skip ?? 0} ROWS";
+            if (take.HasValue)
+                sql += $" FETCH NEXT {take.Value} ROWS ONLY";
+            return sql + ";";
+        }
+
         public override string? ConvertDataTypeToDb(string? dataType) => dataType switch
         {
             "Boolean" => "bit",

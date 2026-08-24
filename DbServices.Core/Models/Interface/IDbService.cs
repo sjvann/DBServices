@@ -103,6 +103,15 @@ namespace DbServices.Core.Models.Interface
         /// <param name="sql">SQL指令</param>
         /// <returns></returns>
         int ExecuteSQL(string sql);
+        /// <summary>
+        /// 執行參數化 SQL（非查詢）。
+        /// </summary>
+        int ExecuteSql(string sql, object? parameters = null);
+        /// <summary>
+        /// 執行參數化查詢並回傳列。
+        /// </summary>
+        DbServices.Core.Session.QueryResult QuerySql(string sql, object? parameters = null);
+        DbServices.Core.Session.IQuerySession GetSession();
         bool HasTable(string tableName);
         void SetCurrentTableName(string tableName);
         void SetCurrentTable<T>() where T : TableDefBaseModel;

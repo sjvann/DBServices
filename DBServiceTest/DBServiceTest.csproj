@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DbServices.Provider.Sqlite\DbServices.Provider.Sqlite.csproj" />
     <ProjectReference Include="..\DBService\DBServices.csproj" />
+    <ProjectReference Include="..\DbServices.Cli\DbServices.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>
