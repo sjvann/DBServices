@@ -72,38 +72,38 @@ chmod +x publish-nuget.sh
 3. **發布個別套件**
    ```bash
    # 核心套件
-   dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # SQLite 提供者
-   dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # SQL Server 提供者
-   dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # MySQL 提供者
-   dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # Oracle 提供者
-   dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # PostgreSQL 提供者
-   dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
    # 主套件
-   dotnet nuget push "DBService\bin\Release\DbServices.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+   dotnet nuget push "DBService\bin\Release\DBService.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
    ```
 
 ## 📦 已生成的套件
 
 | 套件名稱 | 檔案位置 | 大小 |
 |----------|----------|------|
-| `DbServices` | `DBService\bin\Release\DbServices.2.0.0.nupkg` | ~15 KB |
-| `DbServices.Core` | `DbServices.Core\bin\Release\DbServices.Core.2.0.0.nupkg` | ~45 KB |
-| `DbServices.Provider.Sqlite` | `DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.2.0.0.nupkg` | ~8.5 KB |
-| `DbServices.Provider.SqlServer` | `DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.2.0.0.nupkg` | ~7.5 KB |
-| `DbServices.Provider.MySQL` | `DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.2.0.0.nupkg` | ~8.4 KB |
-| `DbServices.Provider.Oracle` | `DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg` | ~8.4 KB |
-| `DbServices.Provider.PostgreSQL` | `DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg` | ~8.5 KB |
+| `DBService` | `DBService\bin\Release\DBService.5.0.0.nupkg` | ~15 KB |
+| `DbServices.Core` | `DbServices.Core\bin\Release\DbServices.Core.5.0.0.nupkg` | ~45 KB |
+| `DbServices.Provider.Sqlite` | `DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.5.0.0.nupkg` | ~8.5 KB |
+| `DbServices.Provider.SqlServer` | `DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.5.0.0.nupkg` | ~7.5 KB |
+| `DbServices.Provider.MySQL` | `DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.5.0.0.nupkg` | ~8.4 KB |
+| `DbServices.Provider.Oracle` | `DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.5.0.0.nupkg` | ~8.4 KB |
+| `DbServices.Provider.PostgreSQL` | `DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.5.0.0.nupkg` | ~8.5 KB |
 
 ## ✅ 發布後驗證
 
@@ -120,7 +120,7 @@ cd test-dbservices
 dotnet new console
 
 # 安裝套件
-dotnet add package DbServices
+dotnet add package DBService
 
 # 測試程式碼
 # 在 Program.cs 中新增測試代碼

@@ -102,21 +102,21 @@ find . -name "*.nupkg" -type f
 
 ```bash
 # 1. 發布核心套件（必須最先發布）
-dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 # 2. 發布資料庫提供者（可以並行發布）
-dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
-dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
-dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
-dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
-dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 # 3. 最後發布主套件（依賴所有其他套件）
-dotnet nuget push "DBService\bin\Release\DbServices.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DBService\bin\Release\DBService.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 ```
 
 **注意**: 
@@ -127,13 +127,13 @@ dotnet nuget push "DBService\bin\Release\DbServices.2.0.0.nupkg" --api-key %NUGE
 
 | 套件名稱 | 檔案位置 | 說明 |
 |----------|----------|------|
-| `DbServices.Core` | `DbServices.Core\bin\Release\DbServices.Core.2.0.0.nupkg` | 核心庫（必須最先發布） |
-| `DbServices.Provider.Sqlite` | `DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.2.0.0.nupkg` | SQLite 提供者 |
-| `DbServices.Provider.SqlServer` | `DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.2.0.0.nupkg` | SQL Server 提供者 |
-| `DbServices.Provider.MySQL` | `DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.2.0.0.nupkg` | MySQL 提供者 |
-| `DbServices.Provider.Oracle` | `DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg` | Oracle 提供者 |
-| `DbServices.Provider.PostgreSQL` | `DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg` | PostgreSQL 提供者 |
-| `DbServices` | `DBService\bin\Release\DbServices.2.0.0.nupkg` | 主套件（包含所有提供者） |
+| `DbServices.Core` | `DbServices.Core\bin\Release\DbServices.Core.5.0.0.nupkg` | 核心庫（必須最先發布） |
+| `DbServices.Provider.Sqlite` | `DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.5.0.0.nupkg` | SQLite 提供者 |
+| `DbServices.Provider.SqlServer` | `DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.5.0.0.nupkg` | SQL Server 提供者 |
+| `DbServices.Provider.MySQL` | `DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.5.0.0.nupkg` | MySQL 提供者 |
+| `DbServices.Provider.Oracle` | `DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.5.0.0.nupkg` | Oracle 提供者 |
+| `DbServices.Provider.PostgreSQL` | `DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.5.0.0.nupkg` | PostgreSQL 提供者 |
+| `DBService` | `DBService\bin\Release\DBService.5.0.0.nupkg` | 主套件（包含所有提供者） |
 
 ## ✅ 發布後驗證
 
@@ -151,11 +151,11 @@ cd test-dbservices
 dotnet new console
 
 # 安裝主套件
-dotnet add package DbServices --version 2.0.0
+dotnet add package DBService --version 5.0.0
 
 # 或安裝個別套件
-dotnet add package DbServices.Core --version 2.0.0
-dotnet add package DbServices.Provider.PostgreSQL --version 2.0.0
+dotnet add package DbServices.Core --version 5.0.0
+dotnet add package DbServices.Provider.PostgreSQL --version 5.0.0
 
 # 測試程式碼
 # 在 Program.cs 中新增測試代碼
@@ -164,7 +164,7 @@ dotnet add package DbServices.Provider.PostgreSQL --version 2.0.0
 ### 3. 等待索引
 - NuGet.org 需要 **5-10 分鐘**來索引新套件
 - 套件可能在搜尋結果中延遲顯示
-- 可以透過直接 URL 訪問：`https://www.nuget.org/packages/DbServices/2.0.0`
+- 可以透過直接 URL 訪問：`https://www.nuget.org/packages/DBService/5.0.0`
 
 ## 🔄 更新版本
 
@@ -208,7 +208,7 @@ dotnet add package DbServices.Provider.PostgreSQL --version 2.0.0
 ### 發布順序
 1. **必須先發布** `DbServices.Core`（其他套件都依賴它）
 2. **然後發布** 所有提供者套件（可以並行）
-3. **最後發布** `DbServices` 主套件（依賴所有其他套件）
+3. **最後發布** `DBService` 主套件（依賴所有其他套件）
 
 ## 🐛 常見問題
 

@@ -12,7 +12,7 @@
     <Company>DBServices</Company>
     <Description>DbServices PostgreSQL 資料庫提供者 - 支援 PostgreSQL 18 的現代化 ORM 解決方案</Description>
 	<PackageTags>dapper;orm;postgresql;postgres;database;async;dotnet10</PackageTags>
-    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <PackageProjectUrl>https://sjvann.github.io/DBServices/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

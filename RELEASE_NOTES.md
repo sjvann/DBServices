@@ -1,4 +1,4 @@
-# DbServices v2.0.0 發布說明
+# DBService v5.0.0 發布說明
 
 ## 🚀 主要新功能
 
@@ -34,19 +34,19 @@
 
 | 套件名稱 | 版本 | 描述 |
 |----------|------|------|
-| `DbServices` | 2.0.0 | 主套件，包含所有功能 |
-| `DbServices.Core` | 2.0.0 | 核心庫和抽象介面 |
-| `DbServices.Provider.Sqlite` | 2.0.0 | SQLite 資料庫提供者 |
-| `DbServices.Provider.SqlServer` | 2.0.0 | SQL Server 資料庫提供者 |
-| `DbServices.Provider.MySQL` | 2.0.0 | MySQL 資料庫提供者 |
-| `DbServices.Provider.Oracle` | 2.0.0 | Oracle 資料庫提供者 |
-| `DbServices.Provider.PostgreSQL` | 2.0.0 | PostgreSQL 資料庫提供者 |
+| `DBService` | 5.0.0 | 主套件，包含所有功能（接續 NuGet `DBService` 4.0.0） |
+| `DbServices.Core` | 5.0.0 | 核心庫和抽象介面 |
+| `DbServices.Provider.Sqlite` | 5.0.0 | SQLite 資料庫提供者 |
+| `DbServices.Provider.SqlServer` | 5.0.0 | SQL Server 資料庫提供者 |
+| `DbServices.Provider.MySQL` | 5.0.0 | MySQL 資料庫提供者 |
+| `DbServices.Provider.Oracle` | 5.0.0 | Oracle 資料庫提供者 |
+| `DbServices.Provider.PostgreSQL` | 5.0.0 | PostgreSQL 資料庫提供者 |
 
 ## 💻 安裝方式
 
 ### 完整安裝
 ```bash
-dotnet add package DbServices
+dotnet add package DBService
 ```
 
 ### 按需安裝
@@ -72,7 +72,7 @@ dotnet add package DbServices.Provider.PostgreSQL
    <PackageReference Include="DBServices" Version="1.x.x" />
    
    <!-- 新版本 -->
-   <PackageReference Include="DbServices" Version="2.0.0" />
+   <PackageReference Include="DBService" Version="5.0.0" />
    ```
 
 2. **使用新的 API**
@@ -185,7 +185,7 @@ public class UserService
 ## 🔗 相關連結
 
 - [GitHub 倉庫](https://github.com/sjvann/DBServices)
-- [NuGet 套件](https://www.nuget.org/packages/DbServices)
+- [NuGet 套件](https://www.nuget.org/packages/DBService)
 - [問題回報](https://github.com/sjvann/DBServices/issues)
 - [討論區](https://github.com/sjvann/DBServices/discussions)
 
@@ -195,4 +195,4 @@ public class UserService
 
 ---
 
-**DbServices v2.0.0** - 讓資料庫存取更簡單、更現代化 🚀
+**DBService v5.0.0** - 讓資料庫存取更簡單、更現代化 🚀

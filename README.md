@@ -70,7 +70,7 @@ DBServices/
 ### NuGet 套件
 ```bash
 # 主套件 (包含所有提供者)
-dotnet add package DbServices
+dotnet add package DBService
 
 # 或個別安裝
 dotnet add package DbServices.Core
@@ -426,6 +426,9 @@ dotnet tool run docfx -- docs/docfx.json --serve
 
 ## 🔄 版本歷史
 
+- **v5.0.0** (2026-08) - 接續 NuGet `DBService` 4.0.0，專案網站改為 GitHub Pages
+  - ✅ 套件 ID 對齊 [DBService](https://www.nuget.org/packages/DBService/)
+  - ✅ 文件站：https://sjvann.github.io/DBServices/
 - **v2.0.0** (2025-01) - 完整功能版本
   - ✅ PostgreSQL 支援
   - ✅ 多資料庫管理服務

@@ -45,27 +45,27 @@ echo 正在發布到 NuGet.org...
 
 REM 發布核心套件
 echo 發布 DbServices.Core...
-dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Core\bin\Release\DbServices.Core.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 REM 發布資料庫提供者
 echo 發布 DbServices.Provider.Sqlite...
-dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Sqlite\bin\Release\DbServices.Provider.Sqlite.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 echo 發布 DbServices.Provider.SqlServer...
-dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MsSql\bin\Release\DbServices.Provider.SqlServer.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 echo 發布 DbServices.Provider.MySQL...
-dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MySql\bin\Release\DbServices.Provider.MySQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 echo 發布 DbServices.Provider.Oracle...
-dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Oracle\bin\Release\DbServices.Provider.Oracle.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 echo 發布 DbServices.Provider.PostgreSQL...
-dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.PostgreSQL\bin\Release\DbServices.Provider.PostgreSQL.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 REM 發布主套件
 echo 發布 DbServices...
-dotnet nuget push "DBService\bin\Release\DbServices.2.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DBService\bin\Release\DBService.5.0.0.nupkg" --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json
 
 echo.
 echo ==============================================

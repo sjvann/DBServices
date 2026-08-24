@@ -7,20 +7,20 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     
     <!-- NuGet Package Metadata -->
-    <PackageId>DbServices</PackageId>
+    <PackageId>DBService</PackageId>
     <Authors>sjvann</Authors>
     <Company>DBServices</Company>
     <Title>DBServices - 現代化多資料庫 ORM 工具包</Title>
     <Description>基於 Dapper 的現代化多資料庫 ORM 工具包，支援 SQLite、SQL Server、MySQL、Oracle、PostgreSQL，具備非同步操作、依賴注入、建構器模式、重試機制、事務管理、資料庫遷移等現代化功能。</Description>
 	    <PackageTags>database;orm;dapper;sqlite;sqlserver;mysql;oracle;postgresql;async;di;dotnet10;transaction;migration</PackageTags>
-    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <PackageProjectUrl>https://sjvann.github.io/DBServices/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <Copyright>Copyright © 2025 sjvann</Copyright>
-	    <PackageReleaseNotes>v2.0.0: .NET 10 升級，新增 PostgreSQL 支援、事務管理、資料庫遷移、多資料庫管理、JSON 類型支援、連線池自動管理、進階查詢服務、參數化查詢等完整功能</PackageReleaseNotes>
+	    <PackageReleaseNotes>v5.0.0: .NET 10 升級，新增 PostgreSQL 支援、事務管理、資料庫遷移、多資料庫管理、JSON 類型支援、連線池自動管理、進階查詢服務、參數化查詢等完整功能</PackageReleaseNotes>
     <SignAssembly>False</SignAssembly>
   </PropertyGroup>
 

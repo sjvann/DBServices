@@ -10,7 +10,7 @@
 主套件會帶入 Core 與全部提供者：
 
 ```bash
-dotnet add package DbServices
+dotnet add package DBService
 ```
 
 只裝需要的元件：
@@ -28,7 +28,7 @@ dotnet add package DbServices.Provider.PostgreSQL
 
 | 套件 | 專案 |
 |------|------|
-| `DbServices` | `DBService/DBServices.csproj` |
+| `DBService` | `DBService/DBServices.csproj` |
 | `DbServices.Core` | `DbServices.Core` |
 | `DbServices.Provider.Sqlite` | `DbServices.Provider.Sqlite` |
 | `DbServices.Provider.SqlServer` | `DbServices.Provider.MsSql` |

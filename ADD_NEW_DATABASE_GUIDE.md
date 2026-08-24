@@ -39,12 +39,12 @@ mkdir DbServices.Provider.{DatabaseName}\SqlStringGenerator
     
     <!-- NuGet Package Metadata -->
     <PackageId>DbServices.Provider.{DatabaseName}</PackageId>
-    <Version>2.0.0</Version>
+    <Version>5.0.0</Version>
     <Authors>sjvann</Authors>
     <Company>DBServices</Company>
     <Description>DbServices {DatabaseName} 資料庫提供者 - 支援 {DatabaseName} 的現代化 ORM 解決方案</Description>
     <PackageTags>dapper;orm;{database-name};database;async;dotnet10</PackageTags>
-    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <PackageProjectUrl>https://sjvann.github.io/DBServices/</PackageProjectUrl
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

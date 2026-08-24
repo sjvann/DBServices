@@ -132,7 +132,7 @@ jobs:
             echo "發行分支：\`Release/${VERSION}\`"
             echo
             echo "- 文件：https://sjvann.github.io/DBServices/"
-            echo "- 安裝：\`dotnet add package DbServices --version ${VERSION}\`"
+            echo "- 安裝：\`dotnet add package DBService --version ${VERSION}\`"
             echo
             if [ -f RELEASE_NOTES.md ]; then
               echo "## 發布說明"

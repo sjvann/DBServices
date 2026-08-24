@@ -43,30 +43,30 @@ echo "Publishing to NuGet.org..."
 
 # Publish core package
 echo "Publishing DbServices.Core..."
-dotnet nuget push "DbServices.Core/bin/Release/DbServices.Core.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Core/bin/Release/DbServices.Core.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 # Publish providers
 echo "Publishing DbServices.Provider.Sqlite..."
-dotnet nuget push "DbServices.Provider.Sqlite/bin/Release/DbServices.Provider.Sqlite.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Sqlite/bin/Release/DbServices.Provider.Sqlite.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 echo "Publishing DbServices.Provider.SqlServer..."
-dotnet nuget push "DbServices.Provider.MsSql/bin/Release/DbServices.Provider.SqlServer.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MsSql/bin/Release/DbServices.Provider.SqlServer.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 echo "Publishing DbServices.Provider.MySQL..."
-dotnet nuget push "DbServices.Provider.MySql/bin/Release/DbServices.Provider.MySQL.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.MySql/bin/Release/DbServices.Provider.MySQL.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 echo "Publishing DbServices.Provider.Oracle..."
-dotnet nuget push "DbServices.Provider.Oracle/bin/Release/DbServices.Provider.Oracle.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.Oracle/bin/Release/DbServices.Provider.Oracle.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 echo "Publishing DbServices.Provider.PostgreSQL..."
-dotnet nuget push "DbServices.Provider.PostgreSQL/bin/Release/DbServices.Provider.PostgreSQL.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+dotnet nuget push "DbServices.Provider.PostgreSQL/bin/Release/DbServices.Provider.PostgreSQL.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
-echo "Publishing DbServices..."
-dotnet nuget push "DBService/bin/Release/DbServices.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+echo "Publishing DBService..."
+dotnet nuget push "DBService/bin/Release/DBService.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 # Publish main package
-echo "Publishing DbServices..."
-dotnet nuget push "DBService/bin/Release/DbServices.2.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+echo "Publishing DBService..."
+dotnet nuget push "DBService/bin/Release/DBService.5.0.0.nupkg" --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
 
 echo
 echo "=============================================="

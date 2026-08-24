@@ -12,7 +12,7 @@
     <Company>DBServices</Company>
     <Description>DbServices SQLite 資料庫提供者 - 支援 SQLite 資料庫的現代化 ORM 解決方案</Description>
 	<PackageTags>dapper;orm;sqlite;database;async;dotnet10</PackageTags>
-    <PackageProjectUrl>https://github.com/sjvann/DBServices</PackageProjectUrl>
+    <PackageProjectUrl>https://sjvann.github.io/DBServices/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/sjvann/DBServices</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
