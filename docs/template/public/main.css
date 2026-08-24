@@ -1,0 +1,11 @@
+:root {
+  --bs-link-color-rgb: 13, 110, 253;
+}
+
+article table {
+  width: 100%;
+}
+
+article pre {
+  border-radius: 0.4rem;
+}

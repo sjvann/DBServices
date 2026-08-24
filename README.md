@@ -5,6 +5,7 @@
 [![.NET 10.0](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![Dapper](https://img.shields.io/badge/Dapper-2.1.35-blue.svg)](https://github.com/DapperLib/Dapper)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.txt)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://sjvann.github.io/DBServices/)
 
 DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL、Oracle 和 PostgreSQL 資料庫。本專案採用 .NET 10 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務、事務管理、資料庫遷移等現代化功能。
 
@@ -397,14 +398,28 @@ dotnet test --filter "TestCategory=Integration"
 
 本專案採用 MIT 授權 - 詳見 [LICENSE.txt](LICENSE.txt) 檔案
 
-## 📖 更多文件
+## 📖 文件
 
-- [API 文件](API_DOCUMENTATION.md) - 完整的 API 參考
-- [多資料庫管理指南](MULTI_DATABASE_GUIDE.md) - 多資料庫使用指南
-- [效能調優指南](PERFORMANCE_TUNING.md) - 效能優化建議
-- [低優先級功能指南](LOW_PRIORITY_FEATURES_GUIDE.md) - JSON、事務、遷移功能
-- [新增資料庫提供者指南](ADD_NEW_DATABASE_GUIDE.md) - 如何新增資料庫支援
-- [安全性最佳實踐](SECURITY_BEST_PRACTICES.md) - 安全使用建議
+完整文件站（DocFX）：<https://sjvann.github.io/DBServices/>
+
+本機預覽：
+
+```bash
+dotnet tool restore
+dotnet tool run docfx -- docs/docfx.json --serve
+```
+
+倉庫內 Markdown：
+
+- [架構契約](docs/ARCHITECTURE.md)
+- [入門](docs/getting-started/index.md)
+- [指南](docs/guides/index.md)
+- [API 文件](API_DOCUMENTATION.md)
+- [多資料庫管理指南](MULTI_DATABASE_GUIDE.md)
+- [效能調優指南](PERFORMANCE_TUNING.md)
+- [低優先級功能指南](LOW_PRIORITY_FEATURES_GUIDE.md)
+- [新增資料庫提供者指南](ADD_NEW_DATABASE_GUIDE.md)
+- [安全性最佳實踐](SECURITY_BEST_PRACTICES.md)
 
 ## 🔄 版本歷史
 

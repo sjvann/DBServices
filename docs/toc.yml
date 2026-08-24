@@ -1,0 +1,17 @@
+- name: 首頁
+  href: index.md
+- name: 入門
+  href: getting-started/
+- name: 指南
+  href: guides/
+- name: 架構
+  href: architecture/
+- name: CLI
+  href: cli/
+- name: Web API
+  href: web/
+- name: API 參考
+  href: api/
+  homepage: api/index.md
+- name: 貢獻
+  href: contributing/
