@@ -15,4 +15,4 @@
 - 使用者輸入走參數與 `IValidationService`。
 - 不在此儲存庫內嵌 EZIE SDK。
 
-授權為 MIT。文件寫作見 [編寫文件](documentation.md)。
+授權為 MIT。文件寫作見 [編寫文件](documentation.md)。公開發行走 `Release/{版次}` 分支，見 [發行](release.md)。

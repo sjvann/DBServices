@@ -21,6 +21,12 @@ on:
       - "Directory.Build.props"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: "發行版次，寫入站台頁尾"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -50,6 +56,27 @@ jobs:
 
       - name: Restore solution
         run: dotnet restore DBServices.sln
+
+      - name: Stamp docs version
+        if: inputs.version != ''
+        env:
+          DOCS_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          path = "docs/docfx.json"
+          version = os.environ["DOCS_VERSION"]
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+          footer = f"<span>DBServices {version} · Copyright © 2026 sjvann · MIT License</span>"
+          data["build"]["globalMetadata"]["_appFooter"] = footer
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+              f.write("\n")
+          print(f"Stamped docs version {version}")
+          PY
 
       - name: Build DocFX site
         run: dotnet tool run docfx -- docs/docfx.json

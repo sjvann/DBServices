@@ -2,3 +2,5 @@
   href: index.md
 - name: 編寫文件
   href: documentation.md
+- name: 發行
+  href: release.md

@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - "Release/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版次（例如 2.1.0）。空白則從分支名稱 Release/{版次} 解析。"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      tag: ${{ steps.parse.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse version
+        id: parse
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          raw="${INPUT_VERSION:-}"
+          raw="${raw#v}"
+          if [ -z "$raw" ]; then
+            branch="${GITHUB_REF_NAME}"
+            if [[ "$branch" =~ ^Release/v?([0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?)$ ]]; then
+              raw="${BASH_REMATCH[1]}"
+            else
+              echo "::error::分支必須是 Release/{major.minor.patch}（可選 v 前綴或預發佈後綴），目前為 '${branch}'。"
+              exit 1
+            fi
+          fi
+          if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::版次格式無效：'${raw}'"
+            exit 1
+          fi
+
+          props="$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -n 1)"
+          if [ "$props" != "$raw" ]; then
+            echo "::error::Directory.Build.props 的 <Version>（${props}）必須與發行版次（${raw}）一致。"
+            exit 1
+          fi
+
+          echo "version=${raw}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${raw}" >> "$GITHUB_OUTPUT"
+          echo "發行版次 ${raw}（tag v${raw}）"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore DBServices.sln
+
+      - name: Build
+        run: >
+          dotnet build DBServices.sln
+          -c Release
+          --no-restore
+          -p:Version=${{ steps.parse.outputs.version }}
+
+      - name: Test
+        run: >
+          dotnet test DBServices.sln
+          -c Release
+          --no-build
+          --filter "TestCategory!=Integration"
+          --verbosity minimal
+
+      - name: Pack
+        run: >
+          dotnet pack DBServices.sln
+          -c Release
+          --no-build
+          -p:Version=${{ steps.parse.outputs.version }}
+          -p:PackageVersion=${{ steps.parse.outputs.version }}
+          --output artifacts/nupkg
+
+      - name: List packages
+        run: ls -la artifacts/nupkg
+
+      - name: Upload nupkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs
+          path: artifacts/nupkg/*.nupkg
+          if-no-files-found: error
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download nupkg
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkgs
+          path: artifacts/nupkg
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## DBServices v${VERSION}"
+            echo
+            echo "發行分支：\`Release/${VERSION}\`"
+            echo
+            echo "- 文件：https://sjvann.github.io/DBServices/"
+            echo "- 安裝：\`dotnet add package DbServices --version ${VERSION}\`"
+            echo
+            if [ -f RELEASE_NOTES.md ]; then
+              echo "## 發布說明"
+              echo
+              cat RELEASE_NOTES.md
+            fi
+          } > /tmp/release-body.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: DBServices ${{ needs.build.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          body_path: /tmp/release-body.md
+          files: artifacts/nupkg/*.nupkg
+          generate_release_notes: true
+          make_latest: true
+          fail_on_unmatched_files: true
+
+  nuget:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download nupkg
+        uses: actions/download-artifact@v4
+        with:
+          name: nupkgs
+          path: artifacts/nupkg
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Push to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NUGET_API_KEY}" ]; then
+            echo "未設定 NUGET_API_KEY，略過 NuGet.org 推送。"
+            echo "若要自動上架，請在倉庫 Settings → Secrets and variables → Actions 新增 NUGET_API_KEY。"
+            exit 0
+          fi
+          dotnet nuget push "artifacts/nupkg/*.nupkg" \
+            --api-key "${NUGET_API_KEY}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  pages:
+    needs: build
+    uses: ./.github/workflows/docs.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

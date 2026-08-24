@@ -38,8 +38,8 @@ dotnet docfx metadata docs/docfx.json
 
 ## 發佈
 
-推送到 `master` 後，`.github/workflows/docs.yml` 建置並部署 GitHub Pages。
+推送到 `master` 會建置並部署 GitHub Pages。推送到 `Release/{版次}` 時，發行工作流程會再部署一次，讓站台與該版次套件同步。PR 只驗證文件能否建置。
 
 站台：<https://sjvann.github.io/DBServices/>
 
-倉庫 **Settings → Pages** 的 Source 須為 **GitHub Actions**。
+倉庫 **Settings → Pages** 的 Source 須為 **GitHub Actions**。完整步驟見 [發行](release.md)。

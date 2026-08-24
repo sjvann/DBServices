@@ -6,6 +6,7 @@
 [![Dapper](https://img.shields.io/badge/Dapper-2.1.35-blue.svg)](https://github.com/DapperLib/Dapper)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.txt)
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://sjvann.github.io/DBServices/)
+[![GitHub Release](https://img.shields.io/github/v/release/sjvann/DBServices)](https://github.com/sjvann/DBServices/releases)
 
 DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL、Oracle 和 PostgreSQL 資料庫。本專案採用 .NET 10 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務、事務管理、資料庫遷移等現代化功能。
 
@@ -388,6 +389,8 @@ dotnet test --filter "TestCategory=Integration"
 3. 提交變更 (`git commit -m 'Add amazing feature'`)
 4. 推送分支 (`git push origin feature/amazing-feature`)
 5. 開啟 Pull Request
+
+公開發行請從 `Release/{版次}` 分支推送（例如 `Release/2.1.0`），工作流程會建立 GitHub Release 並同步 [GitHub Pages](https://sjvann.github.io/DBServices/)。說明見 [docs/contributing/release.md](docs/contributing/release.md)。
 
 ## 📋 需求
 
