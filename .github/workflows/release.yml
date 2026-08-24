@@ -42,8 +42,12 @@ jobs:
             branch="${GITHUB_REF_NAME}"
             if [[ "$branch" =~ ^Release/v?([0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?)$ ]]; then
               raw="${BASH_REMATCH[1]}"
+            elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              raw="$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -n 1)"
+              echo "未填版次，改用 Directory.Build.props 的 <Version>（${raw}）。"
             else
-              echo "::error::分支必須是 Release/{major.minor.patch}（可選 v 前綴或預發佈後綴），目前為 '${branch}'。"
+              echo "::error::請推送 Release/{major.minor.patch}（例如 Release/2.0.0），或用 Run workflow 並填版次。"
+              echo "::error::目前分支為 '${branch}'。"
               exit 1
             fi
           fi

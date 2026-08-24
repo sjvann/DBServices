@@ -38,7 +38,7 @@
 1. **Settings → Pages → Source** 選 **GitHub Actions**。
 2. （選用）**Settings → Secrets and variables → Actions** 新增 `NUGET_API_KEY`，工作流程才會推送 NuGet.org。
 
-也可在 Actions 手動執行 **Release**，並填入版次；仍須在 `Release/{版次}` 分支上執行，且版次須與 `Directory.Build.props` 一致。
+也可在 Actions 開啟 **Release** → **Run workflow**。在 `Release/{版次}` 分支上執行會用分支名稱；在 `master` 上執行且未填版次時，會改用 `Directory.Build.props` 的 `<Version>`。版次仍須與該檔一致。
 
 ## 文件站
 
