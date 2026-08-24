@@ -156,6 +156,9 @@ jobs:
   nuget:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Download nupkg
         uses: actions/download-artifact@v4
@@ -168,20 +171,18 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: NuGet login (OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: sjvann
+
       - name: Push to NuGet.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "${NUGET_API_KEY}" ]; then
-            echo "未設定 NUGET_API_KEY，略過 NuGet.org 推送。"
-            echo "若要自動上架，請在倉庫 Settings → Secrets and variables → Actions 新增 NUGET_API_KEY。"
-            exit 0
-          fi
-          dotnet nuget push "artifacts/nupkg/*.nupkg" \
-            --api-key "${NUGET_API_KEY}" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+        run: >
+          dotnet nuget push "artifacts/nupkg/*.nupkg"
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
 
   pages:
     needs: build
