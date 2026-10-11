@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />
+    <ProjectReference Include="..\DbServices.Api.Shared\DbServices.Api.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
