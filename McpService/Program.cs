@@ -6,6 +6,7 @@ using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton(sp =>
 {
     var connections = sp.GetRequiredService<IConfiguration>()
@@ -31,6 +32,9 @@ foreach (var definition in ToolCatalog.Definitions)
     builder.Services.AddSingleton(sp =>
     {
         var catalog = sp.GetRequiredService<ToolCatalog>();
+        var environment = sp.GetRequiredService<IWebHostEnvironment>();
+        var configuration = sp.GetRequiredService<IConfiguration>();
+        var http = sp.GetRequiredService<IHttpContextAccessor>();
         var tool = catalog.Tools.Single(candidate => candidate.Name == name);
         var options = new McpServerToolCreateOptions
         {
@@ -44,7 +48,7 @@ foreach (var definition in ToolCatalog.Definitions)
         {
             return McpServerTool.Create(
                 (string connectionId, JsonElement? includeView = null) =>
-                    CallTables(catalog, connectionId, includeView),
+                    CallTables(catalog, environment, configuration, http, connectionId, includeView),
                 options);
         }
 
@@ -52,7 +56,7 @@ foreach (var definition in ToolCatalog.Definitions)
         {
             return McpServerTool.Create(
                 (string connectionId, string? table = null) =>
-                    CallFields(catalog, connectionId, table),
+                    CallFields(catalog, environment, configuration, http, connectionId, table),
                 options);
         }
 
@@ -60,7 +64,7 @@ foreach (var definition in ToolCatalog.Definitions)
         {
             return McpServerTool.Create(
                 (string connectionId, string? table = null, JsonElement? id = null) =>
-                    CallGet(catalog, connectionId, table, id),
+                    CallGet(catalog, environment, configuration, http, connectionId, table, id),
                 options);
         }
 
@@ -68,7 +72,7 @@ foreach (var definition in ToolCatalog.Definitions)
         {
             return McpServerTool.Create(
                 (string connectionId, string? table = null, JsonElement? filters = null) =>
-                    CallEquality(catalog, name, connectionId, table, filters),
+                    CallEquality(catalog, environment, configuration, http, name, connectionId, table, filters),
                 options);
         }
 
@@ -80,46 +84,59 @@ var app = builder.Build();
 app.MapMcp("/mcp");
 app.Run();
 
-static CallToolResult CallTables(ToolCatalog catalog, string connectionId, JsonElement? includeView)
+static CallToolResult CallTables(
+    ToolCatalog catalog,
+    IWebHostEnvironment environment,
+    IConfiguration configuration,
+    IHttpContextAccessor http,
+    string connectionId,
+    JsonElement? includeView)
 {
     var outcome = TableDispatch.Execute(catalog, connectionId, IncludeViewArgument(includeView));
-    return new CallToolResult
-    {
-        IsError = outcome.IsError,
-        Content =
-        [
-            new TextContentBlock { Text = outcome.Json },
-        ],
-    };
+    var arguments = new List<KeyValuePair<string, object?>>();
+    AddJson(arguments, "includeView", includeView);
+    return Finish(environment, configuration, http, catalog, connectionId, "tables", arguments, outcome);
 }
 
-static CallToolResult CallFields(ToolCatalog catalog, string connectionId, string? table)
+static CallToolResult CallFields(
+    ToolCatalog catalog,
+    IWebHostEnvironment environment,
+    IConfiguration configuration,
+    IHttpContextAccessor http,
+    string connectionId,
+    string? table)
 {
     var outcome = TableDispatch.ExecuteFields(catalog, connectionId, table);
-    return new CallToolResult
-    {
-        IsError = outcome.IsError,
-        Content =
-        [
-            new TextContentBlock { Text = outcome.Json },
-        ],
-    };
+    var arguments = new List<KeyValuePair<string, object?>>();
+    AddText(arguments, "table", table);
+    return Finish(environment, configuration, http, catalog, connectionId, "fields", arguments, outcome);
 }
 
-static CallToolResult CallGet(ToolCatalog catalog, string connectionId, string? table, JsonElement? id)
+static CallToolResult CallGet(
+    ToolCatalog catalog,
+    IWebHostEnvironment environment,
+    IConfiguration configuration,
+    IHttpContextAccessor http,
+    string connectionId,
+    string? table,
+    JsonElement? id)
 {
     var outcome = TableDispatch.ExecuteGet(catalog, connectionId, table, id);
-    return new CallToolResult
-    {
-        IsError = outcome.IsError,
-        Content =
-        [
-            new TextContentBlock { Text = outcome.Json },
-        ],
-    };
+    var arguments = new List<KeyValuePair<string, object?>>();
+    AddText(arguments, "table", table);
+    AddJson(arguments, "id", id);
+    return Finish(environment, configuration, http, catalog, connectionId, "get", arguments, outcome);
 }
 
-static CallToolResult CallEquality(ToolCatalog catalog, string name, string connectionId, string? table, JsonElement? filters)
+static CallToolResult CallEquality(
+    ToolCatalog catalog,
+    IWebHostEnvironment environment,
+    IConfiguration configuration,
+    IHttpContextAccessor http,
+    string name,
+    string connectionId,
+    string? table,
+    JsonElement? filters)
 {
     var outcome = name switch
     {
@@ -127,7 +144,43 @@ static CallToolResult CallEquality(ToolCatalog catalog, string name, string conn
         "exists" => TableDispatch.ExecuteExists(catalog, connectionId, table, filters),
         _ => TableDispatch.ExecuteQuery(catalog, connectionId, table, filters),
     };
-    return new CallToolResult
+    var arguments = new List<KeyValuePair<string, object?>>();
+    AddText(arguments, "table", table);
+    AddJson(arguments, "filters", filters);
+    return Finish(environment, configuration, http, catalog, connectionId, name, arguments, outcome);
+}
+
+static CallToolResult Finish(
+    IWebHostEnvironment environment,
+    IConfiguration configuration,
+    IHttpContextAccessor http,
+    ToolCatalog catalog,
+    string connectionId,
+    string tool,
+    List<KeyValuePair<string, object?>> arguments,
+    TableDispatchResult outcome)
+{
+    string path;
+    try
+    {
+        path = AuditPath(environment, configuration);
+    }
+    catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException)
+    {
+        return ToolResult(AuditFailed(tool));
+    }
+
+    return ToolResult(CallAudit.Commit(
+        path,
+        ReadCaller(http),
+        ResolvedConnectionId(catalog, connectionId),
+        tool,
+        arguments,
+        outcome));
+}
+
+static CallToolResult ToolResult(TableDispatchResult outcome)
+    => new()
     {
         IsError = outcome.IsError,
         Content =
@@ -135,6 +188,53 @@ static CallToolResult CallEquality(ToolCatalog catalog, string name, string conn
             new TextContentBlock { Text = outcome.Json },
         ],
     };
+
+static TableDispatchResult AuditFailed(string tool) => tool switch
+{
+    "fields" => TableDispatchResult.FieldsExecutionFailed(),
+    "get" => TableDispatchResult.GetExecutionFailed(),
+    "query" => TableDispatchResult.QueryExecutionFailed(),
+    "count" => TableDispatchResult.CountExecutionFailed(),
+    "exists" => TableDispatchResult.ExistsExecutionFailed(),
+    _ => TableDispatchResult.ExecutionFailed(),
+};
+
+static string AuditPath(IWebHostEnvironment environment, IConfiguration configuration)
+{
+    var relative = configuration["Audit:Path"];
+    if (string.IsNullOrWhiteSpace(relative))
+        relative = Path.Combine("audit", "mcp.jsonl");
+
+    return Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
+}
+
+static string ReadCaller(IHttpContextAccessor http)
+{
+    var caller = http.HttpContext?.Request.Headers["X-DBServices-Caller"].ToString();
+    return string.IsNullOrWhiteSpace(caller) ? "anonymous" : caller;
+}
+
+static string ResolvedConnectionId(ToolCatalog catalog, string connectionId)
+{
+    foreach (var key in catalog.Connections.Keys)
+    {
+        if (string.Equals(key, connectionId, StringComparison.OrdinalIgnoreCase))
+            return key;
+    }
+
+    return connectionId;
+}
+
+static void AddText(List<KeyValuePair<string, object?>> arguments, string key, string? value)
+{
+    if (value is not null)
+        arguments.Add(new KeyValuePair<string, object?>(key, value));
+}
+
+static void AddJson(List<KeyValuePair<string, object?>> arguments, string key, JsonElement? value)
+{
+    if (value is { } element && element.ValueKind != JsonValueKind.Undefined)
+        arguments.Add(new KeyValuePair<string, object?>(key, element));
 }
 
 static object? IncludeViewArgument(JsonElement? includeView)

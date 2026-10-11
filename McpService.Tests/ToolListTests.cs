@@ -15,6 +15,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace McpService.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public class ToolListTests
 {
     private static readonly (string Name, string Description)[] Expected =
@@ -55,6 +56,7 @@ public class ToolListTests
             await AssertCallDoesNotExecuteAsync(client, name, id++, "warehouse");
 
         Assert.IsFalse(File.Exists(dbPath));
+        AssertEnteredAudit(factory, 5, "warehouse");
         await AssertLegacySseAbsentAsync(client);
     }
 
@@ -75,6 +77,7 @@ public class ToolListTests
         Assert.IsTrue(connections.TryGetValue("legacy", out var snapshot));
         Assert.AreEqual("Informix", snapshot!.ServerType);
         Assert.IsFalse(snapshot.Available);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -93,6 +96,7 @@ public class ToolListTests
             var connections = factory.Services.GetRequiredService<ToolCatalog>().Connections;
             Assert.AreEqual(0, connections.Count);
             Assert.IsFalse(connections.ContainsKey("from_env"));
+            AssertNoAuditFile(factory);
         }
         finally
         {
@@ -118,6 +122,7 @@ public class ToolListTests
         Assert.IsTrue(connections.TryGetValue("blank", out var snapshot));
         Assert.AreEqual("Sqlite", snapshot!.ServerType);
         Assert.IsFalse(snapshot.Available);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -132,6 +137,7 @@ public class ToolListTests
         using var client = CreateClient(factory);
         var tools = await ListToolsAsync(client, "agent.example");
         AssertAdvertisedTools(tools);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -180,6 +186,7 @@ public class ToolListTests
         var raw = schema.GetRawText();
         Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
         Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -205,7 +212,7 @@ public class ToolListTests
             var session = ExecuteTables(connectionString, null);
             AssertPayloadMatchesSession(TextOf(result, call.Body), session);
             Assert.IsTrue(session.Rows.SelectMany(row => row).Any(cell => Convert.ToString(cell) == "item_view"));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 1, "Inventory");
         }
         finally
         {
@@ -235,7 +242,10 @@ public class ToolListTests
             var result = ResultOf(call.Rpc, call.Body);
             Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
             AssertPayloadMatchesSession(TextOf(result, call.Body), ExecuteTables(connectionString, false));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 1, "Inventory");
+            Assert.AreEqual(
+                JsonValueKind.False,
+                ReadAudit(factory)[0].GetProperty("arguments").GetProperty("includeView").ValueKind);
         }
         finally
         {
@@ -275,7 +285,7 @@ public class ToolListTests
             }, 13);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "warehouse");
         }
         finally
         {
@@ -327,7 +337,10 @@ public class ToolListTests
             }, 15);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "warehouse");
+            Assert.AreEqual(
+                "nope",
+                ReadAudit(factory)[0].GetProperty("arguments").GetProperty("includeView").GetString());
         }
         finally
         {
@@ -355,6 +368,7 @@ public class ToolListTests
         Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
         Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
         Assert.IsFalse(raw.Contains("includeView", StringComparison.OrdinalIgnoreCase), raw);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -392,7 +406,7 @@ public class ToolListTests
             var viewResult = ResultOf(view.Rpc, view.Body);
             Assert.IsFalse(viewResult.GetProperty("isError").GetBoolean(), view.Body);
             AssertFieldsMatchSession(TextOf(viewResult, view.Body), ExecuteFields(connectionString, "product_view"));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -422,7 +436,7 @@ public class ToolListTests
             var result = ResultOf(call.Rpc, call.Body);
             Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
             AssertFieldsMatchSession(TextOf(result, call.Body), ExecuteFields(connectionString, "Products"));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 1, "Inventory");
         }
         finally
         {
@@ -460,7 +474,7 @@ public class ToolListTests
             }, 24);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -578,7 +592,7 @@ public class ToolListTests
             }, 28);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 4, "warehouse");
         }
         finally
         {
@@ -603,6 +617,7 @@ public class ToolListTests
                 await AssertCallDoesNotExecuteAsync(client, name, id++, "warehouse");
 
             Assert.IsFalse(File.Exists(dbPath));
+            AssertEnteredAudit(factory, 4, "warehouse");
         }
         finally
         {
@@ -630,6 +645,7 @@ public class ToolListTests
         var raw = schema.GetRawText();
         Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
         Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -716,7 +732,7 @@ public class ToolListTests
             var scientificResult = ResultOf(scientific.Rpc, scientific.Body);
             Assert.IsFalse(scientificResult.GetProperty("isError").GetBoolean(), scientific.Body);
             AssertFieldsMatchSession(TextOf(scientificResult, scientific.Body), ExecuteGet(connectionString, "products", 100));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 9, "Inventory");
         }
         finally
         {
@@ -762,7 +778,7 @@ public class ToolListTests
             var againResult = ResultOf(again.Rpc, again.Body);
             Assert.IsFalse(againResult.GetProperty("isError").GetBoolean(), again.Body);
             AssertFieldsMatchSession(TextOf(againResult, again.Body), ExecuteGet(connectionString, "products", 1));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -835,7 +851,7 @@ public class ToolListTests
             }, 82);
             AssertInvalidGet(again.Status, again.Body, again.Rpc);
             Assert.IsFalse(File.Exists(dbPath));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 16, "warehouse");
         }
         finally
         {
@@ -887,7 +903,7 @@ public class ToolListTests
             }, 91);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -918,6 +934,8 @@ public class ToolListTests
             Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
             Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
         }
+
+        AssertNoAuditFile(factory);
     }
 
     [TestMethod]
@@ -1032,7 +1050,7 @@ public class ToolListTests
                     ["table"] = "products",
                     ["Id"] = 1.5m,
                 }));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 5, "Inventory");
         }
         finally
         {
@@ -1078,7 +1096,7 @@ public class ToolListTests
             }, 111);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -1205,7 +1223,7 @@ public class ToolListTests
                 Assert.AreNotEqual(total, actual, literal);
             }
 
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 12, "Inventory");
 
             async Task<long> CountIdAsync(object? id, int callId)
             {
@@ -1275,7 +1293,7 @@ public class ToolListTests
             });
             AssertScalarCallMatches(absent.Status, absent.Body, absent.Rpc, absentSession, false);
             Assert.AreEqual(false, absentSession.Rows[0][0]);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 2, "Inventory");
         }
         finally
         {
@@ -1324,7 +1342,7 @@ public class ToolListTests
                     Assert.AreEqual(true, session.Rows[0][0]);
             }
 
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 6, "Inventory");
         }
         finally
         {
@@ -1397,7 +1415,7 @@ public class ToolListTests
             }, id);
             AssertInvalidTable(again.Status, again.Body, again.Rpc);
             Assert.IsFalse(File.Exists(dbPath));
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 10, "warehouse");
         }
         finally
         {
@@ -1467,7 +1485,7 @@ public class ToolListTests
             }, id);
             Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
             Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
-            AssertNoAuditFile(factory);
+            AssertEnteredAudit(factory, 4, "Inventory");
         }
         finally
         {
@@ -1475,11 +1493,486 @@ public class ToolListTests
         }
     }
 
+    [TestMethod]
+    public async Task Audit_row_tools_record_row_count_without_row_data()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "rowpayload-audit-marker");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var tables = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 200);
+            Assert.AreEqual(HttpStatusCode.OK, tables.Status, tables.Body);
+            var tablesResult = ResultOf(tables.Rpc, tables.Body);
+            Assert.IsFalse(tablesResult.GetProperty("isError").GetBoolean(), tables.Body);
+            var tablesText = TextOf(tablesResult, tables.Body);
+            Assert.IsTrue(tablesText.Contains("product_view", StringComparison.Ordinal), tablesText);
+
+            var get = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, 201);
+            Assert.AreEqual(HttpStatusCode.OK, get.Status, get.Body);
+            var getResult = ResultOf(get.Rpc, get.Body);
+            Assert.IsFalse(getResult.GetProperty("isError").GetBoolean(), get.Body);
+            var getText = TextOf(getResult, get.Body);
+            Assert.IsTrue(getText.Contains("rowpayload-audit-marker", StringComparison.Ordinal), getText);
+
+            var query = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 202);
+            Assert.AreEqual(HttpStatusCode.OK, query.Status, query.Body);
+            var queryResult = ResultOf(query.Rpc, query.Body);
+            Assert.IsFalse(queryResult.GetProperty("isError").GetBoolean(), query.Body);
+            Assert.IsTrue(TextOf(queryResult, query.Body).Contains("rowpayload-audit-marker", StringComparison.Ordinal), query.Body);
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(3, records.Length);
+            AssertRowAudit(records[0], "tables", RowCount(tablesText), "Inventory");
+            Assert.IsFalse(records[0].GetRawText().Contains("product_view", StringComparison.Ordinal), records[0].GetRawText());
+            Assert.IsFalse(records[0].GetProperty("arguments").TryGetProperty("includeView", out _));
+            AssertRowAudit(records[1], "get", 1, "Inventory");
+            Assert.IsFalse(records[1].GetRawText().Contains("rowpayload-audit-marker", StringComparison.Ordinal), records[1].GetRawText());
+            Assert.AreEqual("products", records[1].GetProperty("arguments").GetProperty("table").GetString());
+            Assert.AreEqual(1, records[1].GetProperty("arguments").GetProperty("id").GetInt64());
+            AssertRowAudit(records[2], "query", 1, "Inventory");
+            Assert.IsFalse(records[2].GetRawText().Contains("rowpayload-audit-marker", StringComparison.Ordinal), records[2].GetRawText());
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_count_and_exists_record_value()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var matched = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 210);
+            var missing = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "missing",
+                },
+            }, 211);
+            var present = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 212);
+            var absent = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "missing",
+                },
+            }, 213);
+
+            Assert.AreEqual(1L, JsonCount(matched.Body, matched.Rpc));
+            Assert.AreEqual(0L, JsonCount(missing.Body, missing.Rpc));
+            Assert.AreEqual(HttpStatusCode.OK, present.Status, present.Body);
+            Assert.AreEqual("true", TextOf(ResultOf(present.Rpc, present.Body), present.Body));
+            Assert.AreEqual("false", TextOf(ResultOf(absent.Rpc, absent.Body), absent.Body));
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(4, records.Length);
+            AssertScalarAudit(records[0], "count", 1L, "Inventory");
+            AssertScalarAudit(records[1], "count", 0L, "Inventory");
+            AssertScalarAudit(records[2], "exists", true, "Inventory");
+            AssertScalarAudit(records[3], "exists", false, "Inventory");
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_existing_rejections_record_the_error_code()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var omitted = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 220);
+            AssertInvalidTable(omitted.Status, omitted.Body, omitted.Rpc);
+
+            var unknown = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "no_such_table",
+            }, 221);
+            Assert.AreEqual(HttpStatusCode.OK, unknown.Status, unknown.Body);
+            AssertErrorPayload(ResultOf(unknown.Rpc, unknown.Body), unknown.Body, "unknown_table", "找不到資料表。");
+
+            var secret = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "   ",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["connectionString"] = connectionString,
+                    ["ConnectString"] = connectionString,
+                    ["Name"] = "one",
+                },
+            }, 222);
+            AssertInvalidTable(secret.Status, secret.Body, secret.Rpc);
+
+            var again = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 223);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(4, records.Length);
+            AssertErrorAudit(records[0], "fields", "invalid_arguments", "Inventory");
+            AssertErrorAudit(records[1], "fields", "unknown_table", "Inventory");
+            Assert.AreEqual("no_such_table", records[1].GetProperty("arguments").GetProperty("table").GetString());
+            AssertErrorAudit(records[2], "query", "invalid_arguments", "Inventory");
+            var filters = records[2].GetProperty("arguments").GetProperty("filters");
+            Assert.AreEqual("one", filters.GetProperty("Name").GetString());
+            Assert.IsFalse(filters.TryGetProperty("connectionString", out _));
+            Assert.IsFalse(filters.TryGetProperty("ConnectString", out _));
+            Assert.IsFalse(records[2].GetRawText().Contains("mcpsecretmarker", StringComparison.Ordinal), records[2].GetRawText());
+            AssertRowAudit(records[3], "tables", RowCount(TextOf(ResultOf(again.Rpc, again.Body), again.Body)), "Inventory");
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_caller_header_or_anonymous_still_runs()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            await using var factory = CreateFactory(SqliteSettings("warehouse", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var named = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+            }, 230, "nightly-agent");
+            var blank = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+            }, 231, "   ");
+            var missing = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+            }, 232);
+
+            Assert.IsFalse(ResultOf(named.Rpc, named.Body).GetProperty("isError").GetBoolean(), named.Body);
+            Assert.IsFalse(ResultOf(blank.Rpc, blank.Body).GetProperty("isError").GetBoolean(), blank.Body);
+            Assert.IsFalse(ResultOf(missing.Rpc, missing.Body).GetProperty("isError").GetBoolean(), missing.Body);
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(3, records.Length);
+            Assert.AreEqual("nightly-agent", records[0].GetProperty("caller").GetString());
+            Assert.AreEqual("anonymous", records[1].GetProperty("caller").GetString());
+            Assert.AreEqual("anonymous", records[2].GetProperty("caller").GetString());
+            Assert.AreEqual("tables", records[0].GetProperty("tool").GetString());
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_default_and_relative_path()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        string? root = null;
+        try
+        {
+            await using (var factory = CreateFactory(SqliteSettings("warehouse", connectionString)))
+            {
+                root = factory.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
+                using var client = CreateClient(factory);
+                await ListToolsAsync(client);
+                var call = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "warehouse",
+                }, 240);
+                Assert.IsFalse(ResultOf(call.Rpc, call.Body).GetProperty("isError").GetBoolean(), call.Body);
+                var records = ReadAudit(factory);
+                Assert.AreEqual(1, records.Length);
+                Assert.AreEqual("tables", records[0].GetProperty("tool").GetString());
+                Assert.IsTrue(File.Exists(Path.Combine(root, "audit", "mcp.jsonl")));
+            }
+
+            var settings = SqliteSettings("warehouse", connectionString).ToList();
+            settings.Add(new KeyValuePair<string, string?>("Audit:Path", "nested/calls.jsonl"));
+            await using var custom = CreateFactory(settings);
+            using var customClient = CreateClient(custom);
+            await ListToolsAsync(customClient);
+            var customCall = await CallToolAsync(customClient, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+            }, 241);
+            Assert.IsFalse(ResultOf(customCall.Rpc, customCall.Body).GetProperty("isError").GetBoolean(), customCall.Body);
+            var customRecords = ReadAudit(custom, "nested/calls.jsonl");
+            Assert.AreEqual(1, customRecords.Length);
+            Assert.AreEqual("tables", customRecords[0].GetProperty("tool").GetString());
+            var customRoot = custom.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
+            Assert.IsFalse(File.Exists(Path.Combine(customRoot, "audit", "mcp.jsonl")));
+        }
+        finally
+        {
+            if (root is not null)
+            {
+                var nested = Path.Combine(root, "nested");
+                if (Directory.Exists(nested))
+                    Directory.Delete(nested, recursive: true);
+            }
+
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_fields_probe_is_one_line_and_excludes_table_rows()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var tables = ExecuteTables(connectionString, true);
+            var fields = ExecuteFields(connectionString, "products");
+            Assert.AreNotEqual(tables.Rows.Count, fields.Rows.Count);
+
+            var call = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 250);
+            Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+            var text = TextOf(ResultOf(call.Rpc, call.Body), call.Body);
+            AssertFieldsMatchSession(text, fields);
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(1, records.Length);
+            AssertRowAudit(records[0], "fields", fields.Rows.Count, "Inventory");
+            Assert.AreNotEqual(tables.Rows.Count, records[0].GetProperty("rowCount").GetInt32());
+            Assert.IsFalse(records[0].GetRawText().Contains("product_view", StringComparison.Ordinal), records[0].GetRawText());
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_write_failure_returns_execution_failed_without_payload()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        string? blocker = null;
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "rowpayload-audit-marker");
+            var settings = SqliteSettings("Inventory", connectionString).ToList();
+            settings.Add(new KeyValuePair<string, string?>("Audit:Path", "audit-not-dir/mcp.jsonl"));
+            await using var factory = CreateFactory(settings);
+            var root = factory.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
+            blocker = Path.Combine(root, "audit-not-dir");
+            File.WriteAllText(blocker, "x");
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var tables = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 260);
+            AssertErrorPayload(ResultOf(tables.Rpc, tables.Body), tables.Body, "execution_failed", "列出資料表失敗。");
+            Assert.IsFalse(tables.Body.Contains("rowpayload-audit-marker", StringComparison.Ordinal), tables.Body);
+            Assert.IsFalse(tables.Body.Contains("\"rows\"", StringComparison.Ordinal), tables.Body);
+
+            var count = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 261);
+            AssertErrorPayload(ResultOf(count.Rpc, count.Body), count.Body, "execution_failed", "計數失敗。");
+            Assert.AreNotEqual("1", TextOf(ResultOf(count.Rpc, count.Body), count.Body));
+
+            var exists = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 262);
+            AssertErrorPayload(ResultOf(exists.Rpc, exists.Body), exists.Body, "execution_failed", "是否存在失敗。");
+            var existsText = TextOf(ResultOf(exists.Rpc, exists.Body), exists.Body);
+            Assert.AreNotEqual("true", existsText);
+            Assert.AreNotEqual("false", existsText);
+            Assert.IsFalse(exists.Body.Contains("rowpayload-audit-marker", StringComparison.Ordinal), exists.Body);
+
+            var fields = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 263);
+            AssertErrorPayload(ResultOf(fields.Rpc, fields.Body), fields.Body, "execution_failed", "列出欄位失敗。");
+            Assert.IsFalse(fields.Body.Contains("\"rows\"", StringComparison.Ordinal), fields.Body);
+
+            var get = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, 264);
+            AssertErrorPayload(ResultOf(get.Rpc, get.Body), get.Body, "execution_failed", "依 Id 取一列失敗。");
+            Assert.IsFalse(get.Body.Contains("\"rows\"", StringComparison.Ordinal), get.Body);
+            Assert.IsFalse(get.Body.Contains("rowpayload-audit-marker", StringComparison.Ordinal), get.Body);
+
+            var query = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 265);
+            AssertErrorPayload(ResultOf(query.Rpc, query.Body), query.Body, "execution_failed", "鍵值查詢失敗。");
+            Assert.IsFalse(query.Body.Contains("\"rows\"", StringComparison.Ordinal), query.Body);
+            Assert.IsFalse(query.Body.Contains("rowpayload-audit-marker", StringComparison.Ordinal), query.Body);
+
+            var tools = await ListToolsAsync(client);
+            AssertAdvertisedTools(tools);
+            Assert.IsFalse(File.Exists(Path.Combine(root, "audit", "mcp.jsonl")));
+        }
+        finally
+        {
+            if (blocker is not null && File.Exists(blocker))
+                File.Delete(blocker);
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Audit_concurrent_calls_append_whole_lines()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var first = CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 270, "left-caller");
+            var second = CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 271, "right-caller");
+            var completed = await Task.WhenAll(first, second);
+            Assert.IsFalse(ResultOf(completed[0].Rpc, completed[0].Body).GetProperty("isError").GetBoolean(), completed[0].Body);
+            Assert.AreEqual(1L, JsonCount(completed[1].Body, completed[1].Rpc));
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(2, records.Length);
+            var tools = records.Select(record => record.GetProperty("tool").GetString()).ToArray();
+            CollectionAssert.AreEquivalent(new[] { "tables", "count" }, tools);
+            var callers = records.Select(record => record.GetProperty("caller").GetString()).ToArray();
+            CollectionAssert.AreEquivalent(new[] { "left-caller", "right-caller" }, callers);
+            foreach (var record in records)
+            {
+                using var again = JsonDocument.Parse(record.GetRawText());
+                Assert.AreEqual(JsonValueKind.Object, again.RootElement.ValueKind);
+            }
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    private static readonly List<string> ContentRoots = new();
+
     private static WebApplicationFactory<Program> CreateFactory(
         IEnumerable<KeyValuePair<string, string?>> settings)
     {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-content-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        ContentRoots.Add(root);
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseContentRoot(root);
             builder.ConfigureAppConfiguration((_, config) =>
             {
                 for (var index = config.Sources.Count - 1; index >= 0; index--)
@@ -1494,9 +1987,23 @@ public class ToolListTests
                     }
                 }
 
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AllowedHosts"] = "*",
+                });
                 config.AddInMemoryCollection(settings);
             });
         });
+    }
+
+    [ClassCleanup]
+    public static void RemoveContentRoots()
+    {
+        foreach (var root in ContentRoots)
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
@@ -1641,7 +2148,8 @@ public class ToolListTests
         HttpClient client,
         string name,
         IReadOnlyDictionary<string, object?> arguments,
-        int id)
+        int id,
+        string? caller = null)
     {
         var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
         {
@@ -1660,6 +2168,8 @@ public class ToolListTests
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),
         };
         request.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2025-11-25");
+        if (caller is not null)
+            Assert.IsTrue(request.Headers.TryAddWithoutValidation("X-DBServices-Caller", caller), caller);
 
         using var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
@@ -2077,5 +2587,113 @@ public class ToolListTests
     {
         var root = factory.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
         Assert.IsFalse(File.Exists(Path.Combine(root, "audit", "mcp.jsonl")), root);
+    }
+
+    private static void AssertEnteredAudit(WebApplicationFactory<Program> factory, int count, string connectionId)
+    {
+        var records = ReadAudit(factory);
+        Assert.AreEqual(count, records.Length);
+        foreach (var record in records)
+        {
+            Assert.AreEqual("anonymous", record.GetProperty("caller").GetString());
+            Assert.AreEqual(connectionId, record.GetProperty("connectionId").GetString());
+            Assert.AreEqual(connectionId, record.GetProperty("arguments").GetProperty("connectionId").GetString());
+        }
+    }
+
+    private static JsonElement[] ReadAudit(WebApplicationFactory<Program> factory, string? relative = null)
+    {
+        var root = factory.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
+        var path = Path.GetFullPath(relative is null
+            ? Path.Combine(root, "audit", "mcp.jsonl")
+            : Path.Combine(root, relative));
+        Assert.IsTrue(File.Exists(path), path);
+        var lines = File.ReadAllText(path)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var records = new JsonElement[lines.Length];
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            Assert.IsFalse(line.Contains("mcpsecretmarker", StringComparison.Ordinal), line);
+            Assert.IsFalse(line.Contains("\"rows\"", StringComparison.Ordinal), line);
+            Assert.IsFalse(line.Contains("\"columns\"", StringComparison.Ordinal), line);
+            using var document = JsonDocument.Parse(line);
+            var names = document.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
+            CollectionAssert.AreEqual(
+                new[] { "timestamp", "caller", "connectionId", "tool", "arguments", "rowCount", "value", "error" },
+                names,
+                line);
+            var stamp = document.RootElement.GetProperty("timestamp").GetString();
+            Assert.IsTrue(stamp!.EndsWith("Z", StringComparison.Ordinal), stamp);
+            Assert.IsTrue(
+                DateTime.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed),
+                stamp);
+            Assert.AreEqual(DateTimeKind.Utc, parsed.Kind);
+            var modes = 0;
+            if (document.RootElement.GetProperty("rowCount").ValueKind != JsonValueKind.Null)
+                modes++;
+            if (document.RootElement.GetProperty("value").ValueKind != JsonValueKind.Null)
+                modes++;
+            if (document.RootElement.GetProperty("error").ValueKind != JsonValueKind.Null)
+                modes++;
+            Assert.AreEqual(1, modes, line);
+            foreach (var property in document.RootElement.GetProperty("arguments").EnumerateObject())
+            {
+                Assert.IsFalse(property.Name.Equals("connectionString", StringComparison.OrdinalIgnoreCase), line);
+                Assert.IsFalse(property.Name.Equals("connectString", StringComparison.OrdinalIgnoreCase), line);
+            }
+
+            records[index] = document.RootElement.Clone();
+        }
+
+        return records;
+    }
+
+    private static void AssertRowAudit(JsonElement record, string tool, int rowCount, string connectionId)
+    {
+        Assert.AreEqual(tool, record.GetProperty("tool").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("connectionId").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("arguments").GetProperty("connectionId").GetString());
+        Assert.AreEqual(rowCount, record.GetProperty("rowCount").GetInt32());
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("value").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("error").ValueKind);
+    }
+
+    private static void AssertScalarAudit(JsonElement record, string tool, long value, string connectionId)
+    {
+        AssertScalarShape(record, tool, connectionId);
+        Assert.AreEqual(JsonValueKind.Number, record.GetProperty("value").ValueKind);
+        Assert.AreEqual(value, record.GetProperty("value").GetInt64());
+    }
+
+    private static void AssertScalarAudit(JsonElement record, string tool, bool value, string connectionId)
+    {
+        AssertScalarShape(record, tool, connectionId);
+        Assert.AreEqual(value, record.GetProperty("value").GetBoolean());
+    }
+
+    private static void AssertScalarShape(JsonElement record, string tool, string connectionId)
+    {
+        Assert.AreEqual(tool, record.GetProperty("tool").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("connectionId").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("arguments").GetProperty("connectionId").GetString());
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("rowCount").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("error").ValueKind);
+    }
+
+    private static void AssertErrorAudit(JsonElement record, string tool, string code, string connectionId)
+    {
+        Assert.AreEqual(tool, record.GetProperty("tool").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("connectionId").GetString());
+        Assert.AreEqual(connectionId, record.GetProperty("arguments").GetProperty("connectionId").GetString());
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("rowCount").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, record.GetProperty("value").ValueKind);
+        Assert.AreEqual(code, record.GetProperty("error").GetString());
+    }
+
+    private static int RowCount(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("rows").GetArrayLength();
     }
 }
