@@ -31,14 +31,10 @@ DBServices/
 │   ├── MySql/                   # MySQL 提供者
 │   ├── Oracle/                  # Oracle 提供者
 │   └── PostgreSQL/              # PostgreSQL 提供者
-<<<<<<< HEAD
-├── WebService/                  # Web API 服務
-├── DbServices.Cli/              # dbsql（SQL 與函數 CLI）
-=======
 ├── WebService/                  # RESTful Web API 服務
 ├── GraphQLService/              # GraphQL API 服務（動態 Schema）
 ├── DbServices.Api.Shared/       # REST / GraphQL 共用業務層
->>>>>>> ContentSeervices
+├── DbServices.Cli/              # dbsql（SQL 與函數 CLI）
 └── DBServiceTest/               # 單元測試
 ```
 

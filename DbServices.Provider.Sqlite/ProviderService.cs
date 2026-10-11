@@ -11,12 +11,8 @@ namespace DbServices.Provider.Sqlite
     {
         public ProviderService(string connectionString) : base(connectionString)
         {
-<<<<<<< HEAD
-            _connectionFactory = () => new SqliteConnection(connectionString);
-=======
             EnsureDatabaseExists(connectionString);
-            _conn = new SqliteConnection(connectionString);
->>>>>>> ContentSeervices
+            _connectionFactory = () => new SqliteConnection(connectionString);
             _sqlProvider = new SqlProviderForSqlite();
             _tableNameList = GetAllTableNames();
         }
@@ -29,12 +25,8 @@ namespace DbServices.Provider.Sqlite
             var connectionString = DbServices.Core.Helpers.ConnectionStringHelper
                 .ApplyConnectionPoolSettings(options.ConnectionString, options);
 
-<<<<<<< HEAD
-            _connectionFactory = () => new SqliteConnection(connectionString);
-=======
             EnsureDatabaseExists(connectionString);
-            _conn = new SqliteConnection(connectionString);
->>>>>>> ContentSeervices
+            _connectionFactory = () => new SqliteConnection(connectionString);
             _sqlProvider = new SqlProviderForSqlite();
             _tableNameList = GetAllTableNames();
         }

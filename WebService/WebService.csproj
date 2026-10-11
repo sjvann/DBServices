@@ -9,14 +9,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-<<<<<<< HEAD
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
-		<PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
-		<PackageReference Include="Scalar.AspNetCore" Version="2.12.8" />
-=======
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+		<PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 		<PackageReference Include="Scalar.AspNetCore" Version="2.14.14" />
->>>>>>> ContentSeervices
 	</ItemGroup>
 
 	<ItemGroup>

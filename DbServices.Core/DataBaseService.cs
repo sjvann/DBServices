@@ -1089,13 +1089,8 @@ namespace DbServices.Core
             string? sql = _sqlProvider!.GetSqlTableNameList(includeView);
             if (!string.IsNullOrEmpty(sql))
             {
-<<<<<<< HEAD
                 var temp = await DbQueryAsync(sql);
-                var result = temp.Select(x => ((dynamic)x).TABLE_NAME?.ToString())
-=======
-                var temp = await _conn.QueryAsync(sql);
                 var result = temp.Select(ExtractTableNameFromRow)
->>>>>>> ContentSeervices
                                  .Where(name => !string.IsNullOrEmpty(name))
                                  .OfType<string>()
                                  .ToArray();
