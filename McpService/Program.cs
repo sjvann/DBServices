@@ -48,6 +48,14 @@ foreach (var definition in ToolCatalog.Definitions)
                 options);
         }
 
+        if (name == "fields")
+        {
+            return McpServerTool.Create(
+                (string connectionId, string? table = null) =>
+                    CallFields(catalog, connectionId, table),
+                options);
+        }
+
         return McpServerTool.Create(NotExecuted, options);
     });
 }
@@ -59,6 +67,19 @@ app.Run();
 static CallToolResult CallTables(ToolCatalog catalog, string connectionId, JsonElement? includeView)
 {
     var outcome = TableDispatch.Execute(catalog, connectionId, IncludeViewArgument(includeView));
+    return new CallToolResult
+    {
+        IsError = outcome.IsError,
+        Content =
+        [
+            new TextContentBlock { Text = outcome.Json },
+        ],
+    };
+}
+
+static CallToolResult CallFields(ToolCatalog catalog, string connectionId, string? table)
+{
+    var outcome = TableDispatch.ExecuteFields(catalog, connectionId, table);
     return new CallToolResult
     {
         IsError = outcome.IsError,
