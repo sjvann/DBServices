@@ -74,7 +74,7 @@ namespace DBServiceTest
         {
             Console.WriteLine($"Before Create PersonTable Table: {_db.HasTable("PersonTable")}");
             int result = CreateNewTable<PersonTable>();
-            Assert.IsGreaterThanOrEqualTo(result, 0);
+            Assert.IsGreaterThanOrEqualTo(0, result);
             Console.WriteLine($"After Create PersonTable Table: {_db.HasTable("PersonTable")}");
         }
         [TestMethod]
@@ -82,7 +82,7 @@ namespace DBServiceTest
         {
             Console.WriteLine($"Before Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
             int result = CreateNewTable<EncounterTable>();
-            Assert.IsGreaterThanOrEqualTo(result, 0);
+            Assert.IsGreaterThanOrEqualTo(0, result);
             Console.WriteLine($"After Create EncounterTable Table: {_db.HasTable("EncounterTable")}");
         }
 

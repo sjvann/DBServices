@@ -1,33 +1,57 @@
 using System.CommandLine;
-using System.CommandLine.Invocation;
 using DbServices.Cli;
 using DbServices.Core.Models.Interface;
 using DbServices.Core.Session;
 using DBServices;
 
-var providerOption = new Option<string>(["--provider", "-p"], () => "sqlite", "sqlite|sqlserver|mysql|oracle|postgresql");
-var connectionOption = new Option<string>(["--connection", "-c"], "連線字串") { IsRequired = true };
-var queryOption = new Option<string?>(["--query", "-q"], "單次 SQL");
-var fnOption = new Option<string?>("--fn", "單次函數名");
-var argOption = new Option<string[]>("--arg", () => [], "函數參數 key=value") { AllowMultipleArgumentsPerToken = true };
-var formatOption = new Option<string>("--format", () => "table", "table|json|csv");
-var echoOption = new Option<bool>(["--echo-hidden", "-E"], "顯示展開後的請求");
+var providerOption = new Option<string>("--provider", "-p")
+{
+    Description = "sqlite|sqlserver|mysql|oracle|postgresql",
+    DefaultValueFactory = _ => "sqlite"
+};
+var connectionOption = new Option<string>("--connection", "-c")
+{
+    Description = "連線字串",
+    Required = true
+};
+var queryOption = new Option<string?>("--query", "-q")
+{
+    Description = "單次 SQL"
+};
+var fnOption = new Option<string?>("--fn")
+{
+    Description = "單次函數名"
+};
+var argOption = new Option<string[]>("--arg")
+{
+    Description = "函數參數 key=value",
+    DefaultValueFactory = _ => [],
+    AllowMultipleArgumentsPerToken = true
+};
+var formatOption = new Option<string>("--format")
+{
+    Description = "table|json|csv",
+    DefaultValueFactory = _ => "table"
+};
+var echoOption = new Option<bool>("--echo-hidden", "-E")
+{
+    Description = "顯示展開後的請求"
+};
 
 var root = new RootCommand("dbsql — DBServices SQL／函數 CLI")
 {
     providerOption, connectionOption, queryOption, fnOption, argOption, formatOption, echoOption
 };
 
-root.SetHandler(context =>
+root.SetAction(parse =>
 {
-    var parse = context.ParseResult;
-    var provider = parse.GetValueForOption(providerOption) ?? "sqlite";
-    var connection = parse.GetValueForOption(connectionOption) ?? "";
-    var query = parse.GetValueForOption(queryOption);
-    var fn = parse.GetValueForOption(fnOption);
-    var fnArgs = parse.GetValueForOption(argOption) ?? [];
-    var format = ParseFormat(parse.GetValueForOption(formatOption));
-    var echoHidden = parse.GetValueForOption(echoOption);
+    var provider = parse.GetValue(providerOption) ?? "sqlite";
+    var connection = parse.GetValue(connectionOption) ?? "";
+    var query = parse.GetValue(queryOption);
+    var fn = parse.GetValue(fnOption);
+    var fnArgs = parse.GetValue(argOption) ?? [];
+    var format = ParseFormat(parse.GetValue(formatOption));
+    var echoHidden = parse.GetValue(echoOption);
 
     var db = CreateDb(provider, connection);
     var session = db.GetSession();
@@ -35,8 +59,7 @@ root.SetHandler(context =>
     if (!string.IsNullOrWhiteSpace(query) && !string.IsNullOrWhiteSpace(fn))
     {
         Console.Error.WriteLine("單次模式不可同時使用 -q 與 --fn。");
-        context.ExitCode = 2;
-        return;
+        return 2;
     }
 
     if (!string.IsNullOrWhiteSpace(fn))
@@ -45,7 +68,7 @@ root.SetHandler(context =>
         var request = new QueryRequest { Text = fn, Opcode = QueryOpcode.Call, Arguments = arguments, Format = format };
         if (echoHidden) Console.Error.WriteLine($"ECHO: CALL {fn}");
         Console.WriteLine(ResultFormatter.Format(session.Execute(request), format, false));
-        return;
+        return 0;
     }
 
     if (!string.IsNullOrWhiteSpace(query))
@@ -53,13 +76,13 @@ root.SetHandler(context =>
         var expanded = MetaCommand.Parse(query);
         if (echoHidden && expanded.Echo != null) Console.Error.WriteLine($"ECHO: {expanded.Echo}");
         Console.WriteLine(ResultFormatter.Format(session.Execute(expanded.Request), format, false));
-        return;
+        return 0;
     }
 
-    context.ExitCode = RunRepl(session, format, echoHidden);
+    return RunRepl(session, format, echoHidden);
 });
 
-return await root.InvokeAsync(args);
+return root.Parse(args).Invoke();
 
 static int RunRepl(IQuerySession session, ResultFormat format, bool echoHidden)
 {

@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HotChocolate.AspNetCore" Version="16.0.3" />
-    <PackageReference Include="HotChocolate.Language" Version="16.0.3" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.6.8" />
+    <PackageReference Include="HotChocolate.Language" Version="16.6.8" />
   </ItemGroup>
 
   <ItemGroup>
