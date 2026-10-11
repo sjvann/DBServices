@@ -21,7 +21,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+<<<<<<< HEAD
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+=======
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+>>>>>>> ContentSeervices
   </ItemGroup>
 
   <ItemGroup>

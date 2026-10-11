@@ -1089,8 +1089,13 @@ namespace DbServices.Core
             string? sql = _sqlProvider!.GetSqlTableNameList(includeView);
             if (!string.IsNullOrEmpty(sql))
             {
+<<<<<<< HEAD
                 var temp = await DbQueryAsync(sql);
                 var result = temp.Select(x => ((dynamic)x).TABLE_NAME?.ToString())
+=======
+                var temp = await _conn.QueryAsync(sql);
+                var result = temp.Select(ExtractTableNameFromRow)
+>>>>>>> ContentSeervices
                                  .Where(name => !string.IsNullOrEmpty(name))
                                  .OfType<string>()
                                  .ToArray();
@@ -1698,6 +1703,29 @@ namespace DbServices.Core
                 _logger?.LogError(ex, "查詢多個欄位值時發生錯誤: Table={TableName}, Fields={Fields}", 
                     tableName, string.Join(", ", fieldNames));
                 throw new DbServiceException($"查詢欄位值失敗: {tableName}", ex);
+            }
+        }
+
+        private static string? ExtractTableNameFromRow(dynamic row)
+        {
+            if (row is IDictionary<string, object> dict)
+            {
+                if (dict.TryGetValue("TABLE_NAME", out var tableName))
+                    return tableName?.ToString();
+                if (dict.TryGetValue("name", out var sqliteName))
+                    return sqliteName?.ToString();
+                if (dict.TryGetValue("Name", out var pascalName))
+                    return pascalName?.ToString();
+                return dict.Values.FirstOrDefault()?.ToString();
+            }
+
+            try
+            {
+                return row.TABLE_NAME?.ToString() ?? row.name?.ToString();
+            }
+            catch
+            {
+                return null;
             }
         }
 

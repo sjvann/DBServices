@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GraphQLService</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.0.3" />
+    <PackageReference Include="HotChocolate.Language" Version="16.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DbServices.Api.Shared\DbServices.Api.Shared.csproj" />
+    <ProjectReference Include="..\DbServices.Core\DbServices.Core.csproj" />
+    <ProjectReference Include="..\DBService\DBServices.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Seed\test-tables.sql" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Seed\inventory-postgresql.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
