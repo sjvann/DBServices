@@ -29,7 +29,9 @@ DBServices/
 │   ├── MySql/                   # MySQL 提供者
 │   ├── Oracle/                  # Oracle 提供者
 │   └── PostgreSQL/              # PostgreSQL 提供者
-├── WebService/                  # Web API 服務
+├── WebService/                  # RESTful Web API 服務
+├── GraphQLService/              # GraphQL API 服務（動態 Schema）
+├── DbServices.Api.Shared/       # REST / GraphQL 共用業務層
 └── DBServiceTest/               # 單元測試
 ```
 
@@ -58,7 +60,7 @@ DBServices/
 - **查詢快取**: 資料表結構快取機制
 - **進階查詢**: 分頁、排序、計數等進階查詢功能
 - **PostgreSQL JSON 支援**: 完整的 JSON/JSONB 類型支援
-- **Web API**: RESTful API 介面
+- **Web API**: RESTful 與 GraphQL API 介面
 
 ## 📦 安裝
 
@@ -295,21 +297,38 @@ var metadataObj = JsonHelper.Deserialize<Dictionary<string, object>>(metadataJso
 
 ## 🌐 Web API 服務
 
-DBServices 包含一個完整的 Web API 服務，提供 RESTful 介面：
+DBServices 提供兩種 Web 介面，共用 `DbServices.Api.Shared` 業務層：
+
+### RESTful（WebService）
 
 ```bash
-# 啟動 Web 服務
 cd WebService
 dotnet run
-
-# API 端點
-GET    /api/tables              # 取得所有資料表
-GET    /api/tables/{name}       # 取得資料表詳細資訊
-GET    /api/records/{table}     # 查詢記錄
-POST   /api/records/{table}     # 新增記錄
-PUT    /api/records/{table}/{id} # 更新記錄
-DELETE /api/records/{table}/{id} # 刪除記錄
+# http://localhost:5133
 ```
+
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/meta` | 所有資料表名稱 |
+| GET | `/{table}/fieldSet` | 欄位結構 |
+| GET | `/{table}/valueSet?fieldName=` | 欄位值集合 |
+| GET | `/{table}` | 查詢記錄（可選 `Key`/`Value`） |
+| GET | `/{table}/{id}` | 依 ID 查詢 |
+| POST | `/{table}` | 新增記錄 |
+| PUT | `/{table}/{id}` | 更新記錄 |
+| DELETE | `/{table}/{id}` | 刪除記錄 |
+
+開發環境可使用 Scalar：`http://localhost:5133/scalar`
+
+### GraphQL（GraphQLService）
+
+```bash
+cd GraphQLService
+dotnet run
+# http://localhost:5134/graphql
+```
+
+啟動時依資料庫 metadata **動態產生**各資料表的 GraphQL 型別。詳見 [GraphQLService/README.md](GraphQLService/README.md)。
 
 ## ⚙️ 設定選項
 

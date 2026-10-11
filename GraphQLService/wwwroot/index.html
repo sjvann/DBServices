@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DBServices GraphQL 操作台</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">DBServices GraphQL</div>
+    <label>
+      資料庫系統
+      <select id="providerSelect" aria-label="資料庫系統"></select>
+    </label>
+    <label class="connection-field">
+      連線字串 / 資料庫
+      <input id="connectionInput" type="text" spellcheck="false" placeholder="連線字串" />
+    </label>
+    <button id="connectBtn" type="button">連線</button>
+    <span id="statusBadge" class="badge">未連線</span>
+    <a class="link-alt" href="/graphql" target="_blank" rel="noopener">Banana Cake Pop</a>
+  </header>
+
+  <main class="workspace">
+    <section class="panel panel-tables">
+      <div class="panel-header">
+        <h2>資料表</h2>
+        <span id="tableCountLabel" class="panel-hint"></span>
+      </div>
+      <div id="tablesTree" class="tree tree-tables" role="tree" aria-label="資料庫資料表"></div>
+    </section>
+
+    <section class="panel panel-query">
+      <div class="panel-header">
+        <h2 id="queryPanelTitle">查詢</h2>
+        <div class="panel-actions">
+          <button id="expandQueryTreeBtn" type="button" title="全部展開">展開</button>
+          <button id="collapseQueryTreeBtn" type="button" title="全部收合">收合</button>
+        </div>
+      </div>
+      <div id="queryTree" class="tree" role="tree" aria-label="欄位與查詢範本"></div>
+      <label class="editor-label" for="queryEditor">GraphQL</label>
+      <textarea id="queryEditor" spellcheck="false" rows="8">query {
+  meta {
+    tables
+  }
+}</textarea>
+      <div class="editor-actions">
+        <button id="executeBtn" type="button" class="primary">執行</button>
+        <button id="formatBtn" type="button">格式化</button>
+      </div>
+    </section>
+
+    <section class="panel panel-right">
+      <div class="panel-header">
+        <h2>結果</h2>
+        <div class="panel-actions">
+          <button id="expandResultTreeBtn" type="button">展開</button>
+          <button id="collapseResultTreeBtn" type="button">收合</button>
+          <button id="viewRawBtn" type="button">原始 JSON</button>
+        </div>
+      </div>
+      <div id="resultTree" class="tree" role="tree" aria-label="查詢結果"></div>
+      <pre id="rawResult" class="raw hidden" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span id="footerMessage">請選擇資料庫系統並連線。</span>
+  </footer>
+
+  <script src="js/app.js" type="module"></script>
+</body>
+</html>

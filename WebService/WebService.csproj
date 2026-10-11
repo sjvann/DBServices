@@ -9,12 +9,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
-		<PackageReference Include="Scalar.AspNetCore" Version="2.12.8" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+		<PackageReference Include="Scalar.AspNetCore" Version="2.14.14" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\DBService\DBServices.csproj" />
+	  <ProjectReference Include="..\DbServices.Api.Shared\DbServices.Api.Shared.csproj" />
 	</ItemGroup>
 
 </Project>

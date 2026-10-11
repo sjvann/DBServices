@@ -18,8 +18,8 @@ namespace DbServices.Provider.Sqlite.SqlStringGenerator
         }
         public override string GetSqlTableNameList(bool includeView = true)
         {
-            string whereStr = includeView ? $"type in ('table', 'view')" : $"type = 'table'";
-            return $"SELECT name FROM pragma_table_list WHERE {whereStr} AND name NOT LIKE 'sqlite_%'";
+            var typeFilter = includeView ? "type IN ('table', 'view')" : "type = 'table'";
+            return $"SELECT name FROM sqlite_master WHERE {typeFilter} AND name NOT LIKE 'sqlite_%' ORDER BY name";
         }
 
 
