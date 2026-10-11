@@ -1,11 +1,11 @@
 {
   "kind": "Git",
-  "title": "正在從遠端同步…",
+  "title": "提交中…",
   "source": "desktop",
   "pid": 17216,
-  "startedUtc": "2026-10-11T01:10:55.0986118+00:00",
+  "startedUtc": "2026-10-11T03:07:17.7614513+00:00",
   "done": 0,
   "total": 0,
   "currentName": null,
-  "displayTitle": "正在從遠端同步"
+  "displayTitle": "提交中"
 }

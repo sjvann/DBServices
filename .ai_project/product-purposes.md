@@ -3,13 +3,19 @@
 此檔由 AI_Project 控制台在開啟或重新掃描工作區時產生，下次會覆寫，請不要手改。
 權威來源：各專案檔的 `Description`／套件 `description`，或工作區 `ai-project.json` 的 `projects`。沒有該欄就留空，不讀 README。
 
-工作區：**DBServices**。已有描述 7／11。
+工作區：**DBServices**。已有描述 7／12。
 
 ## DbServices.Api.Shared
 
 | 專案 | 類型 | 用途 | 來源 |
 |------|------|------|------|
 | DbServices.Api.Shared | 函式庫 | （缺） | — |
+
+## DbServices.Cli
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| DbServices.Cli | 核心 | （缺） | — |
 
 ## DbServices.Core
 
@@ -76,6 +82,7 @@
 下列專案沒有一句用途。請在專案檔加 `Description`（或 `package.json`／`pyproject.toml` 的 description），或在 `ai-project.json` 的 `projects` 寫上。
 
 - `DbServices.Api.Shared`（DbServices.Api.Shared）
+- `DbServices.Cli`（DbServices.Cli）
 - `DBServiceTest`（DBServiceTest）
 - `GraphQLService`（GraphQLService）
 - `WebService`（WebService）
