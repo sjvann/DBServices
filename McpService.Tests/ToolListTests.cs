@@ -4,6 +4,7 @@ using System.Text.Json;
 using DbServices.Mcp;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -25,23 +26,33 @@ public class ToolListTests
     private static readonly string[] ClosedNames = ["insert", "update", "delete", "sql"];
 
     [TestMethod]
-    public async Task Known_connection_lists_six_readonly_tools_and_does_not_create()
+    public async Task Known_connection_lists_six_readonly_tools_and_call_does_not_create_database()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"mcp-no-create-{Guid.NewGuid():N}.db");
         await using var factory = CreateFactory(
         [
-            new KeyValuePair<string, string?>("Connections:0:ServerType", "Sqlite"),
-            new KeyValuePair<string, string?>("Connections:0:ConnectionString", $"Data Source={dbPath}"),
+            new KeyValuePair<string, string?>("Connections:warehouse:ServerType", "Sqlite"),
+            new KeyValuePair<string, string?>("Connections:warehouse:ConnectionString", $"Data Source={dbPath}"),
         ]);
 
-        var tools = await ListToolsAsync(factory);
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client);
         AssertAdvertisedTools(tools);
 
-        var snapshot = factory.Services.GetRequiredService<ToolCatalog>().Connections.Single();
-        Assert.AreEqual("Sqlite", snapshot.ServerType);
+        var catalog = factory.Services.GetRequiredService<ToolCatalog>();
+        Assert.IsTrue(catalog.Connections.TryGetValue("warehouse", out var snapshot));
+        Assert.AreEqual("Sqlite", snapshot!.ServerType);
         Assert.IsTrue(snapshot.Available);
+        Assert.AreSame(catalog, factory.Services.GetRequiredService<ToolCatalog>());
+
+        Assert.IsFalse(File.Exists(dbPath));
+        var id = 3;
+        foreach (var tool in Expected)
+            await AssertCallDoesNotExecuteAsync(client, tool.Name, id++);
+
         Assert.IsFalse(File.Exists(dbPath));
         AssertFactoryCreateAbsent();
+        await AssertLegacySseAbsentAsync(client);
     }
 
     [TestMethod]
@@ -49,15 +60,17 @@ public class ToolListTests
     {
         await using var factory = CreateFactory(
         [
-            new KeyValuePair<string, string?>("Connections:0:ServerType", "Informix"),
-            new KeyValuePair<string, string?>("Connections:0:ConnectionString", "Server=ignored"),
+            new KeyValuePair<string, string?>("Connections:legacy:ServerType", "Informix"),
+            new KeyValuePair<string, string?>("Connections:legacy:ConnectionString", "Server=ignored"),
         ]);
 
-        var tools = await ListToolsAsync(factory);
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client);
         AssertAdvertisedTools(tools);
 
-        var snapshot = factory.Services.GetRequiredService<ToolCatalog>().Connections.Single();
-        Assert.AreEqual("Informix", snapshot.ServerType);
+        var connections = factory.Services.GetRequiredService<ToolCatalog>().Connections;
+        Assert.IsTrue(connections.TryGetValue("legacy", out var snapshot));
+        Assert.AreEqual("Informix", snapshot!.ServerType);
         Assert.IsFalse(snapshot.Available);
         AssertFactoryCreateAbsent();
     }
@@ -65,30 +78,60 @@ public class ToolListTests
     [TestMethod]
     public async Task No_complete_connections_still_starts_and_lists_six()
     {
-        await using var factory = CreateFactory([]);
+        Environment.SetEnvironmentVariable("Connections__from_env__ServerType", "Sqlite");
+        Environment.SetEnvironmentVariable("Connections__from_env__ConnectionString", "Data Source=ignored.db");
+        try
+        {
+            await using var factory = CreateFactory([]);
 
-        var tools = await ListToolsAsync(factory);
+            using var client = CreateClient(factory);
+            var tools = await ListToolsAsync(client);
+            AssertAdvertisedTools(tools);
+
+            var connections = factory.Services.GetRequiredService<ToolCatalog>().Connections;
+            Assert.AreEqual(0, connections.Count);
+            Assert.IsFalse(connections.ContainsKey("from_env"));
+            AssertFactoryCreateAbsent();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Connections__from_env__ServerType", null);
+            Environment.SetEnvironmentVariable("Connections__from_env__ConnectionString", null);
+        }
+    }
+
+    [TestMethod]
+    public async Task Blank_connection_string_is_unavailable_and_name_is_kept()
+    {
+        await using var factory = CreateFactory(
+        [
+            new KeyValuePair<string, string?>("Connections:blank:ServerType", "Sqlite"),
+            new KeyValuePair<string, string?>("Connections:blank:ConnectionString", "   "),
+        ]);
+
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client);
         AssertAdvertisedTools(tools);
 
         var connections = factory.Services.GetRequiredService<ToolCatalog>().Connections;
-        Assert.AreEqual(0, connections.Count);
+        Assert.IsTrue(connections.TryGetValue("blank", out var snapshot));
+        Assert.AreEqual("Sqlite", snapshot!.ServerType);
+        Assert.IsFalse(snapshot.Available);
         AssertFactoryCreateAbsent();
     }
 
     [TestMethod]
-    public async Task Blank_connection_string_is_unavailable_and_list_stays_six()
+    public async Task Non_localhost_host_still_lists_tools()
     {
         await using var factory = CreateFactory(
         [
-            new KeyValuePair<string, string?>("Connections:0:ServerType", "Sqlite"),
-            new KeyValuePair<string, string?>("Connections:0:ConnectionString", "   "),
+            new KeyValuePair<string, string?>("Connections:warehouse:ServerType", "Sqlite"),
+            new KeyValuePair<string, string?>("Connections:warehouse:ConnectionString", "Data Source=:memory:"),
         ]);
 
-        var tools = await ListToolsAsync(factory);
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client, "agent.example");
         AssertAdvertisedTools(tools);
-
-        var snapshot = factory.Services.GetRequiredService<ToolCatalog>().Connections.Single();
-        Assert.IsFalse(snapshot.Available);
         AssertFactoryCreateAbsent();
     }
 
@@ -99,17 +142,33 @@ public class ToolListTests
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {
+                for (var index = config.Sources.Count - 1; index >= 0; index--)
+                {
+                    var source = config.Sources[index];
+                    var name = source.GetType().Name;
+                    if (source is EnvironmentVariablesConfigurationSource
+                        || name.Contains("UserSecrets", StringComparison.Ordinal)
+                        || name.Contains("CommandLine", StringComparison.Ordinal))
+                    {
+                        config.Sources.RemoveAt(index);
+                    }
+                }
+
                 config.AddInMemoryCollection(settings);
             });
         });
     }
 
-    private static async Task<JsonElement[]> ListToolsAsync(WebApplicationFactory<Program> factory)
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
     {
-        using var client = factory.CreateClient();
+        var client = factory.CreateClient();
         client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
+        return client;
+    }
 
+    private static async Task<JsonElement[]> ListToolsAsync(HttpClient client, string? host = null)
+    {
         using (var initRequest = new HttpRequestMessage(HttpMethod.Post, "/mcp")
         {
             Content = new StringContent(
@@ -120,6 +179,9 @@ public class ToolListTests
                 "application/json"),
         })
         {
+            if (host is not null)
+                initRequest.Headers.Host = host;
+
             using var initResponse = await client.SendAsync(initRequest);
             var initBody = await initResponse.Content.ReadAsStringAsync();
             Assert.AreEqual(HttpStatusCode.OK, initResponse.StatusCode, initBody);
@@ -133,24 +195,58 @@ public class ToolListTests
                 "application/json"),
         };
         listRequest.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2025-11-25");
+        if (host is not null)
+            listRequest.Headers.Host = host;
 
         using var listResponse = await client.SendAsync(listRequest);
         var body = await listResponse.Content.ReadAsStringAsync();
         Assert.AreEqual(HttpStatusCode.OK, listResponse.StatusCode, body);
 
-        using var sseRequest = new HttpRequestMessage(HttpMethod.Get, "/mcp/sse");
-        using var sseResponse = await client.SendAsync(sseRequest);
-        Assert.AreEqual(HttpStatusCode.NotFound, sseResponse.StatusCode);
-
         var json = ParseRpc(body);
         return json.GetProperty("result").GetProperty("tools").EnumerateArray().Select(tool => tool.Clone()).ToArray();
+    }
+
+    private static async Task AssertCallDoesNotExecuteAsync(HttpClient client, string name, int id)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        {
+            Content = new StringContent(
+                "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/call\",\"params\":{\"name\":\"" + name + "\",\"arguments\":{}}}",
+                Encoding.UTF8,
+                "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2025-11-25");
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, body);
+
+        var json = ParseRpc(body);
+        var refused = json.TryGetProperty("error", out _)
+            || (json.TryGetProperty("result", out var result)
+                && result.TryGetProperty("isError", out var isError)
+                && isError.ValueKind == JsonValueKind.True);
+        Assert.IsTrue(refused, body);
+    }
+
+    private static async Task AssertLegacySseAbsentAsync(HttpClient client)
+    {
+        using var sseResponse = await client.GetAsync("/sse");
+        Assert.AreEqual(HttpStatusCode.NotFound, sseResponse.StatusCode);
+
+        using var messageResponse = await client.GetAsync("/message");
+        Assert.AreEqual(HttpStatusCode.NotFound, messageResponse.StatusCode);
     }
 
     private static JsonElement ParseRpc(string body)
     {
         if (!body.Contains("data:", StringComparison.Ordinal))
-            return JsonDocument.Parse(body).RootElement.Clone();
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.Clone();
+        }
 
+        JsonElement? last = null;
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.Trim();
@@ -162,12 +258,18 @@ public class ToolListTests
                 continue;
 
             using var document = JsonDocument.Parse(data);
-            if (document.RootElement.TryGetProperty("result", out var result)
-                && result.TryGetProperty("tools", out _))
-            {
-                return document.RootElement.Clone();
-            }
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var clone = document.RootElement.Clone();
+            if (clone.TryGetProperty("result", out var result) && result.TryGetProperty("tools", out _))
+                return clone;
+
+            last = clone;
         }
+
+        if (last is { } found)
+            return found;
 
         Assert.Fail(body);
         return default;

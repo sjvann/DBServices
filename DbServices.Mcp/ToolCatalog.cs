@@ -1,7 +1,7 @@
 namespace DbServices.Mcp;
 
 /// <summary>
-/// 六個唯讀工具與連線快照。不建立資料庫工作階段，也不建立關閉名稱的處理函式。
+/// 六個唯讀工具與具名連線快照。不建立資料庫工作階段，也不建立關閉名稱的處理函式。
 /// </summary>
 public sealed class ToolCatalog
 {
@@ -14,7 +14,7 @@ public sealed class ToolCatalog
         "PostgreSQL",
     };
 
-    private static readonly ToolDefinition[] AdvertisedTools =
+    public static readonly IReadOnlyList<ToolDefinition> Definitions =
     [
         new("tables", "列出資料表"),
         new("fields", "列出欄位"),
@@ -24,21 +24,25 @@ public sealed class ToolCatalog
         new("exists", "是否存在"),
     ];
 
-    public ToolCatalog(IEnumerable<ConnectionSetting> connections)
+    public ToolCatalog(IReadOnlyDictionary<string, ConnectionSetting> connections)
     {
         ArgumentNullException.ThrowIfNull(connections);
-        Connections = connections.Select(ToSnapshot).ToArray();
-        Tools = AdvertisedTools;
+        var snapshots = new Dictionary<string, ConnectionSnapshot>(connections.Count, StringComparer.Ordinal);
+        foreach (var (connectionId, setting) in connections)
+            snapshots[connectionId] = ToSnapshot(setting);
+
+        Connections = snapshots;
+        Tools = Definitions;
     }
 
     public IReadOnlyList<ToolDefinition> Tools { get; }
 
-    public IReadOnlyList<ConnectionSnapshot> Connections { get; }
+    public IReadOnlyDictionary<string, ConnectionSnapshot> Connections { get; }
 
-    private static ConnectionSnapshot ToSnapshot(ConnectionSetting setting)
+    private static ConnectionSnapshot ToSnapshot(ConnectionSetting? setting)
     {
-        var serverType = setting.ServerType ?? "";
-        var connectionString = setting.ConnectionString ?? "";
+        var serverType = setting?.ServerType ?? "";
+        var connectionString = setting?.ConnectionString ?? "";
         var available = KnownServerTypes.Contains(serverType)
             && !string.IsNullOrWhiteSpace(connectionString);
         return new ConnectionSnapshot(serverType, connectionString, available);

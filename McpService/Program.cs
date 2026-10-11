@@ -4,12 +4,12 @@ using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var toolDefinitions = new ToolCatalog([]).Tools;
 builder.Services.AddSingleton(sp =>
 {
     var connections = sp.GetRequiredService<IConfiguration>()
         .GetSection("Connections")
-        .Get<List<ConnectionSetting>>() ?? [];
+        .Get<Dictionary<string, ConnectionSetting>>()
+        ?? new Dictionary<string, ConnectionSetting>();
     return new ToolCatalog(connections);
 });
 
@@ -21,19 +21,27 @@ builder.Services
 #pragma warning disable MCP9004
         options.EnableLegacySse = false;
 #pragma warning restore MCP9004
-    })
-    .WithTools(toolDefinitions.Select(tool => McpServerTool.Create(
-        NotExecuted,
-        new McpServerToolCreateOptions
-        {
-            Name = tool.Name,
-            Description = tool.Description,
-            ReadOnly = tool.ReadOnly,
-            Destructive = !tool.NonDestructive,
-        })));
+    });
+
+foreach (var definition in ToolCatalog.Definitions)
+{
+    var name = definition.Name;
+    builder.Services.AddSingleton(sp =>
+    {
+        var tool = sp.GetRequiredService<ToolCatalog>().Tools.Single(candidate => candidate.Name == name);
+        return McpServerTool.Create(
+            NotExecuted,
+            new McpServerToolCreateOptions
+            {
+                Name = tool.Name,
+                Description = tool.Description,
+                ReadOnly = tool.ReadOnly,
+                Destructive = !tool.NonDestructive,
+            });
+    });
+}
 
 var app = builder.Build();
-app.Services.GetRequiredService<ToolCatalog>();
 app.MapMcp("/mcp");
 app.Run();
 
