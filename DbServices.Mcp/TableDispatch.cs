@@ -5,7 +5,7 @@ using DbServices.Core.Session;
 namespace DbServices.Mcp;
 
 /// <summary>
-/// 依已登記連線建立服務，並執行 Session 的 tables 或 fields。不參考 MCP。
+/// 依已登記連線建立服務，並執行 Session 的 tables、fields 或 get。不參考 MCP。
 /// </summary>
 public static class TableDispatch
 {
@@ -78,6 +78,228 @@ public static class TableDispatch
             (service as IDisposable)?.Dispose();
         }
     }
+
+    /// <summary>
+    /// 直接執行 Session get。缺表名、空白表名或非整數 id 不建立服務，也不探表。
+    /// </summary>
+    public static TableDispatchResult ExecuteGet(ToolCatalog catalog, string connectionId, string? table, JsonElement? id)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (string.IsNullOrWhiteSpace(table) || !TryReadInt64(id, out var parsedId))
+            return TableDispatchResult.InvalidGetArguments();
+
+        var snapshot = catalog.Connections[connectionId];
+        var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
+        try
+        {
+            var result = service!.GetSession().Execute(new QueryRequest
+            {
+                Text = "get",
+                Opcode = QueryOpcode.Call,
+                Arguments = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["table"] = table,
+                    ["id"] = parsedId,
+                },
+            });
+
+            return FromGet(result);
+        }
+        finally
+        {
+            (service as IDisposable)?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 依送入的 Session get 結果回應。不探表，也不把缺表改成 unknown_table。
+    /// </summary>
+    public static TableDispatchResult FromGet(QueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Kind == QueryKind.Error)
+            return TableDispatchResult.GetExecutionFailed();
+
+        return TableDispatchResult.Rows(result.Columns, result.Rows);
+    }
+
+    private static bool TryReadInt64(JsonElement? id, out long value)
+    {
+        value = 0;
+        if (id is not { } element || element.ValueKind != JsonValueKind.Number)
+            return false;
+
+        if (element.TryGetInt64(out value))
+            return true;
+
+        return TryExactInt64(element.GetRawText(), out value);
+    }
+
+    /// <summary>
+    /// 用字面位數判斷，不經過會把 1e-29 收成 0、把超長小數收成 1 的 decimal。
+    /// </summary>
+    private static bool TryExactInt64(string raw, out long value)
+    {
+        value = 0;
+        if (raw.Length == 0)
+            return false;
+
+        var index = 0;
+        var negative = raw[0] == '-';
+        if (negative)
+            index++;
+
+        var intStart = index;
+        while (index < raw.Length && IsDigit(raw[index]))
+            index++;
+        if (index == intStart)
+            return false;
+        var intEnd = index;
+
+        var fracStart = index;
+        var fracEnd = index;
+        if (index < raw.Length && raw[index] == '.')
+        {
+            index++;
+            fracStart = index;
+            while (index < raw.Length && IsDigit(raw[index]))
+                index++;
+            fracEnd = index;
+            if (fracStart == fracEnd)
+                return false;
+        }
+
+        var exponent = 0;
+        if (index < raw.Length && raw[index] is 'e' or 'E')
+        {
+            index++;
+            var expNegative = false;
+            if (index < raw.Length && raw[index] is '+' or '-')
+            {
+                expNegative = raw[index] == '-';
+                index++;
+            }
+
+            var expStart = index;
+            while (index < raw.Length && IsDigit(raw[index]))
+                index++;
+            if (index == expStart || index != raw.Length)
+                return false;
+            if (!TrySmallExponent(raw, expStart, index, out exponent))
+                return ZeroIfSignificandIsZero(raw, intStart, intEnd, fracStart, fracEnd, out value);
+            if (expNegative)
+                exponent = -exponent;
+        }
+        else if (index != raw.Length)
+        {
+            return false;
+        }
+
+        var fractionLength = fracEnd - fracStart;
+        var scale = (long)exponent - fractionLength;
+        var total = (intEnd - intStart) + fractionLength;
+        var kept = total;
+        if (scale < 0)
+        {
+            var drop = -scale;
+            if (drop > total)
+                return ZeroIfSignificandIsZero(raw, intStart, intEnd, fracStart, fracEnd, out value);
+            if (!TailIsZero(raw, intStart, intEnd, fracStart, total, (int)drop))
+                return false;
+            kept = total - (int)drop;
+            scale = 0;
+        }
+
+        ulong magnitude = 0;
+        var significant = 0;
+        for (var logical = 0; logical < kept; logical++)
+        {
+            var digit = DigitAt(raw, intStart, intEnd, fracStart, logical);
+            if (significant == 0 && digit == '0')
+                continue;
+
+            significant++;
+            if (significant + scale > 19)
+                return false;
+            magnitude = magnitude * 10UL + (ulong)(digit - '0');
+        }
+
+        if (magnitude == 0)
+        {
+            value = 0;
+            return true;
+        }
+
+        if (scale > 19)
+            return false;
+
+        for (var power = 0; power < scale; power++)
+            magnitude *= 10UL;
+
+        if (negative)
+        {
+            if (magnitude > (ulong)long.MaxValue + 1UL)
+                return false;
+            value = magnitude == (ulong)long.MaxValue + 1UL ? long.MinValue : -(long)magnitude;
+            return true;
+        }
+
+        if (magnitude > (ulong)long.MaxValue)
+            return false;
+        value = (long)magnitude;
+        return true;
+    }
+
+    private static bool TrySmallExponent(string raw, int start, int end, out int exponent)
+    {
+        exponent = 0;
+        while (start < end && raw[start] == '0')
+            start++;
+        if (end - start > 9)
+            return false;
+
+        for (var index = start; index < end; index++)
+            exponent = exponent * 10 + (raw[index] - '0');
+        return true;
+    }
+
+    private static bool ZeroIfSignificandIsZero(
+        string raw, int intStart, int intEnd, int fracStart, int fracEnd, out long value)
+    {
+        value = 0;
+        for (var index = intStart; index < intEnd; index++)
+        {
+            if (raw[index] != '0')
+                return false;
+        }
+
+        for (var index = fracStart; index < fracEnd; index++)
+        {
+            if (raw[index] != '0')
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool TailIsZero(string raw, int intStart, int intEnd, int fracStart, int total, int drop)
+    {
+        for (var logical = total - drop; logical < total; logical++)
+        {
+            if (DigitAt(raw, intStart, intEnd, fracStart, logical) != '0')
+                return false;
+        }
+
+        return true;
+    }
+
+    private static char DigitAt(string raw, int intStart, int intEnd, int fracStart, int logical)
+    {
+        var intLength = intEnd - intStart;
+        return logical < intLength ? raw[intStart + logical] : raw[fracStart + (logical - intLength)];
+    }
+
+    private static bool IsDigit(char value) => value is >= '0' and <= '9';
 
     /// <summary>
     /// 依送入的探表結果決定是否執行 fields。探表失敗或未命中都不呼叫 fields。
@@ -163,6 +385,12 @@ public sealed class TableDispatchResult
 
     public static TableDispatchResult InvalidArguments()
         => Error("invalid_arguments", "未提供資料表名稱。");
+
+    public static TableDispatchResult InvalidGetArguments()
+        => Error("invalid_arguments", "未提供資料表名稱或整數 Id。");
+
+    public static TableDispatchResult GetExecutionFailed()
+        => Error("execution_failed", "依 Id 取一列失敗。");
 
     private static TableDispatchResult Error(string code, string message)
         => new(true, JsonSerializer.Serialize(new Dictionary<string, string>

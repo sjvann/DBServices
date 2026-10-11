@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -609,6 +610,332 @@ public class ToolListTests
         }
     }
 
+    [TestMethod]
+    public async Task Get_schema_has_connection_id_table_and_id_only()
+    {
+        await using var factory = CreateFactory([]);
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client);
+
+        var get = tools.Single(tool => tool.GetProperty("name").GetString() == "get");
+        var schema = get.GetProperty("inputSchema");
+        var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
+        CollectionAssert.AreEquivalent(new[] { "connectionId", "table", "id" }, names);
+
+        var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
+        CollectionAssert.Contains(required, "connectionId");
+        Assert.IsFalse(required.Contains("table"));
+        Assert.IsFalse(required.Contains("id"));
+
+        var raw = schema.GetRawText();
+        Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
+        Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+    }
+
+    [TestMethod]
+    public async Task Get_row_matches_direct_session_and_integer_cells_are_numbers()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, -2, "neg", null);
+            InsertProduct(connectionString, 0, "zero", "z");
+            InsertProduct(connectionString, 1, "one", "n");
+            InsertProduct(connectionString, long.MinValue, "min", null);
+            InsertProduct(connectionString, long.MaxValue, "max", "m");
+            InsertProduct(connectionString, 100, "hundred", null);
+
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var id = 40;
+            foreach (var key in new long[] { -2, 0, 1, long.MinValue, long.MaxValue })
+            {
+                var call = await CallToolAsync(client, "get", new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "inventory",
+                    ["table"] = "products",
+                    ["id"] = key,
+                }, id++);
+
+                Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+                Assert.IsFalse(call.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), call.Body);
+                var result = ResultOf(call.Rpc, call.Body);
+                Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
+                var session = ExecuteGet(connectionString, "products", key);
+                Assert.AreEqual(QueryKind.Rows, session.Kind);
+                Assert.AreEqual(1, session.Rows.Count);
+                AssertFieldsMatchSession(TextOf(result, call.Body), session);
+            }
+
+            var fractional = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = JsonLiteral("1.0"),
+            }, id++);
+            Assert.AreEqual(HttpStatusCode.OK, fractional.Status, fractional.Body);
+            var fractionalResult = ResultOf(fractional.Rpc, fractional.Body);
+            Assert.IsFalse(fractionalResult.GetProperty("isError").GetBoolean(), fractional.Body);
+            AssertFieldsMatchSession(TextOf(fractionalResult, fractional.Body), ExecuteGet(connectionString, "products", 1));
+
+            var negativeFractional = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = JsonLiteral("-2.0"),
+            }, id++);
+            Assert.AreEqual(HttpStatusCode.OK, negativeFractional.Status, negativeFractional.Body);
+            var negativeResult = ResultOf(negativeFractional.Rpc, negativeFractional.Body);
+            Assert.IsFalse(negativeResult.GetProperty("isError").GetBoolean(), negativeFractional.Body);
+            AssertFieldsMatchSession(
+                TextOf(negativeResult, negativeFractional.Body),
+                ExecuteGet(connectionString, "products", -2));
+
+            var zeroScale = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = JsonLiteral("0.0"),
+            }, id++);
+            Assert.AreEqual(HttpStatusCode.OK, zeroScale.Status, zeroScale.Body);
+            var zeroResult = ResultOf(zeroScale.Rpc, zeroScale.Body);
+            Assert.IsFalse(zeroResult.GetProperty("isError").GetBoolean(), zeroScale.Body);
+            AssertFieldsMatchSession(TextOf(zeroResult, zeroScale.Body), ExecuteGet(connectionString, "products", 0));
+
+            var scientific = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = JsonLiteral("1e2"),
+            }, id);
+            Assert.AreEqual(HttpStatusCode.OK, scientific.Status, scientific.Body);
+            var scientificResult = ResultOf(scientific.Rpc, scientific.Body);
+            Assert.IsFalse(scientificResult.GetProperty("isError").GetBoolean(), scientific.Body);
+            AssertFieldsMatchSession(TextOf(scientificResult, scientific.Body), ExecuteGet(connectionString, "products", 100));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Get_missing_row_returns_empty_rows_and_host_continues()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var call = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = 999,
+            }, 50);
+
+            Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+            var result = ResultOf(call.Rpc, call.Body);
+            Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
+            var session = ExecuteGet(connectionString, "products", 999);
+            Assert.AreEqual(QueryKind.Rows, session.Kind);
+            Assert.AreEqual(0, session.Rows.Count);
+            AssertFieldsMatchSession(TextOf(result, call.Body), session);
+
+            var again = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, 51);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            var againResult = ResultOf(again.Rpc, again.Body);
+            Assert.IsFalse(againResult.GetProperty("isError").GetBoolean(), again.Body);
+            AssertFieldsMatchSession(TextOf(againResult, again.Body), ExecuteGet(connectionString, "products", 1));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void Supplied_get_error_is_execution_failed_without_connection_string()
+    {
+        var outcome = TableDispatch.FromGet(QueryResult.FromError("Data Source=mcpsecretmarker-get"));
+
+        Assert.IsTrue(outcome.IsError);
+        Assert.IsFalse(outcome.Json.Contains("mcpsecretmarker", StringComparison.Ordinal), outcome.Json);
+        Assert.IsFalse(outcome.Json.Contains("unknown_table", StringComparison.Ordinal), outcome.Json);
+        Assert.IsFalse(outcome.Json.Contains("rows", StringComparison.Ordinal), outcome.Json);
+        using var payload = JsonDocument.Parse(outcome.Json);
+        var keys = payload.RootElement.EnumerateObject().Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        CollectionAssert.AreEqual(new[] { "code", "message" }, keys);
+        Assert.AreEqual("execution_failed", payload.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual("依 Id 取一列失敗。", payload.RootElement.GetProperty("message").GetString());
+    }
+
+    [TestMethod]
+    public async Task Get_invalid_arguments_do_not_create_database()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            Assert.IsFalse(File.Exists(dbPath));
+            await using var factory = CreateFactory(SqliteSettings("warehouse", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+            Assert.IsFalse(File.Exists(dbPath));
+
+            var cases = new (int Id, Dictionary<string, object?> Arguments)[]
+            {
+                (70, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["id"] = 1 }),
+                (71, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "   ", ["id"] = 1 }),
+                (72, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "", ["id"] = 1 }),
+                (73, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products" }),
+                (74, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = "1" }),
+                (75, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = true }),
+                (76, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = new Dictionary<string, object?> { ["n"] = 1 } }),
+                (77, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = new object[] { 1 } }),
+                (78, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("1.5") }),
+                (79, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = null }),
+                (80, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("9223372036854775808") }),
+                (81, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("-9223372036854775809") }),
+                (83, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("1e-29") }),
+                (84, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("-1e-29") }),
+                (85, new Dictionary<string, object?> { ["connectionId"] = "warehouse", ["table"] = "products", ["id"] = JsonLiteral("1.00000000000000000000000000001") }),
+            };
+
+            foreach (var (caseId, arguments) in cases)
+            {
+                var call = await CallToolAsync(client, "get", arguments, caseId);
+                AssertInvalidGet(call.Status, call.Body, call.Rpc);
+                Assert.IsFalse(File.Exists(dbPath));
+            }
+
+            var again = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+                ["table"] = "products",
+                ["id"] = JsonLiteral("1.5"),
+            }, 82);
+            AssertInvalidGet(again.Status, again.Body, again.Rpc);
+            Assert.IsFalse(File.Exists(dbPath));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Get_missing_table_matches_session_and_is_not_unknown_table()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var session = ExecuteGet(connectionString, "no_such_table", 1);
+            var call = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "no_such_table",
+                ["id"] = 1,
+            }, 90);
+
+            Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+            Assert.IsFalse(call.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), call.Body);
+            Assert.IsFalse(call.Body.Contains("unknown_table", StringComparison.Ordinal), call.Body);
+            if (session.Kind == QueryKind.Error)
+            {
+                AssertErrorPayload(ResultOf(call.Rpc, call.Body), call.Body, "execution_failed", "依 Id 取一列失敗。");
+                Assert.IsFalse(string.IsNullOrEmpty(session.Error));
+                Assert.IsFalse(call.Body.Contains(session.Error!, StringComparison.Ordinal), call.Body);
+            }
+            else
+            {
+                Assert.AreEqual(QueryKind.Rows, session.Kind);
+                var result = ResultOf(call.Rpc, call.Body);
+                Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
+                AssertFieldsMatchSession(TextOf(result, call.Body), session);
+            }
+
+            var again = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 91);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Query_count_and_exists_do_not_execute_or_create_database()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            await using var factory = CreateFactory(SqliteSettings("warehouse", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+            Assert.IsFalse(File.Exists(dbPath));
+
+            var id = 100;
+            foreach (var name in new[] { "query", "count", "exists" })
+            {
+                var call = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "warehouse",
+                    ["table"] = "products",
+                    ["id"] = 1,
+                }, id++);
+                AssertRefused(call.Status, call.Body, call.Rpc);
+                Assert.IsFalse(File.Exists(dbPath));
+            }
+
+            var again = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, id);
+            AssertRefused(again.Status, again.Body, again.Rpc);
+            Assert.IsFalse(File.Exists(dbPath));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(
         IEnumerable<KeyValuePair<string, string?>> settings)
     {
@@ -874,6 +1201,11 @@ public class ToolListTests
                 Assert.AreEqual(JsonValueKind.String, actual.ValueKind);
                 Assert.AreEqual(text, actual.GetString());
                 return;
+            case byte or sbyte or short or ushort or int or uint or long:
+                Assert.AreEqual(JsonValueKind.Number, actual.ValueKind);
+                Assert.IsTrue(actual.TryGetInt64(out var actualNumber), actual.GetRawText());
+                Assert.AreEqual(Convert.ToInt64(expected, CultureInfo.InvariantCulture), actualNumber);
+                return;
             default:
                 Assert.AreEqual(Convert.ToString(expected), actual.ToString());
                 return;
@@ -905,6 +1237,45 @@ public class ToolListTests
         Assert.AreEqual(HttpStatusCode.OK, status, body);
         Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
         AssertErrorPayload(ResultOf(rpc, body), body, "invalid_arguments", "未提供資料表名稱。");
+    }
+
+    private static void AssertInvalidGet(HttpStatusCode status, string body, JsonElement rpc)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
+        AssertErrorPayload(ResultOf(rpc, body), body, "invalid_arguments", "未提供資料表名稱或整數 Id。");
+    }
+
+    private static void AssertRefused(HttpStatusCode status, string body, JsonElement rpc)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        var refused = rpc.TryGetProperty("error", out _)
+            || (rpc.TryGetProperty("result", out var result)
+                && result.TryGetProperty("isError", out var isError)
+                && isError.ValueKind == JsonValueKind.True);
+        Assert.IsTrue(refused, body);
+    }
+
+    private static QueryResult ExecuteGet(string connectionString, string table, long id)
+    {
+        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        try
+        {
+            return service!.GetSession().Execute(new QueryRequest
+            {
+                Text = "get",
+                Opcode = QueryOpcode.Call,
+                Arguments = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["table"] = table,
+                    ["id"] = id,
+                },
+            });
+        }
+        finally
+        {
+            (service as IDisposable)?.Dispose();
+        }
     }
 
     private static QueryResult ExecuteFields(string connectionString, string table)
@@ -942,6 +1313,30 @@ public class ToolListTests
                 Opcode = QueryOpcode.Call,
                 Arguments = arguments,
             });
+        }
+        finally
+        {
+            (service as IDisposable)?.Dispose();
+        }
+    }
+
+    private static JsonElement JsonLiteral(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static void InsertProduct(string connectionString, long id, string name, string? note)
+    {
+        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        try
+        {
+            var noteSql = note is null ? "NULL" : "'" + note.Replace("'", "''", StringComparison.Ordinal) + "'";
+            var nameSql = name.Replace("'", "''", StringComparison.Ordinal);
+            service!.ExecuteSQL(
+                "INSERT INTO products (Id, Name, Note) VALUES ("
+                + id.ToString(CultureInfo.InvariantCulture)
+                + ", '" + nameSql + "', " + noteSql + ")");
         }
         finally
         {
