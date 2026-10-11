@@ -16,6 +16,9 @@ public static class TableDispatch
     {
         ArgumentNullException.ThrowIfNull(catalog);
         var snapshot = catalog.Connections[connectionId];
+        if (RefuseUnknownServer(snapshot) is { } refused)
+            return refused;
+
         var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
         try
         {
@@ -52,6 +55,9 @@ public static class TableDispatch
             return TableDispatchResult.InvalidArguments();
 
         var snapshot = catalog.Connections[connectionId];
+        if (RefuseUnknownServer(snapshot) is { } refused)
+            return refused;
+
         var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
         try
         {
@@ -92,6 +98,9 @@ public static class TableDispatch
             return TableDispatchResult.InvalidGetArguments();
 
         var snapshot = catalog.Connections[connectionId];
+        if (RefuseUnknownServer(snapshot) is { } refused)
+            return refused;
+
         var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
         try
         {
@@ -168,6 +177,17 @@ public static class TableDispatch
         return TableDispatchResult.Scalar(CellOr(result, false));
     }
 
+    /// <summary>
+    /// 名稱不是五個精確字串時，在建立服務前回「無法建立連線。」
+    /// </summary>
+    private static TableDispatchResult? RefuseUnknownServer(ConnectionSnapshot snapshot)
+    {
+        if (snapshot.ServerType is "Sqlite" or "SqlServer" or "MySQL" or "Oracle" or "PostgreSQL")
+            return null;
+
+        return TableDispatchResult.ConnectionFailed();
+    }
+
     private static TableDispatchResult ExecuteDirect(
         ToolCatalog catalog,
         string connectionId,
@@ -181,6 +201,9 @@ public static class TableDispatch
             return TableDispatchResult.InvalidArguments();
 
         var snapshot = catalog.Connections[connectionId];
+        if (RefuseUnknownServer(snapshot) is { } refused)
+            return refused;
+
         var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
         try
         {
@@ -688,6 +711,9 @@ public sealed class TableDispatchResult
 
     public static TableDispatchResult ExecutionFailed()
         => Error("execution_failed", "列出資料表失敗。");
+
+    public static TableDispatchResult ConnectionFailed()
+        => Error("connection_failed", "無法建立連線。");
 
     public static TableDispatchResult FieldsExecutionFailed()
         => Error("execution_failed", "列出欄位失敗。");

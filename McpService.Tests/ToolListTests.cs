@@ -1962,6 +1962,278 @@ public class ToolListTests
         }
     }
 
+    [TestMethod]
+    public async Task Sqlite_tables_fields_and_query_match_session_without_engine_keys()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            var tools = await ListToolsAsync(client);
+            AssertParameterKeysOmitEngine(tools);
+
+            var tablesArguments = new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            };
+            AssertArgumentsOmitEngine(tablesArguments);
+            var tables = await CallToolAsync(client, "tables", tablesArguments, 280);
+            Assert.AreEqual(HttpStatusCode.OK, tables.Status, tables.Body);
+            Assert.IsFalse(tables.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), tables.Body);
+            var tablesResult = ResultOf(tables.Rpc, tables.Body);
+            Assert.IsFalse(tablesResult.GetProperty("isError").GetBoolean(), tables.Body);
+            AssertPayloadMatchesSession(TextOf(tablesResult, tables.Body), ExecuteTables(connectionString, null));
+
+            var fieldsArguments = new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            };
+            AssertArgumentsOmitEngine(fieldsArguments);
+            var fields = await CallToolAsync(client, "fields", fieldsArguments, 281);
+            Assert.AreEqual(HttpStatusCode.OK, fields.Status, fields.Body);
+            Assert.IsFalse(fields.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), fields.Body);
+            var fieldsResult = ResultOf(fields.Rpc, fields.Body);
+            Assert.IsFalse(fieldsResult.GetProperty("isError").GetBoolean(), fields.Body);
+            AssertFieldsMatchSession(TextOf(fieldsResult, fields.Body), ExecuteFields(connectionString, "products"));
+
+            var queryArguments = new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            };
+            AssertArgumentsOmitEngine(queryArguments);
+            var query = await CallToolAsync(client, "query", queryArguments, 282);
+            AssertQueryMatches(
+                query.Status,
+                query.Body,
+                query.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Name"] = "one",
+                }));
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Other_engines_match_session_or_pass_without_a_test_database()
+    {
+        var engines = new (string ServerType, string Variable)[]
+        {
+            ("SqlServer", "DBSERVICES_TEST_SQLSERVER"),
+            ("MySQL", "DBSERVICES_TEST_MYSQL"),
+            ("Oracle", "DBSERVICES_TEST_ORACLE"),
+            ("PostgreSQL", "DBSERVICES_TEST_POSTGRESQL"),
+        };
+
+        foreach (var (serverType, variable) in engines)
+            await AssertOtherEngineOrPassAsync(serverType, Environment.GetEnvironmentVariable(variable));
+    }
+
+    [TestMethod]
+    public async Task Exact_server_types_are_not_connection_failed_when_connect_fails()
+    {
+        var engines = new (string Name, string ServerType, string ConnectionString)[]
+        {
+            ("sqlserver", "SqlServer", "Server=tcp:127.0.0.1,1;User ID=x;Password=x;Connect Timeout=1;Encrypt=False"),
+            ("mysql", "MySQL", "Server=127.0.0.1;Port=1;User ID=x;Password=x;Connection Timeout=1"),
+            ("oracle", "Oracle", "User Id=x;Password=x;Data Source=(DESCRIPTION=(CONNECT_TIMEOUT=1)(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=1)(CONNECT_TIMEOUT=1))(CONNECT_DATA=(SERVICE_NAME=x)))"),
+            ("postgres", "PostgreSQL", "Host=127.0.0.1;Port=1;Username=x;Password=x;Database=x;Timeout=1"),
+        };
+
+        var settings = new List<KeyValuePair<string, string?>>(engines.Length * 2);
+        foreach (var (name, serverType, connectionString) in engines)
+        {
+            settings.Add(new KeyValuePair<string, string?>($"Connections:{name}:ServerType", serverType));
+            settings.Add(new KeyValuePair<string, string?>($"Connections:{name}:ConnectionString", connectionString));
+        }
+
+        await using var factory = CreateFactory(settings);
+        using var client = CreateClient(factory);
+        await ListToolsAsync(client);
+
+        var id = 330;
+        foreach (var (name, _, _) in engines)
+        {
+            var call = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = name,
+            }, id++);
+            Assert.IsFalse(call.Body.Contains("connection_failed", StringComparison.Ordinal), name);
+            Assert.IsFalse(call.Body.Contains("無法建立連線。", StringComparison.Ordinal), name);
+        }
+    }
+
+    [TestMethod]
+    public async Task Misspelled_server_type_is_connection_failed_then_another_tables_succeeds()
+    {
+        var typoPath = Path.Combine(Path.GetTempPath(), $"mcpsecretmarker-typo-{Guid.NewGuid():N}.db");
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedItemAndView(connectionString);
+            Assert.IsFalse(File.Exists(typoPath));
+            var settings = new List<KeyValuePair<string, string?>>
+            {
+                new("Connections:legacy:ServerType", "sqlite"),
+                new("Connections:legacy:ConnectionString", $"Data Source={typoPath}"),
+            };
+            settings.AddRange(SqliteSettings("Inventory", connectionString));
+            await using var factory = CreateFactory(settings);
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var failed = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+            }, 290);
+            AssertConnectionFailed(failed.Status, failed.Body, failed.Rpc);
+            Assert.IsFalse(File.Exists(typoPath));
+
+            var again = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+            }, 291);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(again.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), again.Body);
+            var result = ResultOf(again.Rpc, again.Body);
+            Assert.IsFalse(result.GetProperty("isError").GetBoolean(), again.Body);
+            AssertPayloadMatchesSession(TextOf(result, again.Body), ExecuteTables(connectionString, null));
+            Assert.IsFalse(File.Exists(typoPath));
+        }
+        finally
+        {
+            if (File.Exists(typoPath))
+                File.Delete(typoPath);
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Other_tools_keep_invalid_arguments_or_fail_connection_before_create()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"mcpsecretmarker-not-created-{Guid.NewGuid():N}.db");
+        try
+        {
+            Assert.IsFalse(File.Exists(dbPath));
+            await using var factory = CreateFactory(
+            [
+                new KeyValuePair<string, string?>("Connections:legacy:ServerType", "MySql"),
+                new KeyValuePair<string, string?>("Connections:legacy:ConnectionString", $"Data Source={dbPath}"),
+            ]);
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var omittedFields = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+            }, 300);
+            AssertInvalidTable(omittedFields.Status, omittedFields.Body, omittedFields.Rpc);
+
+            var fields = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+                ["table"] = "products",
+            }, 301);
+            AssertConnectionFailed(fields.Status, fields.Body, fields.Rpc);
+
+            var badGet = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+                ["table"] = "products",
+                ["id"] = "1",
+            }, 302);
+            AssertInvalidGet(badGet.Status, badGet.Body, badGet.Rpc);
+
+            var get = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, 303);
+            AssertConnectionFailed(get.Status, get.Body, get.Rpc);
+
+            foreach (var (name, invalidId, acceptedId) in new (string Name, int InvalidId, int AcceptedId)[]
+            {
+                ("query", 304, 305),
+                ("count", 306, 307),
+                ("exists", 308, 309),
+            })
+            {
+                var invalid = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "legacy",
+                    ["table"] = "   ",
+                }, invalidId);
+                AssertInvalidTable(invalid.Status, invalid.Body, invalid.Rpc);
+                Assert.IsFalse(File.Exists(dbPath));
+
+                var accepted = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "legacy",
+                    ["table"] = "products",
+                }, acceptedId);
+                AssertConnectionFailed(accepted.Status, accepted.Body, accepted.Rpc);
+                Assert.IsFalse(File.Exists(dbPath));
+            }
+
+            Assert.IsFalse(File.Exists(dbPath));
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Misspelled_server_type_audit_is_connection_failed()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"mcpsecretmarker-audit-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var factory = CreateFactory(
+            [
+                new KeyValuePair<string, string?>("Connections:legacy:ServerType", "Postgress"),
+                new KeyValuePair<string, string?>("Connections:legacy:ConnectionString", $"Data Source={dbPath}"),
+            ]);
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var failed = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "legacy",
+            }, 310);
+            AssertConnectionFailed(failed.Status, failed.Body, failed.Rpc);
+
+            var records = ReadAudit(factory);
+            Assert.AreEqual(1, records.Length);
+            AssertErrorAudit(records[0], "tables", "connection_failed", "legacy");
+            Assert.IsFalse(File.Exists(dbPath));
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+        }
+    }
+
+    private static readonly string[] EngineNames = ["Sqlite", "SqlServer", "MySQL", "Oracle", "PostgreSQL"];
+
     private static readonly List<string> ContentRoots = new();
 
     private static WebApplicationFactory<Program> CreateFactory(
@@ -2295,6 +2567,229 @@ public class ToolListTests
         AssertErrorPayload(ResultOf(rpc, body), body, "invalid_arguments", "未提供資料表名稱或整數 Id。");
     }
 
+    private static void AssertConnectionFailed(HttpStatusCode status, string body, JsonElement rpc)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
+        AssertErrorPayload(ResultOf(rpc, body), body, "connection_failed", "無法建立連線。");
+    }
+
+    private static void AssertParameterKeysOmitEngine(JsonElement[] tools)
+    {
+        foreach (var tool in tools)
+        {
+            var name = tool.GetProperty("name").GetString();
+            Assert.IsFalse(string.IsNullOrEmpty(name));
+            foreach (var engine in EngineNames)
+                Assert.IsFalse(name!.Contains(engine, StringComparison.OrdinalIgnoreCase), name);
+
+            foreach (var property in tool.GetProperty("inputSchema").GetProperty("properties").EnumerateObject())
+            {
+                foreach (var engine in EngineNames)
+                    Assert.IsFalse(property.Name.Contains(engine, StringComparison.OrdinalIgnoreCase), property.Name);
+            }
+        }
+    }
+
+    private static void AssertArgumentsOmitEngine(IReadOnlyDictionary<string, object?> arguments)
+    {
+        foreach (var key in arguments.Keys)
+        {
+            foreach (var engine in EngineNames)
+                Assert.IsFalse(key.Contains(engine, StringComparison.OrdinalIgnoreCase), key);
+        }
+    }
+
+    private static async Task AssertOtherEngineOrPassAsync(string serverType, string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var table = "p" + Guid.NewGuid().ToString("N")[..16];
+        var prepared = TryPrepareProbe(connectionString, serverType, table);
+        try
+        {
+            if (!prepared)
+                return;
+
+            QueryResult tables;
+            try
+            {
+                tables = ExecuteTables(connectionString, null, serverType);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            if (tables.Kind == QueryKind.Error)
+                return;
+
+            await using var factory = CreateFactory(
+            [
+                new KeyValuePair<string, string?>("Connections:warehouse:ServerType", serverType),
+                new KeyValuePair<string, string?>("Connections:warehouse:ConnectionString", connectionString),
+            ]);
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var tablesCall = await CallToolAsync(client, "tables", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+            }, 320);
+            Assert.IsFalse(tablesCall.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), tablesCall.Body);
+            Assert.IsFalse(tablesCall.Body.Contains(connectionString, StringComparison.Ordinal), tablesCall.Body);
+            var tablesResult = ResultOf(tablesCall.Rpc, tablesCall.Body);
+            Assert.IsFalse(tablesResult.GetProperty("isError").GetBoolean(), tablesCall.Body);
+            AssertPayloadMatchesSession(TextOf(tablesResult, tablesCall.Body), tables);
+            var reported = ReportedTableName(tables, table);
+            Assert.IsFalse(string.IsNullOrEmpty(reported), table);
+
+            var fieldsSession = ExecuteFields(connectionString, reported!, serverType);
+            var fieldsCall = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+                ["table"] = reported,
+            }, 321);
+            Assert.AreEqual(HttpStatusCode.OK, fieldsCall.Status, fieldsCall.Body);
+            Assert.IsFalse(fieldsCall.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), fieldsCall.Body);
+            Assert.IsFalse(fieldsCall.Body.Contains(connectionString, StringComparison.Ordinal), fieldsCall.Body);
+            var fieldsResult = ResultOf(fieldsCall.Rpc, fieldsCall.Body);
+            Assert.IsFalse(fieldsResult.GetProperty("isError").GetBoolean(), fieldsCall.Body);
+            AssertFieldsMatchSession(TextOf(fieldsResult, fieldsCall.Body), fieldsSession);
+
+            var queryCall = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "warehouse",
+                ["table"] = reported,
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 322);
+            AssertQueryMatches(
+                queryCall.Status,
+                queryCall.Body,
+                queryCall.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = reported,
+                    ["Name"] = "one",
+                }, serverType));
+            Assert.IsFalse(queryCall.Body.Contains(connectionString, StringComparison.Ordinal), queryCall.Body);
+        }
+        finally
+        {
+            TryDropProbe(connectionString, serverType, table);
+        }
+    }
+
+    private static string? ReportedTableName(QueryResult tables, string table)
+    {
+        var nameIndex = -1;
+        for (var index = 0; index < tables.Columns.Count; index++)
+        {
+            if (string.Equals(tables.Columns[index], "name", StringComparison.OrdinalIgnoreCase))
+            {
+                nameIndex = index;
+                break;
+            }
+        }
+
+        if (nameIndex < 0)
+            return null;
+
+        foreach (var row in tables.Rows)
+        {
+            if (nameIndex >= row.Count || row[nameIndex] is null)
+                continue;
+
+            var value = Convert.ToString(row[nameIndex], CultureInfo.InvariantCulture);
+            if (string.Equals(value, table, StringComparison.OrdinalIgnoreCase))
+                return value;
+        }
+
+        return null;
+    }
+
+    private static bool TryPrepareProbe(string connectionString, string serverType, string table)
+    {
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, serverType);
+            if (service is null)
+                return false;
+
+            try
+            {
+                foreach (var sql in ProbeSql(serverType, table))
+                    service.ExecuteSQL(sql);
+                return true;
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static void TryDropProbe(string connectionString, string serverType, string table)
+    {
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, serverType);
+            if (service is null)
+                return;
+
+            try
+            {
+                service.ExecuteSQL(DropSql(serverType, table));
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+        }
+        catch (Exception)
+        {
+            // 測試庫可能拒絕刪除；這一則仍要結束。
+        }
+    }
+
+    private static IEnumerable<string> ProbeSql(string serverType, string table)
+    {
+        switch (serverType)
+        {
+            case "SqlServer":
+                yield return $"CREATE TABLE {table} (Id int NOT NULL PRIMARY KEY, Name nvarchar(50) NOT NULL)";
+                yield return $"INSERT INTO {table} (Id, Name) VALUES (1, N'one')";
+                yield break;
+            case "MySQL":
+                yield return $"CREATE TABLE {table} (Id int NOT NULL PRIMARY KEY, Name varchar(50) NOT NULL)";
+                yield return $"INSERT INTO {table} (Id, Name) VALUES (1, 'one')";
+                yield break;
+            case "Oracle":
+                yield return $"CREATE TABLE {table} (Id number(10) NOT NULL PRIMARY KEY, Name varchar2(50) NOT NULL)";
+                yield return $"INSERT INTO {table} (Id, Name) VALUES (1, 'one')";
+                yield break;
+            case "PostgreSQL":
+                yield return $"CREATE TABLE {table} (Id integer NOT NULL PRIMARY KEY, Name text NOT NULL)";
+                yield return $"INSERT INTO {table} (Id, Name) VALUES (1, 'one')";
+                yield break;
+        }
+    }
+
+    private static string DropSql(string serverType, string table) => serverType switch
+    {
+        "MySQL" => $"DROP TABLE IF EXISTS {table}",
+        "PostgreSQL" => $"DROP TABLE IF EXISTS {table}",
+        _ => $"DROP TABLE {table}",
+    };
+
     private static void AssertRefused(HttpStatusCode status, string body, JsonElement rpc)
     {
         Assert.AreEqual(HttpStatusCode.OK, status, body);
@@ -2421,9 +2916,10 @@ public class ToolListTests
     private static QueryResult ExecuteNamed(
         string connectionString,
         string name,
-        IReadOnlyDictionary<string, object?> arguments)
+        IReadOnlyDictionary<string, object?> arguments,
+        string serverType = "Sqlite")
     {
-        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        var service = DbServiceFactory.Create(connectionString, serverType);
         try
         {
             return service!.GetSession().Execute(new QueryRequest
@@ -2461,9 +2957,9 @@ public class ToolListTests
         }
     }
 
-    private static QueryResult ExecuteFields(string connectionString, string table)
+    private static QueryResult ExecuteFields(string connectionString, string table, string serverType = "Sqlite")
     {
-        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        var service = DbServiceFactory.Create(connectionString, serverType);
         try
         {
             return service!.GetSession().Execute(new QueryRequest
@@ -2482,9 +2978,9 @@ public class ToolListTests
         }
     }
 
-    private static QueryResult ExecuteTables(string connectionString, object? includeView)
+    private static QueryResult ExecuteTables(string connectionString, object? includeView, string serverType = "Sqlite")
     {
-        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        var service = DbServiceFactory.Create(connectionString, serverType);
         try
         {
             var arguments = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
