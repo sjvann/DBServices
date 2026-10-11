@@ -64,6 +64,14 @@ foreach (var definition in ToolCatalog.Definitions)
                 options);
         }
 
+        if (name is "query" or "count" or "exists")
+        {
+            return McpServerTool.Create(
+                (string connectionId, string? table = null, JsonElement? filters = null) =>
+                    CallEquality(catalog, name, connectionId, table, filters),
+                options);
+        }
+
         return McpServerTool.Create(NotExecuted, options);
     });
 }
@@ -101,6 +109,24 @@ static CallToolResult CallFields(ToolCatalog catalog, string connectionId, strin
 static CallToolResult CallGet(ToolCatalog catalog, string connectionId, string? table, JsonElement? id)
 {
     var outcome = TableDispatch.ExecuteGet(catalog, connectionId, table, id);
+    return new CallToolResult
+    {
+        IsError = outcome.IsError,
+        Content =
+        [
+            new TextContentBlock { Text = outcome.Json },
+        ],
+    };
+}
+
+static CallToolResult CallEquality(ToolCatalog catalog, string name, string connectionId, string? table, JsonElement? filters)
+{
+    var outcome = name switch
+    {
+        "count" => TableDispatch.ExecuteCount(catalog, connectionId, table, filters),
+        "exists" => TableDispatch.ExecuteExists(catalog, connectionId, table, filters),
+        _ => TableDispatch.ExecuteQuery(catalog, connectionId, table, filters),
+    };
     return new CallToolResult
     {
         IsError = outcome.IsError,

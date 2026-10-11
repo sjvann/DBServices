@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using DbServices.Api.Shared;
 using DbServices.Core.Session;
@@ -5,7 +8,7 @@ using DbServices.Core.Session;
 namespace DbServices.Mcp;
 
 /// <summary>
-/// 依已登記連線建立服務，並執行 Session 的 tables、fields 或 get。不參考 MCP。
+/// 依已登記連線建立服務，並執行 Session 的 tables、fields、get、query、count 或 exists。不參考 MCP。
 /// </summary>
 public static class TableDispatch
 {
@@ -109,6 +112,315 @@ public static class TableDispatch
         {
             (service as IDisposable)?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// 直接執行 Session query。缺表名或空白表名不建立服務，也不探表。
+    /// </summary>
+    public static TableDispatchResult ExecuteQuery(ToolCatalog catalog, string connectionId, string? table, JsonElement? filters)
+        => ExecuteDirect(catalog, connectionId, "query", table, filters, FromQuery);
+
+    /// <summary>
+    /// 直接執行 Session count。缺表名或空白表名不建立服務，也不探表。
+    /// </summary>
+    public static TableDispatchResult ExecuteCount(ToolCatalog catalog, string connectionId, string? table, JsonElement? filters)
+        => ExecuteDirect(catalog, connectionId, "count", table, filters, FromCount);
+
+    /// <summary>
+    /// 直接執行 Session exists。缺表名或空白表名不建立服務，也不探表。
+    /// </summary>
+    public static TableDispatchResult ExecuteExists(ToolCatalog catalog, string connectionId, string? table, JsonElement? filters)
+        => ExecuteDirect(catalog, connectionId, "exists", table, filters, FromExists);
+
+    /// <summary>
+    /// 依送入的 Session query 結果回應。不探表，也不把缺表改成 unknown_table。
+    /// </summary>
+    public static TableDispatchResult FromQuery(QueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Kind == QueryKind.Error)
+            return TableDispatchResult.QueryExecutionFailed();
+
+        return TableDispatchResult.Rows(result.Columns, result.Rows);
+    }
+
+    /// <summary>
+    /// 依送入的 Session count 結果回應。文字是那個儲存格的 JSON 數字；沒有儲存格時是 0。
+    /// </summary>
+    public static TableDispatchResult FromCount(QueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Kind == QueryKind.Error)
+            return TableDispatchResult.CountExecutionFailed();
+
+        return TableDispatchResult.Scalar(CellOr(result, 0L));
+    }
+
+    /// <summary>
+    /// 依送入的 Session exists 結果回應。文字是那個儲存格的 JSON 布林；沒有儲存格時是 false。
+    /// </summary>
+    public static TableDispatchResult FromExists(QueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Kind == QueryKind.Error)
+            return TableDispatchResult.ExistsExecutionFailed();
+
+        return TableDispatchResult.Scalar(CellOr(result, false));
+    }
+
+    private static TableDispatchResult ExecuteDirect(
+        ToolCatalog catalog,
+        string connectionId,
+        string tool,
+        string? table,
+        JsonElement? filters,
+        Func<QueryResult, TableDispatchResult> map)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (string.IsNullOrWhiteSpace(table))
+            return TableDispatchResult.InvalidArguments();
+
+        var snapshot = catalog.Connections[connectionId];
+        var service = DbServiceFactory.Create(snapshot.ConnectionString, snapshot.ServerType);
+        try
+        {
+            var result = service!.GetSession().Execute(new QueryRequest
+            {
+                Text = tool,
+                Opcode = QueryOpcode.Call,
+                Arguments = ArgumentsFor(table, filters),
+            });
+            return map(result);
+        }
+        finally
+        {
+            (service as IDisposable)?.Dispose();
+        }
+    }
+
+    private static Dictionary<string, object?> ArgumentsFor(string table, JsonElement? filters)
+    {
+        var arguments = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["table"] = table,
+        };
+
+        if (filters is not { } element || element.ValueKind != JsonValueKind.Object)
+            return arguments;
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (TryReadScalar(property.Value, out var scalar))
+                arguments[property.Name] = scalar;
+        }
+
+        return arguments;
+    }
+
+    private static bool TryReadScalar(JsonElement value, out object? scalar)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Null:
+                scalar = null;
+                return true;
+            case JsonValueKind.True:
+                scalar = true;
+                return true;
+            case JsonValueKind.False:
+                scalar = false;
+                return true;
+            case JsonValueKind.String:
+                scalar = value.GetString();
+                return true;
+            case JsonValueKind.Number:
+                scalar = ReadNumber(value);
+                return true;
+            default:
+                scalar = null;
+                return false;
+        }
+    }
+
+    private static object ReadNumber(JsonElement element)
+    {
+        if (TryReadInt64(element, out var integer))
+            return integer;
+
+        var raw = element.GetRawText();
+        if (TryExactDecimal(raw, out var exact))
+            return exact;
+        if (TryPreservingDouble(raw, out var approximate))
+            return approximate;
+        return Encoding.UTF8.GetBytes(raw);
+    }
+
+    private static bool TryExactDecimal(string raw, out decimal value)
+    {
+        value = 0;
+        if (!decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+            return false;
+        if (!TryNormalizeLiteral(raw, out var negative, out var digits, out var exponent)
+            || !SameDecimal(parsed, negative, digits, exponent))
+            return false;
+
+        value = parsed;
+        return true;
+    }
+
+    private static bool TryPreservingDouble(string raw, out double value)
+    {
+        value = 0;
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            || !double.IsFinite(parsed))
+            return false;
+
+        var integerValued = parsed == Math.Truncate(parsed);
+        if (integerValued && !LiteralIsMathematicalInteger(raw))
+            return false;
+
+        value = parsed;
+        return true;
+    }
+
+    private static bool SameDecimal(decimal parsed, bool negative, string digits, long exponent)
+    {
+        var bits = decimal.GetBits(parsed);
+        var parsedNegative = (bits[3] & int.MinValue) != 0;
+        var scale = (bits[3] >> 16) & 0xFF;
+        var significand = (new BigInteger((uint)bits[2]) << 64)
+            + (new BigInteger((uint)bits[1]) << 32)
+            + new BigInteger((uint)bits[0]);
+        if (significand.IsZero)
+            return digits == "0" && exponent == 0 && !negative;
+
+        var parsedDigits = significand.ToString(CultureInfo.InvariantCulture);
+        long parsedExponent = -scale;
+        parsedDigits = StripTrailingZeros(parsedDigits, ref parsedExponent);
+        return parsedNegative == negative && parsedDigits == digits && parsedExponent == exponent;
+    }
+
+    private static bool LiteralIsMathematicalInteger(string raw)
+        => TryNormalizeLiteral(raw, out _, out _, out var exponent) && exponent >= 0;
+
+    private static bool TryNormalizeLiteral(string raw, out bool negative, out string digits, out long exponent)
+    {
+        negative = false;
+        digits = "";
+        exponent = 0;
+        if (raw.Length == 0)
+            return false;
+
+        var index = 0;
+        if (raw[0] == '-')
+        {
+            negative = true;
+            index++;
+        }
+
+        var intStart = index;
+        while (index < raw.Length && IsDigit(raw[index]))
+            index++;
+        if (index == intStart)
+            return false;
+        var intEnd = index;
+
+        var fracStart = index;
+        var fracEnd = index;
+        if (index < raw.Length && raw[index] == '.')
+        {
+            index++;
+            fracStart = index;
+            while (index < raw.Length && IsDigit(raw[index]))
+                index++;
+            fracEnd = index;
+            if (fracStart == fracEnd)
+                return false;
+        }
+
+        long exp = 0;
+        if (index < raw.Length && raw[index] is 'e' or 'E')
+        {
+            index++;
+            var expNegative = false;
+            if (index < raw.Length && raw[index] is '+' or '-')
+            {
+                expNegative = raw[index] == '-';
+                index++;
+            }
+
+            var expStart = index;
+            while (index < raw.Length && IsDigit(raw[index]))
+                index++;
+            if (index == expStart || index != raw.Length || !TryParseInt64(raw, expStart, index, out exp))
+                return false;
+            if (expNegative)
+                exp = -exp;
+        }
+        else if (index != raw.Length)
+        {
+            return false;
+        }
+
+        var all = string.Concat(raw.AsSpan(intStart, intEnd - intStart), raw.AsSpan(fracStart, fracEnd - fracStart));
+        var start = 0;
+        while (start < all.Length - 1 && all[start] == '0')
+            start++;
+
+        var onlyZero = true;
+        for (var cursor = start; cursor < all.Length; cursor++)
+        {
+            if (all[cursor] != '0')
+            {
+                onlyZero = false;
+                break;
+            }
+        }
+
+        if (onlyZero)
+        {
+            negative = false;
+            digits = "0";
+            exponent = 0;
+            return true;
+        }
+
+        exponent = exp - (fracEnd - fracStart);
+        digits = StripTrailingZeros(all[start..], ref exponent);
+        return true;
+    }
+
+    private static bool TryParseInt64(string raw, int start, int end, out long value)
+    {
+        value = 0;
+        for (var index = start; index < end; index++)
+        {
+            var digit = raw[index] - '0';
+            if (value > (long.MaxValue - digit) / 10)
+                return false;
+            value = value * 10 + digit;
+        }
+
+        return true;
+    }
+
+    private static string StripTrailingZeros(string digits, ref long exponent)
+    {
+        var end = digits.Length;
+        while (end > 1 && digits[end - 1] == '0')
+        {
+            end--;
+            exponent++;
+        }
+
+        return end == digits.Length ? digits : digits[..end];
+    }
+
+    private static object? CellOr(QueryResult result, object? fallback)
+    {
+        if (result.Rows.Count == 0 || result.Rows[0].Count == 0)
+            return fallback;
+        return result.Rows[0][0];
     }
 
     /// <summary>
@@ -351,7 +663,7 @@ public static class TableDispatch
 }
 
 /// <summary>
-/// 呼叫結果。成功是 columns 與 rows；失敗是 code 與 message。
+/// 呼叫結果。查列成功是 columns 與 rows；計數與存在是單一 JSON 值；失敗是 code 與 message。
 /// </summary>
 public sealed class TableDispatchResult
 {
@@ -391,6 +703,18 @@ public sealed class TableDispatchResult
 
     public static TableDispatchResult GetExecutionFailed()
         => Error("execution_failed", "依 Id 取一列失敗。");
+
+    public static TableDispatchResult QueryExecutionFailed()
+        => Error("execution_failed", "鍵值查詢失敗。");
+
+    public static TableDispatchResult CountExecutionFailed()
+        => Error("execution_failed", "計數失敗。");
+
+    public static TableDispatchResult ExistsExecutionFailed()
+        => Error("execution_failed", "是否存在失敗。");
+
+    public static TableDispatchResult Scalar(object? value)
+        => new(false, JsonSerializer.Serialize(value));
 
     private static TableDispatchResult Error(string code, string message)
         => new(true, JsonSerializer.Serialize(new Dictionary<string, string>

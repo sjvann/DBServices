@@ -10,3 +10,6 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-1-2-用-connectionid-列出資料表.md`
   summary: 空白連線字串的 tables 呼叫可能回傳空列，看起來像空庫。
   evidence: 審查時無法從 diff 判定空白字串是回列還是丟例外。對一筆 Sqlite 且連線字串為空白的 connectionId 呼叫 tables，才能確定。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-1-5-用等值條件查列-計數-判斷存在.md`
+  summary: 未列出的頂層鍵、篩選保留鍵（含 filters 裡的 connectionId）、只差大小寫的篩選鍵、非物件 filters、篩選值為物件或陣列，以及 connectionString 與 connectString，另做拒絕規則。
+  evidence: 從 Story 1.5 拆出，讓這一則只交付可連線名稱加上純量 filters 的查列、計數與存在判斷；參數拒絕是另一個可獨立驗收的規則。

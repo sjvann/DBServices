@@ -896,38 +896,577 @@ public class ToolListTests
     }
 
     [TestMethod]
-    public async Task Query_count_and_exists_do_not_execute_or_create_database()
+    public async Task Equality_schema_has_connection_id_table_and_filters_only()
+    {
+        await using var factory = CreateFactory([]);
+        using var client = CreateClient(factory);
+        var tools = await ListToolsAsync(client);
+
+        foreach (var name in new[] { "query", "count", "exists" })
+        {
+            var tool = tools.Single(candidate => candidate.GetProperty("name").GetString() == name);
+            var schema = tool.GetProperty("inputSchema");
+            var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
+            CollectionAssert.AreEquivalent(new[] { "connectionId", "table", "filters" }, names);
+
+            var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
+            CollectionAssert.Contains(required, "connectionId");
+            Assert.IsFalse(required.Contains("table"), name);
+            Assert.IsFalse(required.Contains("filters"), name);
+
+            var raw = schema.GetRawText();
+            Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
+            Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+        }
+    }
+
+    [TestMethod]
+    public async Task Query_scalar_filters_match_session_and_integer_cells_are_numbers()
     {
         var dbPath = NewDatabasePath();
         var connectionString = ConnectionStringFor(dbPath);
         try
         {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, -2, "neg", null);
+            InsertProduct(connectionString, 0, "zero", "z");
+            InsertProduct(connectionString, 1, "one", "n");
+
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var id = 100;
+            var combined = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = JsonLiteral("1.0"),
+                    ["Name"] = "one",
+                },
+            }, id++);
+            AssertQueryMatches(
+                combined.Status,
+                combined.Body,
+                combined.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Id"] = 1L,
+                    ["Name"] = "one",
+                }));
+
+            var negative = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = JsonLiteral("-2.0"),
+                },
+            }, id++);
+            AssertQueryMatches(
+                negative.Status,
+                negative.Body,
+                negative.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Id"] = -2L,
+                }));
+
+            var flag = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = true,
+                },
+            }, id++);
+            AssertQueryMatches(
+                flag.Status,
+                flag.Body,
+                flag.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Id"] = true,
+                }));
+
+            var zeroFlag = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = false,
+                },
+            }, id++);
+            var zeroSession = ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+                ["Id"] = false,
+            });
+            AssertQueryMatches(zeroFlag.Status, zeroFlag.Body, zeroFlag.Rpc, zeroSession);
+            AssertSingleProductId(TextOf(ResultOf(zeroFlag.Rpc, zeroFlag.Body), zeroFlag.Body), zeroSession, 0L);
+
+            var fraction = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = JsonLiteral("1.5"),
+                },
+            }, id);
+            AssertToolMatchesSession(
+                "query",
+                fraction.Status,
+                fraction.Body,
+                fraction.Rpc,
+                ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Id"] = 1.5m,
+                }));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Query_with_no_matching_rows_returns_empty_rows_and_host_continues()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var call = await CallToolAsync(client, "query", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "missing",
+                },
+            }, 110);
+            var session = ExecuteNamed(connectionString, "query", new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+                ["Name"] = "missing",
+            });
+            AssertQueryMatches(call.Status, call.Body, call.Rpc, session);
+            Assert.AreEqual(0, session.Rows.Count);
+
+            var again = await CallToolAsync(client, "get", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["id"] = 1,
+            }, 111);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Count_matches_session_cell_and_is_zero_when_no_rows()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            InsertProduct(connectionString, 0, "zero", null);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var matched = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 120);
+            AssertScalarCallMatches(
+                matched.Status,
+                matched.Body,
+                matched.Rpc,
+                ExecuteNamed(connectionString, "count", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Name"] = "one",
+                }),
+                0L);
+
+            var none = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "missing",
+                },
+            }, 121);
+            var noneSession = ExecuteNamed(connectionString, "count", new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+                ["Name"] = "missing",
+            });
+            AssertScalarCallMatches(none.Status, none.Body, none.Rpc, noneSession, 0L);
+            Assert.AreEqual(0L, Convert.ToInt64(noneSession.Rows[0][0], CultureInfo.InvariantCulture));
+
+            var otherNumber = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Id"] = JsonLiteral("1.5"),
+                },
+            }, 122);
+            AssertScalarCallMatches(
+                otherNumber.Status,
+                otherNumber.Body,
+                otherNumber.Rpc,
+                ExecuteNamed(connectionString, "count", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Id"] = 1.5m,
+                }),
+                0L);
+
+            var nullFilter = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Note"] = null,
+                },
+            }, 123);
+            AssertScalarCallMatches(
+                nullFilter.Status,
+                nullFilter.Body,
+                nullFilter.Rpc,
+                ExecuteNamed(connectionString, "count", new Dictionary<string, object?>
+                {
+                    ["table"] = "products",
+                    ["Note"] = null,
+                }),
+                0L);
+
+            var countForZero = await CountIdAsync(0L, 124);
+            var countForOne = await CountIdAsync(1L, 125);
+            Assert.AreEqual(1L, countForZero);
+            Assert.AreEqual(1L, countForOne);
+            var totalCall = await CallToolAsync(client, "count", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, 126);
+            Assert.AreEqual(HttpStatusCode.OK, totalCall.Status, totalCall.Body);
+            var total = JsonCount(totalCall.Body, totalCall.Rpc);
+            Assert.IsTrue(total > 0);
+
+            var callId = 127;
+            foreach (var literal in new[] { "1e-29", "-1e-29", "1.00000000000000000000000000001" })
+            {
+                var actual = await CountIdAsync(JsonLiteral(literal), callId++);
+                Assert.AreNotEqual(countForZero, actual, literal);
+                Assert.AreNotEqual(countForOne, actual, literal);
+            }
+
+            foreach (var literal in new[] { "1e29", "1e309" })
+            {
+                var actual = await CountIdAsync(JsonLiteral(literal), callId++);
+                Assert.AreEqual(0L, actual, literal);
+                Assert.AreNotEqual(total, actual, literal);
+            }
+
+            AssertNoAuditFile(factory);
+
+            async Task<long> CountIdAsync(object? id, int callId)
+            {
+                var call = await CallToolAsync(client, "count", new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "inventory",
+                    ["table"] = "products",
+                    ["filters"] = new Dictionary<string, object?>
+                    {
+                        ["Id"] = id,
+                    },
+                }, callId);
+                Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+                Assert.IsFalse(call.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), call.Body);
+                return JsonCount(call.Body, call.Rpc);
+            }
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Exists_matches_session_cell()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var present = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "one",
+                },
+            }, 130);
+            var presentSession = ExecuteNamed(connectionString, "exists", new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+                ["Name"] = "one",
+            });
+            AssertScalarCallMatches(present.Status, present.Body, present.Rpc, presentSession, false);
+            Assert.AreEqual(true, presentSession.Rows[0][0]);
+
+            var absent = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+                ["filters"] = new Dictionary<string, object?>
+                {
+                    ["Name"] = "missing",
+                },
+            }, 131);
+            var absentSession = ExecuteNamed(connectionString, "exists", new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+                ["Name"] = "missing",
+            });
+            AssertScalarCallMatches(absent.Status, absent.Body, absent.Rpc, absentSession, false);
+            Assert.AreEqual(false, absentSession.Rows[0][0]);
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Omitting_filters_or_empty_object_matches_table_only_session()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            InsertProduct(connectionString, 1, "one", "n");
+            InsertProduct(connectionString, 0, "zero", null);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var tableOnly = new Dictionary<string, object?>
+            {
+                ["table"] = "products",
+            };
+            var id = 140;
+            foreach (var name in new[] { "query", "count", "exists" })
+            {
+                var omitted = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "inventory",
+                    ["table"] = "products",
+                }, id++);
+                var empty = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "inventory",
+                    ["table"] = "products",
+                    ["filters"] = new Dictionary<string, object?>(),
+                }, id++);
+                var session = ExecuteNamed(connectionString, name, tableOnly);
+                AssertToolMatchesSession(name, omitted.Status, omitted.Body, omitted.Rpc, session);
+                AssertToolMatchesSession(name, empty.Status, empty.Body, empty.Rpc, session);
+                if (name == "count")
+                    Assert.IsTrue(Convert.ToInt64(session.Rows[0][0], CultureInfo.InvariantCulture) > 0);
+                if (name == "exists")
+                    Assert.AreEqual(true, session.Rows[0][0]);
+            }
+
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public void Supplied_equality_error_is_execution_failed_without_connection_string()
+    {
+        var cases = new (TableDispatchResult Outcome, string Message)[]
+        {
+            (TableDispatch.FromQuery(QueryResult.FromError("Data Source=mcpsecretmarker-query")), "鍵值查詢失敗。"),
+            (TableDispatch.FromCount(QueryResult.FromError("Data Source=mcpsecretmarker-count")), "計數失敗。"),
+            (TableDispatch.FromExists(QueryResult.FromError("Data Source=mcpsecretmarker-exists")), "是否存在失敗。"),
+        };
+
+        foreach (var (outcome, message) in cases)
+        {
+            Assert.IsTrue(outcome.IsError);
+            Assert.AreNotEqual("0", outcome.Json);
+            Assert.AreNotEqual("false", outcome.Json);
+            Assert.IsFalse(outcome.Json.Contains("mcpsecretmarker", StringComparison.Ordinal), outcome.Json);
+            Assert.IsFalse(outcome.Json.Contains("unknown_table", StringComparison.Ordinal), outcome.Json);
+            Assert.IsFalse(outcome.Json.Contains("rows", StringComparison.Ordinal), outcome.Json);
+            Assert.IsFalse(outcome.Json.Contains("columns", StringComparison.Ordinal), outcome.Json);
+            using var payload = JsonDocument.Parse(outcome.Json);
+            var keys = payload.RootElement.EnumerateObject().Select(property => property.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            CollectionAssert.AreEqual(new[] { "code", "message" }, keys);
+            Assert.AreEqual("execution_failed", payload.RootElement.GetProperty("code").GetString());
+            Assert.AreEqual(message, payload.RootElement.GetProperty("message").GetString());
+        }
+    }
+
+    [TestMethod]
+    public async Task Equality_missing_or_blank_table_is_invalid_arguments_and_does_not_create_database()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            Assert.IsFalse(File.Exists(dbPath));
             await using var factory = CreateFactory(SqliteSettings("warehouse", connectionString));
             using var client = CreateClient(factory);
             await ListToolsAsync(client);
             Assert.IsFalse(File.Exists(dbPath));
 
-            var id = 100;
+            var id = 150;
             foreach (var name in new[] { "query", "count", "exists" })
             {
-                var call = await CallToolAsync(client, name, new Dictionary<string, object?>
+                var cases = new Dictionary<string, object?>[]
                 {
-                    ["connectionId"] = "warehouse",
-                    ["table"] = "products",
-                    ["id"] = 1,
-                }, id++);
-                AssertRefused(call.Status, call.Body, call.Rpc);
-                Assert.IsFalse(File.Exists(dbPath));
+                    new() { ["connectionId"] = "warehouse" },
+                    new() { ["connectionId"] = "warehouse", ["table"] = "   " },
+                    new() { ["connectionId"] = "warehouse", ["table"] = "" },
+                };
+                foreach (var arguments in cases)
+                {
+                    var call = await CallToolAsync(client, name, arguments, id++);
+                    AssertInvalidTable(call.Status, call.Body, call.Rpc);
+                    Assert.IsFalse(File.Exists(dbPath));
+                }
             }
 
-            var again = await CallToolAsync(client, "exists", new Dictionary<string, object?>
+            var again = await CallToolAsync(client, "query", new Dictionary<string, object?>
             {
                 ["connectionId"] = "warehouse",
-                ["table"] = "products",
-                ["id"] = 1,
             }, id);
-            AssertRefused(again.Status, again.Body, again.Rpc);
+            AssertInvalidTable(again.Status, again.Body, again.Rpc);
             Assert.IsFalse(File.Exists(dbPath));
+            AssertNoAuditFile(factory);
+        }
+        finally
+        {
+            DeleteDatabase(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task Equality_missing_table_matches_session_and_is_not_unknown_table()
+    {
+        var dbPath = NewDatabasePath();
+        var connectionString = ConnectionStringFor(dbPath);
+        try
+        {
+            SeedProducts(connectionString);
+            await using var factory = CreateFactory(SqliteSettings("Inventory", connectionString));
+            using var client = CreateClient(factory);
+            await ListToolsAsync(client);
+
+            var id = 160;
+            foreach (var name in new[] { "query", "count", "exists" })
+            {
+                var session = ExecuteNamed(connectionString, name, new Dictionary<string, object?>
+                {
+                    ["table"] = "no_such_table",
+                });
+                var call = await CallToolAsync(client, name, new Dictionary<string, object?>
+                {
+                    ["connectionId"] = "inventory",
+                    ["table"] = "no_such_table",
+                }, id++);
+
+                Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+                Assert.IsFalse(call.Body.Contains("mcpsecretmarker", StringComparison.Ordinal), call.Body);
+                Assert.IsFalse(call.Body.Contains("unknown_table", StringComparison.Ordinal), call.Body);
+                if (session.Kind == QueryKind.Error)
+                {
+                    var message = name switch
+                    {
+                        "count" => "計數失敗。",
+                        "exists" => "是否存在失敗。",
+                        _ => "鍵值查詢失敗。",
+                    };
+                    AssertErrorPayload(ResultOf(call.Rpc, call.Body), call.Body, "execution_failed", message);
+                    Assert.IsFalse(string.IsNullOrEmpty(session.Error));
+                    Assert.IsFalse(call.Body.Contains(session.Error!, StringComparison.Ordinal), call.Body);
+                }
+                else if (name == "query")
+                {
+                    AssertQueryMatches(call.Status, call.Body, call.Rpc, session);
+                }
+                else
+                {
+                    AssertScalarCallMatches(
+                        call.Status,
+                        call.Body,
+                        call.Rpc,
+                        session,
+                        name == "count" ? 0L : false);
+                }
+            }
+
+            var again = await CallToolAsync(client, "fields", new Dictionary<string, object?>
+            {
+                ["connectionId"] = "inventory",
+                ["table"] = "products",
+            }, id);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(ResultOf(again.Rpc, again.Body).GetProperty("isError").GetBoolean(), again.Body);
             AssertNoAuditFile(factory);
         }
         finally
@@ -1254,6 +1793,140 @@ public class ToolListTests
                 && result.TryGetProperty("isError", out var isError)
                 && isError.ValueKind == JsonValueKind.True);
         Assert.IsTrue(refused, body);
+    }
+
+    private static void AssertToolMatchesSession(
+        string name,
+        HttpStatusCode status,
+        string body,
+        JsonElement rpc,
+        QueryResult session)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
+        Assert.IsFalse(body.Contains("unknown_table", StringComparison.Ordinal), body);
+        if (session.Kind == QueryKind.Error)
+        {
+            var message = name switch
+            {
+                "count" => "計數失敗。",
+                "exists" => "是否存在失敗。",
+                _ => "鍵值查詢失敗。",
+            };
+            AssertErrorPayload(ResultOf(rpc, body), body, "execution_failed", message);
+            Assert.IsFalse(string.IsNullOrEmpty(session.Error));
+            Assert.IsFalse(body.Contains(session.Error!, StringComparison.Ordinal), body);
+            return;
+        }
+
+        if (name == "query")
+            AssertQueryMatches(status, body, rpc, session);
+        else
+            AssertScalarCallMatches(status, body, rpc, session, name == "count" ? 0L : false);
+    }
+
+    private static void AssertSingleProductId(string json, QueryResult session, long id)
+    {
+        var idIndex = -1;
+        for (var index = 0; index < session.Columns.Count; index++)
+        {
+            if (string.Equals(session.Columns[index], "Id", StringComparison.OrdinalIgnoreCase))
+            {
+                idIndex = index;
+                break;
+            }
+        }
+
+        Assert.IsTrue(idIndex >= 0);
+        Assert.AreEqual(1, session.Rows.Count);
+        Assert.AreEqual(id, Convert.ToInt64(session.Rows[0][idIndex], CultureInfo.InvariantCulture));
+
+        using var document = JsonDocument.Parse(json);
+        var rows = document.RootElement.GetProperty("rows").EnumerateArray().ToArray();
+        Assert.AreEqual(1, rows.Length);
+        var cell = rows[0].EnumerateArray().ElementAt(idIndex);
+        Assert.AreEqual(JsonValueKind.Number, cell.ValueKind, cell.GetRawText());
+        Assert.AreEqual(id, cell.GetInt64());
+    }
+
+    private static long JsonCount(string body, JsonElement rpc)
+    {
+        var result = ResultOf(rpc, body);
+        Assert.IsFalse(result.GetProperty("isError").GetBoolean(), body);
+        using var document = JsonDocument.Parse(TextOf(result, body));
+        Assert.AreEqual(JsonValueKind.Number, document.RootElement.ValueKind, document.RootElement.GetRawText());
+        return document.RootElement.GetInt64();
+    }
+
+    private static void AssertQueryMatches(HttpStatusCode status, string body, JsonElement rpc, QueryResult session)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
+        Assert.IsFalse(body.Contains("unknown_table", StringComparison.Ordinal), body);
+        Assert.AreEqual(QueryKind.Rows, session.Kind, session.Error);
+        var result = ResultOf(rpc, body);
+        Assert.IsFalse(result.GetProperty("isError").GetBoolean(), body);
+        var text = TextOf(result, body);
+        AssertFieldsMatchSession(text, session);
+        AssertIntegerCellsAreNumbers(text, session);
+    }
+
+    private static void AssertScalarCallMatches(
+        HttpStatusCode status,
+        string body,
+        JsonElement rpc,
+        QueryResult session,
+        object emptyFallback)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, status, body);
+        Assert.IsFalse(body.Contains("mcpsecretmarker", StringComparison.Ordinal), body);
+        Assert.IsFalse(body.Contains("unknown_table", StringComparison.Ordinal), body);
+        Assert.AreEqual(QueryKind.Rows, session.Kind, session.Error);
+        var result = ResultOf(rpc, body);
+        Assert.IsFalse(result.GetProperty("isError").GetBoolean(), body);
+        var cell = session.Rows.Count == 0 || session.Rows[0].Count == 0
+            ? emptyFallback
+            : session.Rows[0][0];
+        using var document = JsonDocument.Parse(TextOf(result, body));
+        Assert.AreNotEqual(JsonValueKind.Object, document.RootElement.ValueKind);
+        Assert.AreNotEqual(JsonValueKind.Array, document.RootElement.ValueKind);
+        AssertCellEquals(cell, document.RootElement);
+    }
+
+    private static void AssertIntegerCellsAreNumbers(string json, QueryResult session)
+    {
+        using var document = JsonDocument.Parse(json);
+        var rows = document.RootElement.GetProperty("rows").EnumerateArray().ToArray();
+        for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+        {
+            var cells = rows[rowIndex].EnumerateArray().ToArray();
+            for (var cellIndex = 0; cellIndex < cells.Length; cellIndex++)
+            {
+                if (session.Rows[rowIndex][cellIndex] is byte or sbyte or short or ushort or int or uint or long)
+                    Assert.AreEqual(JsonValueKind.Number, cells[cellIndex].ValueKind, cells[cellIndex].GetRawText());
+            }
+        }
+    }
+
+    private static QueryResult ExecuteNamed(
+        string connectionString,
+        string name,
+        IReadOnlyDictionary<string, object?> arguments)
+    {
+        var service = DbServiceFactory.Create(connectionString, "Sqlite");
+        try
+        {
+            return service!.GetSession().Execute(new QueryRequest
+            {
+                Text = name,
+                Opcode = QueryOpcode.Call,
+                Arguments = new Dictionary<string, object?>(arguments, StringComparer.OrdinalIgnoreCase),
+            });
+        }
+        finally
+        {
+            (service as IDisposable)?.Dispose();
+        }
     }
 
     private static QueryResult ExecuteGet(string connectionString, string table, long id)
