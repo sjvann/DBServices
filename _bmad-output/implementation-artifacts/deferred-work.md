@@ -7,3 +7,6 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-1-2-用-connectionid-列出資料表.md`
   summary: 未登記或空白名稱、connectionString 與 connectString、以及建立失敗不快取且恢復後可再成功。
   evidence: 從 Story 1.2 拆出，讓這一則只交付可連線名稱的列出資料表；拒絕與失敗恢復是另一個可獨立驗收的連線規則。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-1-2-用-connectionid-列出資料表.md`
+  summary: 空白連線字串的 tables 呼叫可能回傳空列，看起來像空庫。
+  evidence: 審查時無法從 diff 判定空白字串是回列還是丟例外。對一筆 Sqlite 且連線字串為空白的 connectionId 呼叫 tables，才能確定。

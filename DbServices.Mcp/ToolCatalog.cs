@@ -27,7 +27,7 @@ public sealed class ToolCatalog
     public ToolCatalog(IReadOnlyDictionary<string, ConnectionSetting> connections)
     {
         ArgumentNullException.ThrowIfNull(connections);
-        var snapshots = new Dictionary<string, ConnectionSnapshot>(connections.Count, StringComparer.Ordinal);
+        var snapshots = new Dictionary<string, ConnectionSnapshot>(connections.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var (connectionId, setting) in connections)
             snapshots[connectionId] = ToSnapshot(setting);
 

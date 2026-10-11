@@ -2,8 +2,9 @@
 title: 'Story 1.2 用 connectionId 列出資料表'
 type: 'feature'
 created: '2026-10-11'
-status: 'draft'
+status: 'done'
 route: 'dispatch'
+baseline_commit: '45e017c5d7f49e4e00605cbeb77c2a57abd8211f'
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
@@ -60,10 +61,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `DbServices.Mcp/TableDispatch.cs` -- 依 `connectionId` 建立服務並執行 Session `tables`，回傳列或 `execution_failed`。不參考 MCP。 -- 結果與直接 Session 相同。
-- [ ] `DbServices.Mcp/ToolCatalog.cs` -- 連線鍵忽略大小寫。 -- `Inventory` 找得到 `inventory`。
-- [ ] `McpService/Program.cs` -- `tables` 回傳上述 JSON。schema 只有 `connectionId` 與可省略的 `includeView`。其餘五個工具不執行。 -- 客戶端看到工具結果。
-- [ ] `McpService.Tests/ToolListTests.cs` -- 覆蓋矩陣。有表與 `includeView` false 跟直接 Session 比對。錯誤本文不含連線字串。 -- 沒執行或把 Error 當成空列時會失敗。
+- [x] `DbServices.Mcp/TableDispatch.cs` -- 依 `connectionId` 建立服務並執行 Session `tables`，回傳列或 `execution_failed`。不參考 MCP。 -- 結果與直接 Session 相同。
+- [x] `DbServices.Mcp/ToolCatalog.cs` -- 連線鍵忽略大小寫。 -- `Inventory` 找得到 `inventory`。
+- [x] `McpService/Program.cs` -- `tables` 回傳上述 JSON。schema 只有 `connectionId` 與可省略的 `includeView`。其餘五個工具不執行。 -- 客戶端看到工具結果。
+- [x] `McpService.Tests/ToolListTests.cs` -- 覆蓋矩陣。有表與 `includeView` false 跟直接 Session 比對。錯誤本文不含連線字串。 -- 沒執行或把 Error 當成空列時會失敗。
 
 **Acceptance Criteria:**
 - Given 這一則的 diff，when 比對 `IDbService`、`IDbServiceAsync`、`FunctionRegistry`、Providers、`WebService` 與 `GraphQLService`，then 這些檔案沒有變更。
@@ -72,9 +73,30 @@ context:
 
 ## Implementation Notes
 
+- `includeView` 為 false 時以布林值送進 Session。`GetAllTableNames` 沒有把這個旗標傳進 SQL，因此與直接 Session 相同，檢視名稱仍會出現。此故事不改 Core。
+- Session 的 `Kind` 為 Error 時，文字內容是固定中文「列出資料表失敗。」，不回傳例外原文。
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- false — 只差大小寫的兩個鍵會互相覆蓋。忽略大小寫的字典不能同時留下兩筆；規格要求查找忽略大小寫，留下的就是目錄裡的那一筆。
+- medium — 未知引擎 `Create` 回 null 會在 `service!` 變成 `NullReferenceException`，建構失敗的例外也沒有收成 `execution_failed`。核准的意圖不處理建立失敗與不可用連線。駁回，不改成這個碼。
+- low — `includeView` false 的測試只跟 Session 比對，旗標被丟掉時現在仍會通過。使用者看到的結果與直接 Session 相同。要單獨看見旗標得加觀測點。駁回。
+- low — 錯誤測試沒有鎖定「列出資料表失敗。」。改成另一句中文仍過。直接補上精確比對。
+- false — `GetAllTableNames` 吃掉 `SqlException` 後回空列。規格要求與 Session 相同，空列是對的，不是漏掉的 `execution_failed`。
+- low — schema 沒有鎖定 `connectionId` 與 `includeView` 的 type。規格只要求參數名稱，以及 `includeView` 可省略。`JsonElement` 的 schema 本來就不是 boolean。駁回。
+- low — `sprint-status.yaml` 的這一則仍是 `in-progress`，規格已是 `in-review`。改成 `review` 是一行。
+- medium — `includeView` false 與 Session 錯誤沒有檢查稽核檔。只在錯誤分支寫檔時，現有成功測試仍過。
+- medium — 未登記的 `connectionId` 在進 `try` 前拋出 `KeyNotFoundException`。核准的意圖不處理未登記名稱，也不該改成 `execution_failed`。駁回。
+- false — 只差大小寫的鍵靜默取代另一筆。與第一列同一主張：忽略大小寫就是只留一筆。
+- medium — `connectionId` 為 null 或未登記時拋出查找例外，而不是 `execution_failed`。與未登記那一列同一主張。核准的意圖排除這條。駁回。
+- maybe-false — 空白連線字串可能仍回列。`HasConnection` 在工廠建立後為真，但是否查得到列要實際呼叫才知道。若成立，會把不可用連線看成空庫。
+- medium — 未知引擎 `Create` 回 null 會丟 `NullReferenceException`，而不是 `execution_failed`。結果屬實。這是建立失敗，核准的意圖不在這一則處理。駁回。
+- false — `Create` 拋出的訊息會把資料庫路徑交給客戶端。`ModelContextProtocol.Core.xml` 寫明非 `McpException` 會改成通用錯誤訊息，不回傳例外原文。
+- medium — 其餘五個工具若改走 `tables`，空參數測試仍過，因為在 `Create` 前就失敗。驗證層已核對。用已登記的 `connectionId` 呼叫並斷言拒絕且不建檔。
+- medium — Session 錯誤那次 `tables` 沒有檢查稽核檔。驗證層已核對。補上 `AssertNoAuditFile`。
+- low — `execution_failed` 的訊息沒有鎖定固定句子。驗證層已核對。改成「查詢失敗。」時現有斷言仍過。補上精確比對。
 
 ## Verification
 

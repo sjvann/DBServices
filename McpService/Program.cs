@@ -1,5 +1,7 @@
+using System.Text.Json;
 using DbServices.Mcp;
 using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,22 +30,58 @@ foreach (var definition in ToolCatalog.Definitions)
     var name = definition.Name;
     builder.Services.AddSingleton(sp =>
     {
-        var tool = sp.GetRequiredService<ToolCatalog>().Tools.Single(candidate => candidate.Name == name);
-        return McpServerTool.Create(
-            NotExecuted,
-            new McpServerToolCreateOptions
-            {
-                Name = tool.Name,
-                Description = tool.Description,
-                ReadOnly = tool.ReadOnly,
-                Destructive = !tool.NonDestructive,
-            });
+        var catalog = sp.GetRequiredService<ToolCatalog>();
+        var tool = catalog.Tools.Single(candidate => candidate.Name == name);
+        var options = new McpServerToolCreateOptions
+        {
+            Name = tool.Name,
+            Description = tool.Description,
+            ReadOnly = tool.ReadOnly,
+            Destructive = !tool.NonDestructive,
+        };
+
+        if (name == "tables")
+        {
+            return McpServerTool.Create(
+                (string connectionId, JsonElement? includeView = null) =>
+                    CallTables(catalog, connectionId, includeView),
+                options);
+        }
+
+        return McpServerTool.Create(NotExecuted, options);
     });
 }
 
 var app = builder.Build();
 app.MapMcp("/mcp");
 app.Run();
+
+static CallToolResult CallTables(ToolCatalog catalog, string connectionId, JsonElement? includeView)
+{
+    var outcome = TableDispatch.Execute(catalog, connectionId, IncludeViewArgument(includeView));
+    return new CallToolResult
+    {
+        IsError = outcome.IsError,
+        Content =
+        [
+            new TextContentBlock { Text = outcome.Json },
+        ],
+    };
+}
+
+static object? IncludeViewArgument(JsonElement? includeView)
+{
+    if (includeView is not { } value || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        return null;
+
+    return value.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => value.GetString(),
+        _ => value.GetRawText(),
+    };
+}
 
 static string NotExecuted() => throw new InvalidOperationException("工具未執行。");
 
