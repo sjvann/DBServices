@@ -10,6 +10,8 @@
   href: cli/
 - name: Web API
   href: web/
+- name: MCP
+  href: mcp/
 - name: API 參考
   href: api/
   homepage: api/index.md

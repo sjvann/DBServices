@@ -11,7 +11,9 @@
             "DbServices.Provider.MsSql/DbServices.Provider.MsSql.csproj",
             "DbServices.Provider.MySql/DbServices.Provider.MySql.csproj",
             "DbServices.Provider.Oracle/DbServices.Provider.Oracle.csproj",
-            "DbServices.Provider.PostgreSQL/DbServices.Provider.PostgreSQL.csproj"
+            "DbServices.Provider.PostgreSQL/DbServices.Provider.PostgreSQL.csproj",
+            "DbServices.Api.Shared/DbServices.Api.Shared.csproj",
+            "DbServices.Mcp/DbServices.Mcp.csproj"
           ]
         }
       ],
@@ -43,7 +45,7 @@
     "globalMetadata": {
       "_appName": "DBServices",
       "_appTitle": "DBServices",
-      "_appFooter": "<span>Copyright © 2025 sjvann · MIT License</span>",
+      "_appFooter": "<span>Copyright © 2026 sjvann · MIT License</span>",
       "_enableSearch": true,
       "_enableNewTab": true,
       "_disableContribution": false,

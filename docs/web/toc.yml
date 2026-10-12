@@ -1,2 +1,4 @@
 - name: Web API
   href: index.md
+- name: GraphQL
+  href: graphql.md

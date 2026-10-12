@@ -1,6 +1,6 @@
 # Session
 
-`IQuerySession` 是 CLI、Web 插件與程式內「一條請求」的統一入口。從 `IDbService.GetSession()` 取得（每個服務實例快取一份）。
+`IQuerySession` 是 CLI、REST、GraphQL、MCP 與程式內「一條請求」的統一入口。從 `IDbService.GetSession()` 取得（每個服務實例快取一份）。MCP 只把其中六個唯讀 Call 廣告成工具，見 [MCP 資料平面](../mcp/index.md)。
 
 ## 請求
 

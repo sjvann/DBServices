@@ -5,7 +5,7 @@ DBServices 是**薄的多資料庫存取層**：統一介面、方言 SQL 產生
 完整契約（前端協定、刻意不做的範圍）見 [架構契約](../ARCHITECTURE.md)。
 
 ```text
-CLI / Web / C# SDK / EZIE plugin
+CLI / REST / GraphQL / MCP / C# SDK
         ↓
    IQuerySession   （Query / Call / Utility）
         ↓
@@ -15,6 +15,8 @@ CLI / Web / C# SDK / EZIE plugin
         ↓
  Provider（連線工廠 + 方言 + 目錄 SQL）
 ```
+
+REST、GraphQL 與 MCP 都只經 `DbServiceFactory` 取得 `IDbService`。MCP 只廣告六個唯讀 Call，見 [MCP 資料平面](../mcp/index.md)。
 
 ## 相容性
 

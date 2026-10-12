@@ -58,3 +58,7 @@ db.Functions.Register(new DbFunctionDescriptor
 ```
 
 `GetSession()` 與 `Functions` 共用同一 registry，先註冊再 Call。
+
+## MCP 只露出唯讀子集
+
+[MCP 宿主](../mcp/index.md) 廣告的是 `tables`、`fields`、`get`、`query`、`count`、`exists`。`insert`、`update`、`delete` 與 `sql` 仍可在 SDK 與 CLI 使用，但不會出現在該宿主的工具清單，也不會被它執行。等值條件在 MCP 裡放進 `filters`，不與 `table` 放在同一層。
