@@ -368,3 +368,9 @@ docs/api/*.yml
 docs/api/.manifest
 docs/obj/
 docs/log.txt
+
+# Runtime process ids written by local services
+.ai_project/pids/
+
+# BMAD render staging directories
+_bmad/render/**/.staging-*/

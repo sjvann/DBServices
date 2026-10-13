@@ -1177,6 +1177,9 @@ def replace_dir(src: Path, dest: Path) -> None:
         return
     backup = Path(tempfile.mkdtemp(prefix="_bmad.old-", dir=dest.parent))
     try:
+        # mkdtemp creates the directory. Windows os.rename cannot replace an
+        # existing directory, so remove the empty unique directory first.
+        backup.rmdir()
         dest.rename(backup)
     except Exception:
         shutil.rmtree(backup, ignore_errors=True)

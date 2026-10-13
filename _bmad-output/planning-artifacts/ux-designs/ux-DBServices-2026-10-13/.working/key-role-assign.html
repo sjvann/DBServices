@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>角色指派</title>
+<style>
+/* Governs: DESIGN.md account-row, role-badge. EXPERIENCE.md 帳號 vs 角色指派,
+   管理者帳號 flow. Spine wins on conflict. */
+:root {
+  --surface-base: #F3F5F7;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #E7ECF1;
+  --ink-primary: #1B2430;
+  --ink-secondary: #4E5D6C;
+  --border: #D0D7DE;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #D5DDE3;
+  font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.frame { width: 1100px; height: 800px; margin: 24px auto; background: var(--surface-base); display: flex; border: 1px solid var(--border); }
+.rail { width: 240px; padding: 24px 16px; border-right: 1px solid var(--border); }
+.rail h1 { font-size: 20px; font-weight: 600; margin: 0 0 24px; }
+.group { font-size: 12px; color: var(--ink-secondary); margin: 16px 0 8px; }
+.nav { display: block; padding: 8px 12px; border-radius: 4px; color: var(--ink-primary); text-decoration: none; }
+.nav.on { background: var(--surface-raised); border: 1px solid var(--border); }
+.page { flex: 1; display: flex; min-width: 0; }
+.accounts { width: 280px; padding: 24px 16px; border-right: 1px solid var(--border); }
+.roles { flex: 1; padding: 24px; }
+h2 { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+.account, .panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+.account.on { border-color: var(--ink-primary); }
+.badge {
+  display: inline-block;
+  background: var(--surface-sunken);
+  color: var(--ink-secondary);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  margin: 0 8px 8px 0;
+  font-size: 12px;
+}
+.meta { font-size: 12px; color: var(--ink-secondary); margin: 16px 0 8px; }
+button {
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 16px;
+  font: inherit;
+  margin-top: 16px;
+}
+</style>
+</head>
+<body>
+<div class="frame">
+  <aside class="rail">
+    <h1>報表工作台</h1>
+    <div class="group">管理者帳號</div>
+    <a class="nav" href="#accounts">帳號</a>
+    <a class="nav on" href="#roles">角色指派</a>
+    <a class="nav" href="#model">模型設定與測試</a>
+  </aside>
+  <section class="page">
+    <div class="accounts">
+      <h2>帳號</h2>
+      <div class="account">林可</div>
+      <div class="account on">周寧</div>
+      <div class="account">陳安</div>
+    </div>
+    <div class="roles">
+      <h2>角色指派</h2>
+      <p class="meta">周寧。工作角色可多選。</p>
+      <span class="badge">規劃設計師</span>
+      <span class="badge">範本編輯師</span>
+      <p class="meta">範本群組</p>
+      <div class="panel">銷貨 · 設計角色</div>
+      <button type="button">儲存</button>
+    </div>
+  </section>
+</div>
+</body>
+</html>

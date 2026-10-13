@@ -3,7 +3,7 @@
 此檔由 AI_Project 控制台在開啟或重新掃描工作區時產生，下次會覆寫，請不要手改。
 權威來源：各專案檔的 `Description`／套件 `description`，或工作區 `ai-project.json` 的 `projects`。沒有該欄就留空，不讀 README。
 
-工作區：**DBServices**。已有描述 7／12。
+工作區：**DBServices**。已有描述 7／15。
 
 ## DbServices.Api.Shared
 
@@ -22,6 +22,12 @@
 | 專案 | 類型 | 用途 | 來源 |
 |------|------|------|------|
 | DbServices.Core | 函式庫 | 現代化多資料庫 ORM 工具包核心庫 - 基於 Dapper 的高效能資料庫存取解決方案 | 專案檔 |
+
+## DbServices.Mcp
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| DbServices.Mcp | 函式庫 | （缺） | — |
 
 ## DbServices.Provider.MsSql
 
@@ -71,6 +77,18 @@
 |------|------|------|------|
 | GraphQLService | 核心 | （缺） | — |
 
+## McpService.Tests
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| McpService.Tests | 測試 | （缺） | — |
+
+## McpService
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| McpService | 核心 | （缺） | — |
+
 ## WebService
 
 | 專案 | 類型 | 用途 | 來源 |
@@ -83,7 +101,10 @@
 
 - `DbServices.Api.Shared`（DbServices.Api.Shared）
 - `DbServices.Cli`（DbServices.Cli）
+- `DbServices.Mcp`（DbServices.Mcp）
 - `DBServiceTest`（DBServiceTest）
 - `GraphQLService`（GraphQLService）
+- `McpService.Tests`（McpService.Tests）
+- `McpService`（McpService）
 - `WebService`（WebService）
 

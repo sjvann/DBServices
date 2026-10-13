@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>編輯器</title>
+<style>
+/* Governs: DESIGN.md canvas-block, Shapes, Do's and Don'ts.
+   EXPERIENCE.md 編輯器, UJ-2. Order only; no coordinates. Spine wins on conflict. */
+:root {
+  --surface-base: #F3F5F7;
+  --surface-raised: #FFFFFF;
+  --ink-primary: #1B2430;
+  --ink-secondary: #4E5D6C;
+  --border: #D0D7DE;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #D5DDE3;
+  font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.frame { width: 1100px; height: 800px; margin: 24px auto; background: var(--surface-base); display: flex; border: 1px solid var(--border); }
+.rail { width: 240px; padding: 24px 16px; border-right: 1px solid var(--border); }
+.rail h1 { font-size: 20px; font-weight: 600; margin: 0 0 24px; }
+.group { font-size: 12px; color: var(--ink-secondary); margin: 16px 0 8px; }
+.nav { display: block; padding: 8px 12px; border-radius: 4px; color: var(--ink-primary); text-decoration: none; }
+.nav.on { background: var(--surface-raised); border: 1px solid var(--border); }
+.page { flex: 1; padding: 24px; }
+.page h2 { font-size: 20px; font-weight: 600; margin: 0; }
+.head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.meta { color: var(--ink-secondary); font-size: 12px; margin-bottom: 24px; }
+button {
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font: inherit;
+}
+.block {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+.handle { color: var(--ink-secondary); letter-spacing: 2px; }
+.kind { font-size: 12px; color: var(--ink-secondary); width: 64px; }
+.moves { margin-left: auto; display: flex; gap: 8px; }
+.moves button { padding: 4px 8px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <aside class="rail">
+    <h1>報表工作台</h1>
+    <div class="group">規劃設計師</div>
+    <a class="nav" href="#live">活資料預覽</a>
+    <div class="group">範本編輯師</div>
+    <a class="nav on" href="#library">範本庫</a>
+    <a class="nav" href="#preview">預覽</a>
+  </aside>
+  <section class="page">
+    <div class="head">
+      <h2>銷貨月報</h2>
+      <button type="button">儲存範本</button>
+    </div>
+    <p class="meta">畫布由上到下。沒有業務列。</p>
+    <div class="block"><span class="handle">⋮⋮</span><span class="kind">標題</span><span>銷貨月報</span><span class="moves"><button type="button">上移</button><button type="button">下移</button></span></div>
+    <div class="block"><span class="handle">⋮⋮</span><span class="kind">參數</span><span>年月 · yearMonth</span><span class="moves"><button type="button">上移</button><button type="button">下移</button></span></div>
+    <div class="block"><span class="handle">⋮⋮</span><span class="kind">資料表</span><span>sales</span><span class="moves"><button type="button">上移</button><button type="button">下移</button></span></div>
+    <div class="block"><span class="handle">⋮⋮</span><span class="kind">計數</span><span>sales</span><span class="moves"><button type="button">上移</button><button type="button">下移</button></span></div>
+  </section>
+</div>
+</body>
+</html>
