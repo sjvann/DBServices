@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Workbench</RootNamespace>
+    <UserSecretsId>dbservices-workbench</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Workbench.Web\Workbench.Web.csproj" />
+    <ProjectReference Include="..\Workbench.Adapters\Workbench.Adapters.csproj" />
+    <ProjectReference Include="..\Workbench.Storage.Sqlite\Workbench.Storage.Sqlite.csproj" />
+  </ItemGroup>
+</Project>

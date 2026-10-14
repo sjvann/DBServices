@@ -1,0 +1,48 @@
+@page "/operators"
+@inject OperatorGate Gate
+@inject AccountService Accounts
+
+<h1>帳號</h1>
+@if (_denied is not null) { <p>@_denied</p> }
+else
+{
+    <ul>@foreach (var item in _items) { <li>@item.DisplayName</li> }</ul>
+    <label>名稱 <input @bind="_name" /></label>
+    <label>秘密 <input type="password" @bind="_secret" /></label>
+    <button class="secondary" @onclick="Create">建立</button>
+    @if (_error is not null) { <p class="error">@_error.Message</p> }
+}
+
+@code {
+    private string? _denied;
+    private string _name = "";
+    private string _secret = "";
+    private ErrorDto? _error;
+    private List<OperatorDto> _items = [];
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        var profile = Gate.Current;
+        if (profile is null || !profile.IsAdmin)
+        {
+            _denied = "沒有權限。";
+            return;
+        }
+
+        var listed = Accounts.List(profile.Id);
+        _items = listed.Ok ? listed.Value!.ToList() : [];
+    }
+
+    private void Create()
+    {
+        var profile = Gate.Current;
+        if (profile is null)
+            return;
+        var created = Accounts.Create(profile.Id, _name, _secret);
+        _error = created.Ok ? null : created.Error;
+        if (created.Ok)
+            Reload();
+    }
+}

@@ -81,6 +81,23 @@ foreach (var definition in ToolCatalog.Definitions)
 }
 
 var app = builder.Build();
+app.MapGet("/connections", (ToolCatalog catalog) =>
+{
+    var payload = new List<Dictionary<string, string>>();
+    foreach (var pair in catalog.Connections)
+    {
+        if (!pair.Value.Available)
+            continue;
+
+        payload.Add(new Dictionary<string, string>
+        {
+            ["name"] = pair.Key,
+            ["serverType"] = pair.Value.ServerType,
+        });
+    }
+
+    return Results.Json(payload);
+});
 app.MapMcp("/mcp");
 app.Run();
 

@@ -1,0 +1,124 @@
+@page "/assignments"
+@inject OperatorGate Gate
+@inject AccountService Accounts
+@inject RoleRailService Roles
+
+<h1>角色指派</h1>
+@if (_denied is not null) { <p>@_denied</p> }
+else
+{
+    <label>操作者
+        <select @bind="_target" @bind:after="Load">
+            @foreach (var item in _operators) { <option value="@item.Id">@item.DisplayName</option> }
+        </select>
+    </label>
+    <label><input type="checkbox" @bind="_planner" /> 規劃設計師</label>
+    <label><input type="checkbox" @bind="_editor" /> 範本編輯師</label>
+    <label><input type="checkbox" @bind="_terminal" /> 終端使用者</label>
+    @foreach (var group in _groups)
+    {
+        <fieldset @key="group.Id">
+            <legend>@group.Name</legend>
+            <label><input type="radio" name="@("g" + group.Id)" checked="@(_groupRoles.GetValueOrDefault(group.Id) == GroupRoles.Design)" @onchange="() => SetGroup(group.Id, GroupRoles.Design)" /> 設計</label>
+            <label><input type="radio" name="@("g" + group.Id)" checked="@(_groupRoles.GetValueOrDefault(group.Id) == GroupRoles.View)" @onchange="() => SetGroup(group.Id, GroupRoles.View)" /> 檢視</label>
+            <button class="secondary" @onclick="() => SetGroup(group.Id, null)">清除</button>
+        </fieldset>
+    }
+    <button class="secondary" @onclick="Ask">儲存</button>
+    @if (_confirming)
+    {
+        <div class="dialog" @onkeydown="OnKey">
+            <p>寫入角色指派？</p>
+            <button class="secondary" @onclick="Commit">確認</button>
+            <button class="secondary" @onclick="Cancel">取消</button>
+        </div>
+    }
+    @if (_message is not null) { <p>@_message</p> }
+}
+
+@code {
+    private readonly DialogStack _dialogs = new();
+    private string? _denied;
+    private string? _message;
+    private string _target = "";
+    private bool _planner;
+    private bool _editor;
+    private bool _terminal;
+    private bool _confirming;
+    private List<OperatorDto> _operators = [];
+    private List<GroupDto> _groups = [];
+    private Dictionary<string, string?> _groupRoles = new(StringComparer.Ordinal);
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        if (profile is null || !profile.IsAdmin)
+        {
+            _denied = "沒有權限。";
+            return;
+        }
+
+        _operators = Accounts.List(profile.Id).Value?.Where(item => item.Id != profile.Id).ToList() ?? [];
+        _groups = Roles.ListGroups(profile.Id).Value?.ToList() ?? [];
+        if (_operators.Count > 0)
+        {
+            _target = _operators[0].Id;
+            Load();
+        }
+    }
+
+    private void Load()
+    {
+        var profile = Gate.Current;
+        if (profile is null || string.IsNullOrEmpty(_target))
+            return;
+        var assignment = Roles.GetAssignments(profile.Id, _target);
+        if (!assignment.Ok || assignment.Value is null)
+            return;
+        _planner = assignment.Value.WorkRoles.Contains(WorkRoles.Planner);
+        _editor = assignment.Value.WorkRoles.Contains(WorkRoles.Editor);
+        _terminal = assignment.Value.WorkRoles.Contains(WorkRoles.Terminal);
+        _groupRoles = _groups.ToDictionary(item => item.Id, item => assignment.Value.Groups.FirstOrDefault(group => group.GroupId == item.Id)?.Role, StringComparer.Ordinal);
+    }
+
+    private void SetGroup(string groupId, string? role) => _groupRoles[groupId] = role;
+
+    private void Ask()
+    {
+        _dialogs.Push();
+        _confirming = true;
+    }
+
+    private void OnKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape" && _dialogs.HandleEscape())
+            _confirming = false;
+    }
+
+    private void Cancel()
+    {
+        if (_dialogs.Count > 0)
+            _dialogs.HandleEscape();
+        _confirming = false;
+    }
+
+    private void Commit()
+    {
+        var profile = Gate.Current;
+        if (profile is null)
+            return;
+        var work = new List<string>();
+        if (_planner) work.Add(WorkRoles.Planner);
+        if (_editor) work.Add(WorkRoles.Editor);
+        if (_terminal) work.Add(WorkRoles.Terminal);
+        var saved = Roles.SaveAssignments(profile.Id, _target, new AssignmentDto
+        {
+            WorkRoles = work,
+            Groups = _groupRoles.Select(item => new GroupRoleDto { GroupId = item.Key, Role = item.Value }).ToList(),
+        });
+        _message = saved.Ok ? "已儲存" : saved.Error!.Message;
+        if (_dialogs.Count > 0)
+            _dialogs.HandleEscape();
+        _confirming = false;
+    }
+}

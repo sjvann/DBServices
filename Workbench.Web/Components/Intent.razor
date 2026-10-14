@@ -1,0 +1,82 @@
+@page "/intent"
+@inject OperatorGate Gate
+@inject IntentService Parser
+@inject NavigationManager Nav
+
+<h1>交談套版</h1>
+@if (_denied is not null) { <p>@_denied</p> }
+else
+{
+    <label>語句 <input @bind="_utterance" @onkeydown="OnKey" /></label>
+    <p class="code">@_status</p>
+    @if (_status == IntentStatuses.Ambiguous)
+    {
+        <ul>
+            @foreach (var candidate in _candidates)
+            {
+                <li>@candidate.Connection @candidate.TemplateName</li>
+            }
+        </ul>
+    }
+    <button class="confirm" disabled="@(!_canConfirm)" @onclick="Confirm">確認</button>
+    @if (!_canConfirm) { <p class="reason">@_reason</p> }
+    @if (_error is not null) { <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p> }
+}
+
+@code {
+    private string _utterance = "";
+    private string _status = IntentStatuses.Incomplete;
+    private string _reason = "還缺連線、範本或參數值。";
+    private string? _planId;
+    private string? _denied;
+    private bool _canConfirm;
+    private ErrorDto? _error;
+    private List<IntentCandidateDto> _candidates = [];
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        if (profile is null || !profile.IsTerminal)
+            _denied = profile is null ? "尚未登入。" : "沒有權限。";
+    }
+
+    private async Task OnKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await Parse();
+    }
+
+    private async Task Parse()
+    {
+        var profile = Gate.Current;
+        if (profile is null || Gate.SessionId is null)
+            return;
+        var parsed = await Parser.ParseAsync(Gate.SessionId, profile.Id, _utterance, SurfaceNames.Mcp, CancellationToken.None);
+        if (!parsed.Ok)
+        {
+            _error = parsed.Error;
+            return;
+        }
+
+        _status = parsed.Value!.Status;
+        _candidates = parsed.Value.Candidates;
+        _planId = parsed.Value.PlanId;
+        _canConfirm = parsed.Value.CanConfirm;
+        _reason = parsed.Value.ConfirmReason ?? "";
+        _error = null;
+    }
+
+    private async Task Confirm()
+    {
+        if (!_canConfirm || Gate.SessionId is null || string.IsNullOrEmpty(_planId))
+            return;
+        var result = await Parser.ConfirmAsync(Gate.SessionId, _planId, CancellationToken.None);
+        if (!result.Ok || !string.IsNullOrEmpty(result.Value?.ErrorCode) || string.IsNullOrEmpty(result.Value?.SnapshotId))
+        {
+            _error = result.Error ?? new ErrorDto { Code = result.Value?.ErrorCode ?? "plan_mismatch", Message = result.Value?.ErrorMessage ?? "" };
+            return;
+        }
+
+        Nav.NavigateTo("/preview/" + result.Value.SnapshotId);
+    }
+}

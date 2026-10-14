@@ -5,12 +5,13 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
-  <ItemGroup Condition="'$(MSBuildProjectName)' == 'DbServices.Provider.Sqlite'
+    <ItemGroup Condition="'$(MSBuildProjectName)' == 'DbServices.Provider.Sqlite'
                      or '$(MSBuildProjectName)' == 'DBServices'
                      or '$(MSBuildProjectName)' == 'DbServices.Cli'
                      or '$(MSBuildProjectName)' == 'DBServiceTest'
                      or '$(MSBuildProjectName)' == 'WebService'
-                     or '$(MSBuildProjectName)' == 'GraphQLService'">
+                     or '$(MSBuildProjectName)' == 'GraphQLService'
+                     or '$(MSBuildProjectName)' == 'Workbench.Storage.Sqlite'">
     <!-- Microsoft.Data.Sqlite 仍帶入 SQLitePCLRaw.lib.e_sqlite3 2.1.11（CVE-2025-6965 / NU1903）。 -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>

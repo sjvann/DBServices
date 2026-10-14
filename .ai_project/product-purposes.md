@@ -3,7 +3,7 @@
 此檔由 AI_Project 控制台在開啟或重新掃描工作區時產生，下次會覆寫，請不要手改。
 權威來源：各專案檔的 `Description`／套件 `description`，或工作區 `ai-project.json` 的 `projects`。沒有該欄就留空，不讀 README。
 
-工作區：**DBServices**。已有描述 7／15。
+工作區：**DBServices**。已有描述 7／24。
 
 ## DbServices.Api.Shared
 
@@ -28,6 +28,12 @@
 | 專案 | 類型 | 用途 | 來源 |
 |------|------|------|------|
 | DbServices.Mcp | 函式庫 | （缺） | — |
+
+## DbServices.ModelSidecar
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| DbServices.ModelSidecar | 核心 | （缺） | — |
 
 ## DbServices.Provider.MsSql
 
@@ -95,6 +101,54 @@
 |------|------|------|------|
 | WebService | 核心 | （缺） | — |
 
+## Workbench.Adapters
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Adapters | 函式庫 | （缺） | — |
+
+## Workbench.Avalonia
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Avalonia | 核心 | （缺） | — |
+
+## Workbench.Contracts
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Contracts | 函式庫 | （缺） | — |
+
+## Workbench.Core
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Core | 函式庫 | （缺） | — |
+
+## Workbench.Storage.Sqlite
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Storage.Sqlite | 函式庫 | （缺） | — |
+
+## Workbench.Tests
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Tests | 測試 | （缺） | — |
+
+## Workbench.Web
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench.Web | 函式庫 | （缺） | — |
+
+## Workbench
+
+| 專案 | 類型 | 用途 | 來源 |
+|------|------|------|------|
+| Workbench | 核心 | （缺） | — |
+
 ## 尚未提供
 
 下列專案沒有一句用途。請在專案檔加 `Description`（或 `package.json`／`pyproject.toml` 的 description），或在 `ai-project.json` 的 `projects` 寫上。
@@ -102,9 +156,18 @@
 - `DbServices.Api.Shared`（DbServices.Api.Shared）
 - `DbServices.Cli`（DbServices.Cli）
 - `DbServices.Mcp`（DbServices.Mcp）
+- `DbServices.ModelSidecar`（DbServices.ModelSidecar）
 - `DBServiceTest`（DBServiceTest）
 - `GraphQLService`（GraphQLService）
 - `McpService.Tests`（McpService.Tests）
 - `McpService`（McpService）
 - `WebService`（WebService）
+- `Workbench.Adapters`（Workbench.Adapters）
+- `Workbench.Avalonia`（Workbench.Avalonia）
+- `Workbench.Contracts`（Workbench.Contracts）
+- `Workbench.Core`（Workbench.Core）
+- `Workbench.Storage.Sqlite`（Workbench.Storage.Sqlite）
+- `Workbench.Tests`（Workbench.Tests）
+- `Workbench.Web`（Workbench.Web）
+- `Workbench`（Workbench）
 

@@ -1,0 +1,96 @@
+@inherits LayoutComponentBase
+@inject CircuitSession Session
+@inject OperatorGate Gate
+@inject RoleRailService Roles
+@inject SessionService Sessions
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+@inject PersistentComponentState Persistent
+
+<div class="shell" tabindex="0" @onkeydown="OnKey">
+    <nav class="rail">
+        <p class="meta">工作台</p>
+        @if (_me is null)
+        {
+            <a href="/">登入</a>
+        }
+        else
+        {
+            <p>@_me.DisplayName</p>
+            @if (_me.Rail.EmptyMessage is not null)
+            {
+                <p>@_me.Rail.EmptyMessage</p>
+            }
+            @if (_me.Rail.LivePreview) { <a href="/live">活資料預覽</a> }
+            @if (_me.Rail.Templates) { <a href="/templates">範本庫</a> }
+            @if (_me.Rail.Intent) { <a href="/intent">交談套版</a> }
+            @if (_me.Rail.Favorites) { <a href="/favorites">常用清單</a> }
+            @if (_me.Rail.Preview) { <a href="/preview">預覽</a> }
+            @if (_me.Rail.Accounts) { <a href="/operators">帳號</a> }
+            @if (_me.Rail.Assignments) { <a href="/assignments">角色指派</a> }
+            @if (_me.Rail.Model) { <a href="/model">模型設定</a> }
+            <button class="secondary" @onclick="Logout">登出</button>
+        }
+    </nav>
+    <div class="main">
+        <article class="content">
+            <CascadingValue Value="this">@Body</CascadingValue>
+        </article>
+        <aside class="trace">
+            <p class="meta">軌跡</p>
+            @foreach (var trace in _traces)
+            {
+                <p class="code">@trace.Tool @trace.ErrorCode</p>
+            }
+        </aside>
+    </div>
+</div>
+
+@code {
+    private MeResponse? _me;
+    private IReadOnlyList<TraceDto> _traces = [];
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpContext is not null)
+        {
+            var cookie = HttpContext.Request.Cookies["wb_session"];
+            if (!string.IsNullOrEmpty(cookie))
+            {
+                Session.Adopt(cookie);
+                Persistent.PersistAsJson("wb_session", cookie);
+            }
+        }
+        else if (Persistent.TryTakeFromJson<string>("wb_session", out var restored))
+        {
+            Session.Adopt(restored);
+        }
+
+        await RefreshAsync();
+    }
+
+    public async Task RefreshAsync()
+    {
+        var profile = Gate.Current;
+        _me = profile is null ? null : RoleRailService.ToMe(profile);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void ShowTraces(IReadOnlyList<TraceDto>? traces) => _traces = traces ?? [];
+
+    private async Task Logout()
+    {
+        Sessions.Logout(Session.SessionId);
+        await Js.InvokeVoidAsync("wbClearSession");
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+
+    private void OnKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+            DialogHost.Escape();
+    }
+}

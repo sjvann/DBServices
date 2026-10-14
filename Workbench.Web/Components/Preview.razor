@@ -1,0 +1,110 @@
+@page "/preview"
+@page "/preview/{SnapshotId}"
+@inject OperatorGate Gate
+@inject SnapshotExportService Export
+@inject KeywordService Keywords
+@inject IJSRuntime Js
+
+<h1>預覽</h1>
+@if (_snapshot is null)
+{
+    <p class="sunken">確認之前，這裡沒有業務列。</p>
+}
+else
+{
+    <p>
+        <button class="secondary" @onclick="Pdf">匯出 PDF</button>
+        <button class="secondary" @onclick="Print">列印</button>
+        <button class="secondary" @onclick="Csv">匯出 CSV</button>
+    </p>
+    @foreach (var block in _snapshot.Blocks)
+    {
+        @if (block.Type == ComponentKinds.Table)
+        {
+            <table>
+                <thead><tr>@foreach (var column in block.Columns) { <th>@column</th> }</tr></thead>
+                <tbody>
+                @foreach (var row in block.Rows)
+                {
+                    <tr>@for (var index = 0; index < block.Columns.Count; index++) { <td>@(index < row.Count ? row[index] : "")</td> }</tr>
+                }
+                </tbody>
+            </table>
+        }
+        else if (block.Type == ComponentKinds.Count)
+        {
+            <p>@block.Count</p>
+        }
+        else
+        {
+            <p>@block.Text</p>
+        }
+    }
+    <label>說法 <input @bind="_phrase" /></label>
+    <button class="secondary" @onclick="AddKeyword">加入關鍵字</button>
+    @if (_message is not null) { <p>@_message</p> }
+    @if (!string.IsNullOrEmpty(_csv)) { <pre>@_csv</pre> }
+}
+
+@code {
+    [Parameter] public string? SnapshotId { get; set; }
+    private Snapshot? _snapshot;
+    private string _phrase = "";
+    private string? _message;
+    private string? _csv;
+
+    protected override void OnParametersSet()
+    {
+        var profile = Gate.Current;
+        if (profile is null || string.IsNullOrEmpty(SnapshotId) || string.IsNullOrEmpty(Gate.SessionId))
+            return;
+        var loaded = Export.Get(Gate.SessionId, profile.Id, SnapshotId);
+        _snapshot = loaded.Ok ? loaded.Value : null;
+        if (!loaded.Ok)
+            _message = loaded.Error!.Message;
+    }
+
+    private async Task Pdf()
+    {
+        if (Gate.Current is null || Gate.SessionId is null || _snapshot is null)
+            return;
+        var bytes = Export.Pdf(Gate.SessionId, Gate.Current.Id, _snapshot.Id);
+        if (!bytes.Ok)
+        {
+            _message = bytes.Error!.Message;
+            return;
+        }
+
+        await Js.InvokeVoidAsync("console.log", "pdf", bytes.Value!.Length);
+    }
+
+    private void Print()
+    {
+        if (Gate.Current is null || Gate.SessionId is null || _snapshot is null)
+            return;
+        var html = Export.Print(Gate.SessionId, Gate.Current.Id, _snapshot.Id);
+        _message = html.Ok ? "已準備列印" : html.Error!.Message;
+        _csv = html.Ok ? html.Value : null;
+    }
+
+    private void Csv()
+    {
+        if (Gate.Current is null || Gate.SessionId is null || _snapshot is null)
+            return;
+        var csv = Export.Csv(Gate.SessionId, Gate.Current.Id, _snapshot.Id);
+        _csv = csv.Ok ? csv.Value : null;
+        _message = csv.Ok ? null : csv.Error!.Message;
+    }
+
+    private void AddKeyword()
+    {
+        if (Gate.Current is null || Gate.SessionId is null || _snapshot is null)
+            return;
+        var added = Keywords.AddFromConfirm(Gate.SessionId, Gate.Current.Id, new KeywordWriteRequest
+        {
+            Phrase = _phrase,
+            SnapshotId = _snapshot.Id,
+        });
+        _message = added.Ok ? "已加入關鍵字" : added.Error!.Message;
+    }
+}

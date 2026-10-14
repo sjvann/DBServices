@@ -1,0 +1,13 @@
+@rendermode InteractiveServer
+
+<Router AppAssembly="typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(WorkbenchLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(WorkbenchLayout)">
+            <p>找不到這個表面。</p>
+        </LayoutView>
+    </NotFound>
+</Router>

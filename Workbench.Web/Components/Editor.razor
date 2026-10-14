@@ -1,0 +1,162 @@
+@page "/templates/{Id}/edit"
+@inject OperatorGate Gate
+@inject TemplateLibraryService Templates
+@inject SuggestionService Suggestions
+
+<h1>編輯器</h1>
+@if (_denied is not null) { <p>@_denied</p> }
+else if (_template is not null)
+{
+    <label>名稱 <input @bind="_template.Name" /></label>
+    <button class="secondary" @onclick="AddTitle">標題</button>
+    <button class="secondary" @onclick="AddText">文字</button>
+    <button class="secondary" @onclick="AddParameter">參數</button>
+    <button class="secondary" @onclick="AddTable">資料表</button>
+    <button class="secondary" @onclick="AddCount">計數</button>
+    <button class="secondary" @onclick="Suggest">產生建議</button>
+    <button class="secondary" @onclick="Accept">接受</button>
+    @if (_error is not null) { <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p> }
+    @for (var index = 0; index < _template.Components.Count; index++)
+    {
+        var slot = index;
+        var component = _template.Components[slot];
+        <div class="block" draggable="true" @ondrop="() => Drop(slot)" @ondragstart="() => _drag = slot" @key="@(slot * 10)">
+            <p class="code">@component.Type</p>
+            <input @bind="component.Text" />
+            <input @bind="component.Field" />
+            <input @bind="component.Table" />
+            <button class="secondary" @key="@(slot * 10 + 1)" @onclick="() => Move(slot, -1)">上移</button>
+            <button class="secondary" @key="@(slot * 10 + 2)" @onclick="() => Move(slot, 1)">下移</button>
+            <button class="secondary" @key="@(slot * 10 + 3)" @onclick="() => Remove(slot)">刪除</button>
+        </div>
+    }
+    <button class="secondary" @onclick="Save">儲存</button>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    private TemplateDto? _template;
+    private List<ComponentDto>? _proposal;
+    private string? _denied;
+    private ErrorDto? _error;
+    private int _drag = -1;
+
+    protected override void OnParametersSet()
+    {
+        var profile = Gate.Current;
+        if (profile is null)
+        {
+            _denied = "尚未登入。";
+            return;
+        }
+
+        var loaded = Templates.Get(profile.Id, Id);
+        if (!loaded.Ok)
+        {
+            _denied = loaded.Error!.Message;
+            return;
+        }
+
+        _template = loaded.Value;
+    }
+
+    private void AddTitle() => Add(ComponentKinds.Title);
+    private void AddText() => Add(ComponentKinds.Text);
+    private void AddParameter() => Add(ComponentKinds.Parameter);
+    private void AddTable() => Add(ComponentKinds.Table);
+    private void AddCount() => Add(ComponentKinds.Count);
+
+    private void Add(string type)
+    {
+        _template?.Components.Add(new ComponentDto { Type = type, Order = _template.Components.Count, Columns = type == ComponentKinds.Table ? ["欄"] : [] });
+    }
+
+    private void Move(int index, int delta)
+    {
+        if (_template is null)
+            return;
+        var next = index + delta;
+        if (next < 0 || next >= _template.Components.Count)
+            return;
+        var items = _template.Components;
+        (items[index], items[next]) = (items[next], items[index]);
+        for (var cursor = 0; cursor < items.Count; cursor++)
+            items[cursor].Order = cursor;
+    }
+
+    private void Remove(int index)
+    {
+        _template?.Components.RemoveAt(index);
+        if (_template is null)
+            return;
+        for (var cursor = 0; cursor < _template.Components.Count; cursor++)
+            _template.Components[cursor].Order = cursor;
+    }
+
+    private void Drop(int index)
+    {
+        if (_drag < 0 || _template is null)
+            return;
+        var item = _template.Components[_drag];
+        _template.Components.RemoveAt(_drag);
+        _template.Components.Insert(index, item);
+        _drag = -1;
+        for (var cursor = 0; cursor < _template.Components.Count; cursor++)
+            _template.Components[cursor].Order = cursor;
+    }
+
+    private async Task Save()
+    {
+        var profile = Gate.Current;
+        if (profile is null || _template is null)
+            return;
+        var saved = Templates.Save(profile.Id, _template);
+        _error = saved.Ok ? null : saved.Error;
+        if (saved.Ok)
+            _template = saved.Value;
+    }
+
+    private async Task Suggest()
+    {
+        var profile = Gate.Current;
+        if (profile is null || _template is null)
+            return;
+        var table = _template.Components.FirstOrDefault(item => item.Type == ComponentKinds.Table)?.Table ?? "";
+        var proposed = await Suggestions.ProposeAsync(profile.Id, new SuggestionRequest
+        {
+            Surface = SurfaceNames.Mcp,
+            Connection = "",
+            Table = table,
+            TemplateId = _template.Id,
+        }, CancellationToken.None);
+        if (!proposed.Ok)
+        {
+            _error = proposed.Error;
+            return;
+        }
+
+        _proposal = proposed.Value;
+        _error = null;
+    }
+
+    private async Task Accept()
+    {
+        var profile = Gate.Current;
+        if (profile is null || _template is null || _proposal is null)
+            return;
+        var accepted = await Suggestions.AcceptAsync(profile.Id, new SuggestionRequest
+        {
+            Surface = SurfaceNames.Mcp,
+            TemplateId = _template.Id,
+            Proposal = _proposal,
+        }, CancellationToken.None);
+        if (!accepted.Ok)
+        {
+            _error = accepted.Error;
+            return;
+        }
+
+        _template = accepted.Value;
+        _error = null;
+    }
+}

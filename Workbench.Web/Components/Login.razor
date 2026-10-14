@@ -1,0 +1,35 @@
+@page "/"
+@inject SessionService Sessions
+@inject CircuitSession Session
+@inject IJSRuntime Js
+@inject NavigationManager Nav
+@layout WorkbenchLayout
+
+<h1>登入</h1>
+@if (_error is not null)
+{
+    <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p>
+}
+<label>名稱 <input @bind="_name" /></label>
+<label>秘密 <input type="password" @bind="_secret" /></label>
+<button class="secondary" @onclick="Submit">登入</button>
+
+@code {
+    private string _name = "";
+    private string _secret = "";
+    private ErrorDto? _error;
+
+    private async Task Submit()
+    {
+        var result = Sessions.Login(_name, _secret);
+        if (!result.Ok)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Session.Adopt(result.Value!.SessionId);
+        await Js.InvokeVoidAsync("wbSetSession", result.Value.SessionId);
+        Nav.NavigateTo("/live", forceLoad: true);
+    }
+}
