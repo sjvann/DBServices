@@ -55,7 +55,7 @@ sources:
 - REST、GraphQL 與 MCP 只經 `DbServiceFactory` 取得 `IDbService`。宿主不建立 Provider、不在工具裡分支引擎、不新增 SQL planner。
 - P0 不部署 Python、不呼叫語言模型、不交付側車。日後側車的輸入與失敗邊界見 `later-surfaces.md`。
 - 連線字串只存在伺服器組態與既有工廠。工具結構、錯誤訊息、稽核、宿主日誌與日後側車輸入都不攜帶它。結果列不寫進稽核或宿主日誌，也不外送到第三方。
-- P0 的工具是六個唯讀 Session Call，不是八條 REST 路由的包裝。
+- P0 的公開目錄是已發布模組視圖，不是六個表級 Session Call，也不是八條 REST 路由的包裝。REST 與 GraphQL 的路徑和查詢形狀維持不變。沒有已發布視圖時 Discovery 是空清單。
 - P0 只提供 Streamable HTTP。日後若做 stdio，必須沿用同一套工具且不改工具參數。
 - 沒有呼叫者身分時記為 `anonymous`，呼叫仍執行。P0 不加入驗證。信任邊界是營運者的網路，出貨時不依 host 名稱過濾。
 - 等值篩選放在一個 `filters` 物件裡，不與 `table` 同層，避免欄位名與宿主參數碰撞。篩選值原樣送進 Session，不拼進 SQL。

@@ -45,25 +45,25 @@ FR-3: 只有管理者看得到工作台全貌，因此管理者不需另被指�
 
 FR-4: 操作者在 MCP 與 Web API 之間選擇這次預覽的取數表面。切換表面會換掉 FR-3 的連線清單。GraphQL 不是 v1 的取數表面。
 
-FR-5: 操作者可對選定的具名連線列出資料表，再列出選定資料表的欄位。MCP 使用 `tables` 與 `fields`；省略 `includeView` 時行為與 MCP 宿主相同。Web API 使用 `GET /meta` 與 `GET /{resourceName}/fieldSet`。這些是結構呼叫，不回傳業務列。沒有資料表時清單是空的，畫面是空狀態。`fields` 每一欄至少包含名稱、型別、是否主鍵、是否不可為空。
+FR-5: 操作者在 Web API 上列出資料表，再列出選定資料表的欄位。使用 `GET /meta` 與 `GET /{resourceName}/fieldSet`。不呼叫 `tables` 或 `fields`。這些是結構呼叫，不回傳業務列。沒有資料表時清單是空的。`fieldSet` 每一欄至少包含名稱、型別、是否主鍵、是否不可為空。
 
-FR-6: 操作者設定零個以上等值篩選並確認後，可預覽符合條件的列。MCP 確認呼叫 `query`，多個等值篩選可同時存在，篩選值以參數傳遞。Web API 在零個篩選時讀取該表的列；恰好一個篩選時使用 `Key` 與 `Value`；兩個以上篩選時拒絕確認，說明此表面只接受單鍵，並且不發送該請求。沒有符合列時預覽是空結果，不是未處理錯誤。預覽列與同一次工具或 GET 的結果一致，工作台不另做第二次彙總。
+FR-6: 操作者在 Web API 上設定零個或一個等值篩選並確認後，可預覽符合條件的列。零個篩選讀取該表的列；恰好一個篩選使用 `Key` 與 `Value`；兩個以上篩選時拒絕確認。不呼叫 `query`。沒有符合列時預覽是空結果。工作台不另做第二次彙總。
 
-FR-7: 操作者在 MCP 表面可對同一張表與同一組等值篩選確認並看到計數。確認呼叫 `count`，無符合列時顯示 0。Web API 表面沒有計數動作，工作台不以讀完全表的方式自己計算筆數。
+FR-7: 工作台沒有表級計數動作。不呼叫 `count`，也不讀全表自己算筆數。報表上的筆數必須是該次模組視圖回傳列裡的一個輸出欄。
 
-FR-8: 同一組操作改打另一個 `ServerType` 的具名連線時，工具名稱與參數鍵不變。從 `inventory` 改到 `inventory_pg` 時，`tables`、`fields`、`query`、`count` 的名稱與參數鍵不變。工作台不要求操作者另選引擎；引擎顯示來自 FR-3。
+FR-8: 同一份已發布模組視圖改打另一個 `ServerType` 的具名連線時，視圖名稱與參數鍵不變。從 `inventory` 改到 `inventory_pg` 時亦然。工作台不要求操作者另選引擎；引擎顯示來自 FR-3。
 
-FR-9: 每次結構呼叫與填數呼叫都在畫面上留下取數軌跡。軌跡含操作者識別、具名連線名稱、工具或請求種類、等值篩選，以及列數、計數值或錯誤碼。對 MCP 的一次成功 `query`，軌跡裡的呼叫者、連線名稱、工具、篩選與列數能在該次 MCP 稽核紀錄中找到對應，且稽核的呼叫者等於操作者識別。軌跡與稽核不包含業務列與連線字串。MCP 因稽核寫入失敗而回傳 `execution_failed` 時，工作台顯示該錯誤，並且不顯示部分列。
+FR-9: 每次結構呼叫與填數呼叫都在畫面上留下取數軌跡。對 MCP 的一次成功模組視圖呼叫，軌跡裡的呼叫者、連線名稱、視圖名稱、參數與列數能在該次 MCP 稽核紀錄中找到對應。表級 `query` 不是工作台的成功路徑。軌跡與稽核不包含業務列與連線字串。
 
-FR-10: 活資料預覽沒有 SQL 輸入，也沒有新增、更新、刪除。工作台發出的 MCP 工具呼叫名稱只會是 `tables`、`fields`、`query`、`count`。對 Web API 只發出 FR-5 與 FR-6 所述的 GET。操作者無法從工作台提交 `insert`、`update`、`delete`、`sql`，或 Web API 的 POST、PUT、DELETE。
+FR-10: 活資料預覽沒有 SQL 輸入，也沒有新增、更新、刪除。工作台發出的 MCP 呼叫只會是已發布模組視圖。對 Web API 只發出 FR-5 與 FR-6 所述的 GET。操作者無法從工作台提交 `insert`、`update`、`delete`、`sql`，或 Web API 的 POST、PUT、DELETE。
 
 FR-11: 未知資料表、連線失敗與空結果都變成操作者讀得懂的狀態。MCP 的 `unknown_table`、`connection_failed`、`invalid_arguments`、`execution_failed` 以原錯誤碼與不含秘密的訊息顯示。錯誤出現時，工作台仍可繼續選擇其他連線或資料表。空清單與零列使用空狀態，不顯示為未處理例外。
 
-FR-12: 設計者可在畫布使用標題、文字、參數、資料表、計數五種元件，沒有其他元件，也沒有圖表。標題與文字保存操作者輸入的字串。參數綁定恰好一個欄位並有標籤，範本不保存該參數的值。資料表綁定恰好一個資料表，以及一個以上來自該表欄位的欄名。計數綁定恰好一個資料表。
+FR-12: 設計者可在畫布使用標題、文字、參數、資料表、計數五種元件。一份 MCP 範本綁定恰好一個已發布模組視圖。資料表元件的欄來自該視圖的輸出欄。計數元件綁該視圖的一個輸出欄，不另發 `count`。Web API 範本仍可綁一張表；含計數元件時不能在 Web API 上確認。
 
 FR-13: 設計者可加入、拖曳重排與刪除元件，並設定繫結。畫布順序是由上到下的序列，拖曳只改變這個順序，不保存 x、y、寬、高。重新開啟範本時，順序與繫結保持為上次保存的結果。刪除元件後，保存結果不再包含該元件。
 
-FR-14: 設計者選定資料表後，工作台提出元件建議；設計者可接受、修改或忽略。產生建議前允許的呼叫只有結構呼叫。建議不含業務列與參數值，至少包含一個資料表元件，其欄名全集等於該次 `fields` 回傳的欄名。建議中每一個繫結欄名都存在於該次 `fields` 結果，類型只會是 FR-12 的五種。接受把建議的元件加到畫布末尾。忽略不改變畫布。修改後再接受，畫布採用修改後的版本。含有未知欄名的建議不能被接受。建議失敗時既有畫布保持不變。
+FR-14: 設計者選定已發布模組視圖或一張 Web API 資料表後，工作台提出元件建議；設計者可接受、修改或忽略。建議不含業務列與參數值。MCP 範本的欄名全集等於該視圖的輸出欄。Web API 範本等於該次 `fieldSet`。不來自 `fields`。類型只會是 FR-12 的五種。接受把建議的元件加到畫布末尾。忽略不改變畫布。修改後再接受，畫布採用修改後的版本。含有未知欄名的建議不能被接受。建議失敗時既有畫布保持不變。
 
 FR-15: 管理員可建立與重新命名範本群組。對一個群組具有設計角色的操作者，可在該群組建立、重新命名、刪除範本，以及把範本移到另一個自己具有設計角色的群組。新範本在保存時必須選入一個群組，且操作者對該群組具有設計角色。範本恰好屬於一個群組。同一群組內名稱不重複。移到沒有設計角色的群組會被拒絕，範本仍在原群組。群組內仍有範本時，刪除該群組會被拒絕。檢視角色不能建立、修改、刪除或移動範本。
 
@@ -75,7 +75,7 @@ FR-18: 操作者提交語句後，工作台給出意圖：具名連線候選、�
 
 FR-19: 意圖不是恰好一個連線、恰好一個範本、且該範本每個參數都有值時，工作台不執行填數呼叫。多個連線或多個範本時列出候選，讓操作者選到各剩一個。缺少參數值時指出缺的欄位或標籤。對不到任何連線或任何範本時說明對不到，候選為空。上述情況在補齊或選定之前，該次語句的填數呼叫次數是 0。改選候選本身不是確認。
 
-FR-20: 意圖就緒後，工作台先列出將執行的填數呼叫。操作者確認後才執行，並顯示預覽。列出的呼叫與範本一致：每個資料表元件一次列查詢（MCP 上為 `query`，Web API 上為合法的單鍵 GET）；在 MCP 上每個計數元件一次 `count`。這些呼叫共用該次意圖的具名連線，並帶上全部參數所組成的等值篩選。確認之後實際發出的填數呼叫與確認前列出的集合相同，沒有額外的 `query`、`count` 或 Web API 資料 GET。任一資料表缺少某個參數欄位時，整次確認被拒絕，填數呼叫次數是 0。取數表面是 Web API 且篩選不是零個或一個時，確認被拒絕。取數表面是 Web API 且範本含計數元件時，確認被拒絕，工作台不改以讀取全表來產生計數。任一呼叫失敗時，預覽顯示該錯誤，不用其他呼叫的舊列湊成一份成功報表。
+FR-20: 意圖就緒後，工作台先列出將執行的填數呼叫。操作者確認後才執行。MCP 上一次確認恰好呼叫該範本所綁的一個已發布模組視圖。Web API 上是零鍵或單鍵 GET；篩選不是零個或一個，或範本含計數元件時，整次拒絕。確認之後實際發出的呼叫與清單相同。任一呼叫失敗時，預覽只有該錯誤。
 
 FR-21: 操作者可把一次就緒的叫法存成自己的常用項目，並在之後再次確認執行。常用項目含名稱、範本識別、取數表面、具名連線名稱、參數值與擁有者，不含資料列、連線字串與版面複本。常用清單只回傳擁有者自己的項目；管理員不能透過常用清單介面讀取他人的常用項目。再次開啟時讀取範本目前的版面與繫結，套上常用項目的連線與參數，並依 FR-20 重新確認後才查詢，不查詞庫，不讀舊列。範本已刪除，或操作者已失去該群組的檢視角色時，再次開啟被拒絕，填數呼叫次數是 0。參數欄位變更導致無法對齊時，工作台指出差異並停在未確認狀態。
 
@@ -114,11 +114,11 @@ NFR-12: `AllowedHosts` 出貨值為 `*`。工作台不因為要列出連線而�
 - 新專案加入現有方案，目標框架 `net10.0`，Nullable 與 ImplicitUsings 開啟：`Workbench`、`Workbench.Web`、`Workbench.Core`、`Workbench.Contracts`、`Workbench.Adapters`、`Workbench.Storage.Sqlite`、`Workbench.Avalonia`、`DbServices.ModelSidecar`、`Workbench.Tests`。`Workbench` 參考 Web、Adapters 與 Storage，負責組裝、DI 與聽取位址，沒有畫面。部署恰好一個 `Workbench` 進程，與 `McpService`、`WebService` 分開。
 - 六角形邊界：填數、結構呼叫、範本讀寫、角色判斷、解析、軌跡與快照只經過 `Workbench.Core` 的端口。Blazor 在進程內呼叫 Core，只參考 Core 與 Contracts。Avalonia 只呼叫工作台 HTTP，JSON 型別是 Contracts，控制器不另寫業務判斷。兩個殼與 `Workbench.Web` 都不參考 Adapters、`DbServices.Mcp`、`DBService`、Provider、`Microsoft.Extensions.AI`，也不持有 MCP 或 Web API 的基底網址。Core 不參考 ASP.NET、Avalonia 與模型套件。
 - 單一宿主：只有 `Workbench` 開啟 `Workbench:StorePath` 指向的 SQLite，並在記憶體持有工作階段、待確認清單與預覽快照。Avalonia 不嵌入 Blazor，不開啟該檔。殼的組態只有工作台基底網址。不另開第二個工作台實例分攤這些記憶體物件。
-- 填數轉發：MCP 用戶端在 Adapters，使用 `ModelContextProtocol` 2.2.0，只呼叫 `tables`、`fields`、`query`、`count`，並帶 `X-DBServices-Caller`。Web API 只發送 `GET /meta`、`fieldSet` GET、零鍵資料表 GET，以及單鍵 `Key` 與 `Value`。計數、兩個以上篩選、POST、PUT、DELETE 不發送。結果列與計數原樣進入預覽。
-- 連線中繼資料：`McpService` 增加 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入六個工具的廣告清單。回應每筆只有 `name` 與 `serverType`，且只含組態完整的連線。不回傳連線字串，也不回傳是否可用。`Workbench` 與 Adapters 不參考 `DbServices.Mcp`。Web API 顯示名稱固定為 `default`，`ServerType` 來自 `Surfaces:Web:ServerType`，基底網址來自 `Surfaces:Web:BaseUrl`。工作台不讀 WebService 的組態檔，選項類別不宣告連線字串，不修改 WebService 既有路由與 JSON。
+- 填數轉發：MCP 用戶端在 Adapters，使用 `ModelContextProtocol` 2.2.0，只呼叫該範本所綁的已發布模組視圖，並帶 `X-DBServices-Caller`。不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`。Web API 只發送 `GET /meta`、`fieldSet` GET、零鍵資料表 GET，以及單鍵 `Key` 與 `Value`。計數、兩個以上篩選、POST、PUT、DELETE 不發送。結果列原樣進入預覽。
+- 連線中繼資料：`McpService` 增加 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入 Discovery。回應每筆只有 `name` 與 `serverType`，且只含組態完整的連線。不回傳連線字串，也不回傳是否可用。`Workbench` 與 Adapters 不參考 `DbServices.Mcp`。Web API 顯示名稱固定為 `default`，`ServerType` 來自 `Surfaces:Web:ServerType`，基底網址來自 `Surfaces:Web:BaseUrl`。工作台不讀 WebService 的組態檔，選項類別不宣告連線字串，不修改 WebService 既有路由與 JSON。
 - 工作台儲存使用 `Microsoft.Data.Sqlite` 10.0.12 的單一檔案。檔內只放操作者、群組、角色指派、範本、常用項目與關鍵字規則。不在業務庫建表。範本沒有連線名稱、參數值與資料列。常用項目有 `surface`（`mcp` 或 `web`）、連線名稱與純量參數值，沒有版面複本與資料列。
 - 登入與第一個管理員：儲存裡零個操作者時，宿主讀 `Workbench:InitialAdmin:DisplayName` 與 `Workbench:InitialAdmin:Password`，以 ASP.NET Core 10.0.12 共用框架的 `PasswordHasher` 寫入恰好一個 `admin` 操作者。已有操作者之後這兩個鍵不再使用。缺密碼且零個操作者時，宿主不提供工作台功能。工作階段是宿主記憶體中的 `sessionId` 與操作者 `id`。Blazor cookie 與 Avalonia bearer 都只帶這個 `sessionId`。登出刪除該筆，兩邊同時失效。進程重啟後工作階段清空。
-- 確認清單與預覽快照只在宿主記憶體。結構瀏覽不產生填數清單。活資料預覽的清單恰好一筆 `query` 或一筆 `count`。範本確認的清單由核心產生。確認請求帶回清單識別。執行前再核對清單、範本、角色與表面能力；不一致則整次拒絕，不部分執行。離開該次預覽，或同一操作者的下一次確認，快照與舊清單刪除。快照與清單不寫入 SQLite。PDF 與 CSV 的具體套件尚未選定；選定時不得再查資料。
+- 確認清單與預覽快照只在宿主記憶體。結構瀏覽不產生填數清單。MCP 上一次確認恰好一筆已發布模組視圖呼叫。Web API 上是零鍵或單鍵 GET。確認請求帶回清單識別。執行前再核對清單、範本、角色與表面能力；不一致則整次拒絕，不部分執行。離開該次預覽，或同一操作者的下一次確認，快照與舊清單刪除。快照與清單不寫入 SQLite。PDF 與 CSV 的具體套件尚未選定；選定時不得再查資料。
 - 解析管線在 Core 做關鍵字比對，不啟動側車，也不讀常用項目。內建比對使用本次看得到的目錄：語句含連線 `name`、範本 `name`、參數 `field` 或 `label` 才入候選；對不到的不補猜。有效的關鍵字規則再加上去，參數值仍從語句取出。宿主重算 `ready`、`ambiguous`、`incomplete`，不以解析器自報狀態為確認依據。模型啟用且狀態不是 `ready` 時，才把解析輸入送給側車。候選若超出本次輸入，整份作廢，填數次數為 0。
 - 模型設定只有一份。欄位是 `enabled`、`placement`（`cloud` 或 `local`）、`endpoint`、`modelId`、`apiKey`、`probeTimeoutSeconds`、`parseTimeoutSeconds`。內容根的 `model.json` 不在 `wwwroot`。覆寫順序是這個檔、Development 且有 `UserSecretsId` 時的 user secrets、環境變數、命令列。`cloud` 的 `endpoint` 必須是 `https` 且有效金鑰非空白。`local` 的主機必須是 `localhost`、`127.0.0.1` 或 `::1`，金鑰可空白。側車每次設定 `Endpoint`，不使用套件預設的 `https://api.openai.com/v1`。本地金鑰空白時，只在子程序內使用佔位憑證 `local`，不寫入設定檔。未決：覆寫順序包含命令列，同時規定 `apiKey` 不進入程序引數；命令列是否可以覆寫 `apiKey` 尚未分開寫死。
 - 只有管理員可測試模型。測試提交草稿，不要求先儲存，也不改 `model.json`。檢查不通過回 `model_invalid_settings` 且不啟動側車。標準輸入只有 `kind` 為 `probe`、`placement`、`endpoint`、`modelId`。金鑰只放在子程序環境變數 `DBSERVICES_MODEL_API_KEY`。探測不含語句、範本、連線名稱、資料列與資料庫連線字串，也不把模型回覆內文帶回畫面。結果碼只允許 `model_ok`、`model_invalid_settings`、`model_unreachable`、`model_timeout`。`enabled` 為 false 時，交談仍只走關鍵字規則。預設探測逾時 10 秒、解析逾時 30 秒。
@@ -132,11 +132,11 @@ NFR-12: `AllowedHosts` 出貨值為 `*`。工作台不因為要列出連線而�
 **繼承的資料平面不變量（合併 2026-10-11，工作台必須遵守，不在本拆解重做資料平面）：**
 
 - 工作台不修改 `IDbService`、`IDbServiceAsync`、`DbServices.Core`、`FunctionRegistry`、Provider，也不改既有 REST 與 GraphQL 的路徑和查詢形狀。工作台不建立 `IDbService`，不呼叫 `QuerySession`。
-- MCP 廣告清單維持恰好六個工具：`tables`、`fields`、`get`、`query`、`count`、`exists`。`insert`、`update`、`delete`、`sql` 維持關閉。工作台只呼叫前四個唯讀填數與結構工具中的 `tables`、`fields`、`query`、`count`，不呼叫 `get`、`exists` 與寫入工具。
+- Discovery 只列已發布模組視圖。工作台不把六個表級工具凍結成公開廣告，也不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`、`insert`、`update`、`delete`、`sql`。簽名、REST 與 GraphQL 路徑仍不改。
 - `filters` 維持巢狀純量。工作台不把篩選拼進 SQL，不傳送 `connectionString`。
 - `Connections` 仍只由 `DbServices.Mcp` 在 `McpService` 進程綁定。工作台進程不載入連線字串。
 - MCP 傳輸維持 `McpService` 的 `POST /mcp`，套件 2.2.0。不在 `McpService` 加登入。呼叫者標頭維持 `X-DBServices-Caller`，工作台送出操作者 `id`。
-- MCP 錯誤碼與成功形狀原樣顯示。工作台不重算列、不把空列改成錯誤。`unknown_table` 只沿用 `fields` 探表。`query` 與 `count` 不另造缺表碼。
+- MCP 錯誤碼與成功形狀原樣顯示。工作台不重算列、不把空列改成錯誤。工作台不再依賴 `fields` 的 `unknown_table`。
 - MCP 稽核仍是宿主那一個 JSONL。工作台不寫第二份 MCP 稽核。稽核寫入失敗而回 `execution_failed` 時，不顯示部分列。
 - 模型不進入 Core 與 MCP 宿主。P0 的 `anonymous` 仍可呼叫 MCP；這條不沿用到工作台。工作台未登入的請求不呼叫 MCP。
 
@@ -156,7 +156,7 @@ UX-DR6: 實作 `canvas-block`。白底髮線的一列。左側是順序把手與
 
 UX-DR7: 實作 `preview-well` 為獨立預覽頁的本文。沒有快照時整頁用下凹底與次墨，文案是「確認之前，這裡沒有業務列。」不下載列來當佔位，匯出與列印不可按。確認成功後改為白底，由上到下放這一頁的報表，空結果也是結果，計數可以是 0。人留在這一頁時，上一筆成功的列留到下一次成功確認才換。離開這一頁後舊快照不能再匯出。這一版沒有註解、背景、圖片工具。頁首是匯出 PDF、列印、匯出 CSV。
 
-UX-DR8: 實作 `call-list`。確認前列出將執行的填數呼叫，工具名用等寬字。活資料預覽恰好一筆 `query` 或一筆 `count`。實際呼叫集合必須與清單相同。任一筆失敗時，預覽只有該錯誤。
+UX-DR8: 實作 `call-list`。確認前列出將執行的填數呼叫，名稱用等寬字。MCP 上恰好一筆已發布模組視圖。Web API 上是零鍵或單鍵 GET。實際呼叫集合必須與清單相同。任一筆失敗時，預覽只有該錯誤。
 
 UX-DR9: 實作 `error-block`。白底、危險色文字與 1px 危險色邊，不鋪滿危險色底。第一行是錯誤碼（等寬），第二行是給人讀的訊息。MCP 代碼原樣：`unknown_table`、`connection_failed`、`invalid_arguments`、`execution_failed`。不含連線字串、密碼、金鑰、堆疊秘密。出現後仍可改選其他連線或資料表。
 
@@ -198,7 +198,7 @@ FR-3: Epic 1 - 管理者與規劃設計師看到具名連線
 FR-4: Epic 1 - 選擇 MCP 或 Web API
 FR-5: Epic 1 - 瀏覽資料表與欄位
 FR-6: Epic 1 - 確認後以等值篩選預覽列
-FR-7: Epic 1 - MCP 上確認後預覽計數
+FR-7: Epic 1 - MCP 上確認一個已發布模組視圖，不提供表級計數
 FR-8: Epic 1 - 換引擎不換工具契約
 FR-9: Epic 1 - 取數軌跡對得上稽核
 FR-10: Epic 1 - 預覽不提供寫入與自由 SQL
@@ -322,7 +322,7 @@ So that 我能核對換了引擎，畫面上仍然沒有連線字串。
 
 **Acceptance Criteria:**
 
-**Given** `McpService` 提供 `GET /connections`，它不是 MCP 工具、不在 `/mcp` 之下、也不進入六個工具的廣告清單
+**Given** `McpService` 提供 `GET /connections`，它不是 MCP 工具、不在 `/mcp` 之下、也不進入 Discovery
 **When** 管理者或規劃設計師開啟活資料預覽
 **Then** MCP 清單每筆只有 `name` 與 `serverType`，且只含組態完整的連線；不回傳連線字串，也不回傳是否可用
 **And** 工作台與配接器不參考 `DbServices.Mcp`，也不載入連線字串
@@ -351,13 +351,13 @@ So that 我在取回業務列之前先確認結構。
 
 **Given** 已選定一個 MCP 具名連線
 **When** 操作者瀏覽資料表與某個資料表的欄位
-**Then** 工作台只呼叫 `tables` 與 `fields`，並以操作者 `id` 填入 `X-DBServices-Caller`；省略 `includeView` 時行為與宿主相同
+**Then** 工作台只發送 `GET /meta` 與 `GET /{resourceName}/fieldSet`，不呼叫 `tables` 或 `fields`
 **And** 這些呼叫不產生填數清單，也不回傳業務列；每一欄至少有名稱、型別、是否主鍵、是否不可為空
-**And** 成功的 `tables` 與 `fields` 各在畫面上留一筆軌跡，含操作者 `id`、連線名稱、工具、以及列數；不含業務列與連線字串，也不寫入工作台 SQLite
+**And** 成功的 Web API 結構呼叫各在畫面上留一筆軌跡，含操作者 `id`、連線名稱、請求種類以及列數；不含業務列與連線字串，也不寫入工作台 SQLite
 
 **Given** 同一組瀏覽先對 `inventory`（`SqlServer`），再只把連線改成 `inventory_pg`（`PostgreSQL`）
 **When** 再次列出資料表與欄位
-**Then** 工具名稱仍是 `tables` 與 `fields`，參數鍵仍是連線與資料表；省略 `includeView` 時行為與宿主相同
+**Then** 仍只走 Web API 的 `GET /meta` 與 `fieldSet`，不改呼叫表級 MCP 工具
 
 **Given** 取數表面是 Web API
 **When** 操作者做同樣的瀏覽
@@ -386,7 +386,7 @@ So that 確認之前預覽頁沒有業務列。
 
 **Given** 取數表面是 MCP
 **When** 操作者按下標成「查詢」的確認鈕
-**Then** 清單恰好一筆 `query`，篩選以參數傳遞、不拼進 SQL；確認後進入預覽頁，列等於該次工具結果
+**Then** 清單是零鍵或單鍵 GET，不呼叫 `query`；確認後進入預覽頁，列等於該次 GET 結果
 **And** 沒有符合的列時，畫面寫「沒有符合的列。」這是空結果，不是未處理錯誤
 
 **Given** 取數表面是 Web API，篩選是零個或恰好一個
@@ -396,7 +396,7 @@ So that 確認之前預覽頁沒有業務列。
 
 **Given** 操作者把連線從 `inventory`（`SqlServer`）改到 `inventory_pg`（`PostgreSQL`），表與篩選不變
 **When** 再次確認
-**Then** 工具名稱仍是 `query`，參數鍵仍是連線、資料表與等值篩選
+**Then** 仍是 Web API 的零鍵或單鍵 GET，不改成 `query`
 
 **Given** 預覽頁已有一筆成功的列，下一次查詢失敗
 **When** 錯誤出現
@@ -413,7 +413,7 @@ So that 工作台不會把全表讀回來自己數。
 
 **Given** 取數表面是 MCP，操作者已選好資料表與等值篩選
 **When** 按下標成「計數」的確認鈕
-**Then** 清單恰好一筆 `count`，確認後預覽頁顯示該次工具回傳的數字
+**Then** 清單恰好一筆該已發布模組視圖，視圖名稱與參數鍵在換連線後不變；沒有單獨的計數按鈕，工作台不讀全表自己數
 **And** 沒有符合的列時顯示 0，不是未處理錯誤
 
 **Given** 同一組計數先對 `inventory`（`SqlServer`），再只把連線改成 `inventory_pg`（`PostgreSQL`），表與篩選不變
@@ -432,7 +432,7 @@ So that 我能證明畫面上的列就是該次唯讀呼叫。
 
 **Acceptance Criteria:**
 
-**Given** 一次成功的 MCP `query` 或 `count`
+**Given** 一次成功的 MCP 模組視圖呼叫
 **When** 軌跡寫到畫面上
 **Then** 含操作者 `id`、具名連線名稱、工具、等值篩選，以及列數或計數值；不含業務列與連線字串
 **And** 該次 MCP 稽核找得到相同的呼叫者、連線名稱、工具、篩選與列數，稽核呼叫者等於操作者 `id`
@@ -485,7 +485,7 @@ So that 報表順序就是閱讀順序。
 **Given** 設計者在編輯器加入元件
 **When** 保存
 **Then** `type` 只會是 `title`、`text`、`parameter`、`table`、`count`，沒有圖表
-**And** 標題與文字保存字串；參數恰好一個欄位與一個標籤，不存值；資料表恰好一個資料表與至少一個欄名；計數恰好一個資料表
+**And** 標題與文字保存字串；參數恰好一個欄位與一個標籤，不存值；MCP 範本的資料表欄來自所綁模組視圖的輸出欄；計數綁該視圖的一個輸出欄，不另發 `count`；Web API 範本的資料表仍綁一張表
 
 **Given** 畫布上有多個元件
 **When** 拖曳，或按上移、下移
@@ -510,8 +510,8 @@ So that 繫結來自剛看過的欄位，而不是一份含有資料列的草稿
 
 **Given** 設計者選定資料表
 **When** 工作台產生建議
-**Then** 產生前只有結構呼叫；建議不含業務列與參數值；至少一個資料表元件，其欄名全集等於該次 `fields`
-**And** 建議中的欄名都存在於該次 `fields`，類型只會是五種元件
+**Then** 產生前不回傳業務列與參數值；MCP 範本的欄名全集等於該視圖的輸出欄，Web API 範本等於該次 `fieldSet`
+**And** 建議中的欄名都存在於該次視圖輸出欄或 `fieldSet`，類型只會是五種元件，且不來自 `fields`
 
 **Given** 建議的欄名都已知
 **When** 設計者接受
@@ -573,12 +573,12 @@ So that 範本裡的參數值只活在這一次，不會寫回範本。
 
 **Given** 範本有資料表元件、計數元件與參數，操作者已補上每個參數的純量值，尚未確認
 **When** 工作台列出呼叫清單
-**Then** 每個資料表元件恰好一筆列查詢，MCP 上每個計數元件恰好一筆 `count`，每筆都帶上全部參數合成的等值篩選
+**Then** MCP 上恰好一筆該範本所綁的模組視圖，參數屬於該視圖已宣告的篩選；Web API 上是零鍵或單鍵 GET
 **And** 確認鈕標成「範本預覽」；確認前預覽頁沒有業務列
 
 **Given** 清單與範本、角色、表面能力仍然一致
 **When** 操作者確認
-**Then** 實際發出的填數呼叫與清單相同，沒有額外的 `query`、`count` 或 Web API 資料 GET；確認後進入預覽頁，焦點在該頁標題
+**Then** 實際發出的填數呼叫與清單相同，沒有額外的模組視圖呼叫或 Web API 資料 GET；確認後進入預覽頁，焦點在該頁標題
 
 **Given** 任一資料表缺少某個參數欄位，或 Web API 的篩選不是零個或一個，或 Web API 的範本含計數元件
 **When** 操作者確認

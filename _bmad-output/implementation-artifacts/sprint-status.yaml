@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-11-2026 12:12
-last_updated: 10-11-2026 23:41
+last_updated: 10-15-2026 08:32
 project: DBServices
 project_key: NOKEY
 tracking_system: file-system
@@ -44,3 +44,12 @@ development_status:
   1-6-每次呼叫留下可讀的稽核: review
   1-7-換-servertype-同一組工具仍成立: review
   epic-1-retrospective: optional
+  # 2026-10-15：Story 1.1 至 1.7 不得依「公開清單恰好六個表級工具」的舊驗收進入 done。
+  # Epic 2 的故事尚在史詩檔，未建立實作規格。
+  epic-2: backlog
+  2-1-發布一條人手寫視圖後-discovery-只有它: backlog
+  2-2-解說未確認不得發布: backlog
+  2-3-定義留在產品目錄-不寫回來源庫: backlog
+  2-4-來源表不連通就不能存: backlog
+  2-5-呼叫視圖仍是唯讀-換引擎不改參數鍵: backlog
+  epic-2-retrospective: optional

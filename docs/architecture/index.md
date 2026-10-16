@@ -16,7 +16,7 @@ CLI / REST / GraphQL / MCP / C# SDK
  Provider（連線工廠 + 方言 + 目錄 SQL）
 ```
 
-REST、GraphQL 與 MCP 都只經 `DbServiceFactory` 取得 `IDbService`。MCP 只廣告六個唯讀 Call，見 [MCP 資料平面](../mcp/index.md)。
+REST、GraphQL 與 MCP 都只經 `DbServiceFactory` 取得 `IDbService`。MCP 的 Discovery 只列出已發布模組視圖，見 [MCP 資料平面](../mcp/index.md)。
 
 ## 相容性
 

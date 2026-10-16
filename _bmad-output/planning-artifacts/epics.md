@@ -25,7 +25,9 @@ FR-1: MCP 宿主建立資料存取時只使用 `DbServiceFactory.Create`（或�
 
 FR-2: 同一組唯讀工具的名稱與參數，在五個 `ServerType` 上相同。宿主不要求 Agent 傳入引擎種類。引擎只出現在伺服器組態。
 
-FR-3: Agent 可列出宿主目前廣告的工具。預設清單恰好是 `tables`、`fields`、`get`、`query`、`count`、`exists`。清單不含 `insert`、`update`、`delete`、`sql`。每個工具的說明表明用途，且不承諾接受 SQL 語句。
+FR-3: Agent 的 Discovery 不列出表級唯讀工具。公開清單只含已發布模組視圖。沒有已發布視圖時，Discovery 是空清單，不回退成六個表級工具。清單不含 `tables`、`fields`、`get`、`query`、`count`、`exists`，也不含 `insert`、`update`、`delete`、`sql`。每個已發布視圖的說明表明用途，且不承諾接受 SQL 語句。
+
+FR-4 至 FR-9，以及 Story 1.2、1.3、1.4、1.5、1.7，描述營運除錯路徑上的表級行為，不是 Agent 的 Discovery。除錯路徑的開關形式留給架構。除錯路徑未開啟時，這些名稱在公開端點上的結果遵守 Story 1.1：回應碼為 `unknown_tool`。外部 Agent 不得用它們代替尚未發布的模組視圖。
 
 FR-4: 呼叫者可列出一個具名連線上的資料表名稱。參數 `includeView` 可省略；省略時與現有函數相同，視為包含檢視。回傳名稱清單。連線上沒有資料表時回傳空清單，而不是未處理例外。
 
@@ -107,24 +109,38 @@ FR-12: Epic 1 - Story 1.2
 FR-13: Epic 1 - Story 1.2、Story 1.7
 FR-14: Epic 1 - Story 1.6
 FR-15: Epic 1 - Story 1.1
+FR-16: Epic 2 - Story 2.1
+FR-17: Epic 2 - Story 2.1
+FR-18: Epic 2 - Story 2.3
+FR-19: Epic 2 - Story 2.2
+FR-20: Epic 2 - Story 2.4
+FR-21: Epic 2 - Story 2.5
 
 ## Epic List
 
 ### Epic 1: 外部 Agent 安全讀取具名業務庫
 
-整合方啟動宿主並登記具名連線之後，外部 Agent 能發現唯讀工具、完成查詢。寫入與自由 SQL 被拒絕。事後能回答是誰、對哪個連線、用了什麼條件、回了多少列。換引擎只改伺服器組態。
+整合方啟動宿主並登記具名連線之後，外部 Agent 發現的是已發布模組視圖，並完成該視圖的唯讀呼叫。寫入與自由 SQL 被拒絕。表級 Call 不是這則史詩的公開成功路徑。事後能回答是誰、對哪個連線、用了什麼條件、回了多少列。換引擎只改伺服器組態。
 
 **FRs covered:** FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15
 
+FR-16 至 FR-21 不在這則史詩，見 Epic 2。
+
+### Epic 2: 人手寫的模組視圖成為 Agent 的公開目錄
+
+營運者放入一條已寫好的模組視圖，人確認解說後才發布。外部 Agent 的 Discovery 只有這份視圖與它的解說，帶上視圖自己的參數取得列。執行仍是唯讀，不在來源庫建立檢視表。沒有拖拉設計器。
+
+**FRs covered:** FR-16, FR-17, FR-18, FR-19, FR-20, FR-21
+
 ## Epic 1: 外部 Agent 安全讀取具名業務庫
 
-整合方啟動宿主並登記具名連線之後，外部 Agent 能發現唯讀工具、完成查詢。寫入與自由 SQL 被拒絕。事後能回答是誰、對哪個連線、用了什麼條件、回了多少列。換引擎只改伺服器組態。
+整合方啟動宿主並登記具名連線之後，外部 Agent 發現的是已發布模組視圖，並完成該視圖的唯讀呼叫。寫入與自由 SQL 被拒絕。表級 Call 不是這則史詩的公開成功路徑。事後能回答是誰、對哪個連線、用了什麼條件、回了多少列。換引擎只改伺服器組態。
 
-### Story 1.1: 啟動宿主，Agent 只看見六個唯讀工具
+### Story 1.1: 啟動宿主，Discovery 只列出已發布模組視圖
 
 As a 整合方,
-I want 外部 Agent 連上已啟動的宿主時只發現六個唯讀工具，寫入與自由 SQL 被拒絕,
-So that Agent 在還沒查資料之前就不會走到一條無法稽核的寫入路徑。
+I want 外部 Agent 列出工具時只看見已發布模組視圖，寫入與自由 SQL 被拒絕,
+So that Agent 在還沒查資料之前就不會掃表，也不會走到一條無法稽核的寫入路徑。
 
 **Acceptance Criteria:**
 
@@ -135,23 +151,27 @@ So that Agent 在還沒查資料之前就不會走到一條無法稽核的寫入
 
 **Given** 組態的 `Connections` 至少有一筆含已知 `ServerType` 與連線字串
 **When** 外部 MCP 客戶端列出工具
-**Then** 清單恰好是 `tables`、`fields`、`get`、`query`、`count`、`exists`
-**And** 每個說明表明用途、不承諾接受 SQL，且六個工具都標成唯讀、不標成破壞性
+**Then** 清單的名稱集合等於已發布模組視圖的名稱集合，不多不少
+**And** 清單不含 `tables`、`fields`、`get`、`query`、`count`、`exists`，也不含 `insert`、`update`、`delete`、`sql`
+**And** 沒有已發布視圖時清單是空的，不回退成六個表級工具
+**And** 每一筆說明表明用途、不承諾接受 SQL，且已發布視圖都標成唯讀、不標成破壞性
 
 **Given** 宿主已啟動
 **When** 客戶端呼叫 `insert`、`update`、`delete` 或 `sql`
 **Then** 回應碼為 `tool_disabled`，中文 `message` 不含連線字串、密碼或堆疊秘密，資料沒有變更，程序不結束
-**And** 呼叫未廣告的其他名稱時回應碼為 `unknown_tool`，程序不結束
+**And** 呼叫未出現在 Discovery、且不是上述四個關閉名稱的工具時，回應碼為 `unknown_tool`，程序不結束
 
 **Given** 某一筆連線的 `ServerType` 不在五個已知名稱裡
 **When** 宿主啟動
-**Then** 該筆標成不可用，程序仍在，其餘合法連線不影響工具清單
+**Then** 該筆標成不可用，程序仍在，其餘合法連線不影響 Discovery
 
 ### Story 1.2: 用 connectionId 列出資料表
 
-As a 整合方,
-I want 外部 Agent 用連線名稱列出該庫的資料表,
-So that Agent 不用連線字串、也不用知道引擎種類，就能看見有哪些表。
+As a 營運除錯呼叫者,
+I want 用連線名稱列出該庫的資料表,
+So that 除錯時不用連線字串、也不用知道引擎種類，就能看見有哪些表。
+
+這些工具不在 Discovery，除錯清單與 Discovery 分開。除錯路徑未開啟時，公開端點對 `tables` 回 `unknown_tool`。
 
 **Acceptance Criteria:**
 
@@ -199,9 +219,11 @@ So that Agent 不用連線字串、也不用知道引擎種類，就能看見有
 
 ### Story 1.3: 看欄位，不存在的表得到錯誤
 
-As a 整合方,
-I want 外部 Agent 取得指定資料表的欄位，表不存在時得到結構化錯誤,
-So that Agent 能依名稱、型別與主鍵組查詢，而不會把缺表看成一張沒有欄位的表。
+As a 營運除錯呼叫者,
+I want 取得指定資料表的欄位，表不存在時得到結構化錯誤,
+So that 除錯時能依名稱、型別與主鍵組查詢，而不會把缺表看成一張沒有欄位的表。
+
+這些工具不在 Discovery，除錯清單與 Discovery 分開。除錯路徑未開啟時，公開端點對 `fields` 回 `unknown_tool`。
 
 **Acceptance Criteria:**
 
@@ -231,9 +253,11 @@ So that Agent 能依名稱、型別與主鍵組查詢，而不會把缺表看成
 
 ### Story 1.4: 依整數 Id 取一列
 
-As a 整合方,
-I want 外部 Agent 用整數 Id 從指定資料表取回一列,
-So that Agent 能對到資料庫裡的同一筆資料，找不到時得到空結果而不是未處理錯誤。
+As a 營運除錯呼叫者,
+I want 用整數 Id 從指定資料表取回一列,
+So that 除錯時能對到資料庫裡的同一筆資料，找不到時得到空結果而不是未處理錯誤。
+
+這些工具不在 Discovery，除錯清單與 Discovery 分開。除錯路徑未開啟時，公開端點對 `get` 回 `unknown_tool`。
 
 **Acceptance Criteria:**
 
@@ -265,9 +289,11 @@ So that Agent 能對到資料庫裡的同一筆資料，找不到時得到空結
 
 ### Story 1.5: 用等值條件查列、計數、判斷存在
 
-As a 整合方,
-I want 外部 Agent 用等值條件取列、取得列數，並判斷有沒有符合的列,
-So that Agent 讀到的結果與直接呼叫 Session 相同，而且篩選值不會被接進 SQL 文字。
+As a 營運除錯呼叫者,
+I want 用等值條件取列、取得列數，並判斷有沒有符合的列,
+So that 除錯時讀到的結果與直接呼叫 Session 相同，而且篩選值不會被接進 SQL 文字。
+
+這些工具不在 Discovery，除錯清單與 Discovery 分開。除錯路徑未開啟時，公開端點對 `query`、`count`、`exists` 回 `unknown_tool`。
 
 **Acceptance Criteria:**
 
@@ -322,12 +348,14 @@ So that Agent 讀到的結果與直接呼叫 Session 相同，而且篩選值不
 ### Story 1.6: 每次呼叫留下可讀的稽核
 
 As a 整合方,
-I want 每一次工具呼叫都在宿主本機留下一筆可事後閱讀的紀錄,
+I want 每一次進入調度器的呼叫都在宿主本機留下一筆可事後閱讀的紀錄,
 So that 我能回答是誰、對哪個連線、用了什麼條件、回了多少列或哪個錯誤，而且連線字串不會出現在紀錄裡。
+
+以 `tables`、`fields`、`get`、`query`、`count`、`exists` 舉例的條文只覆蓋除錯路徑。公開目錄上成功呼叫的 `tool` 是模組視圖名稱，欄位語意見 Story 2.5。
 
 **Acceptance Criteria:**
 
-**Given** 宿主已能執行 Story 1.1 到 Story 1.5 的工具
+**Given** 每一次進入調度器的呼叫
 **When** Agent 完成一次呼叫，不論成功或被拒絕
 **Then** 宿主在單一 JSONL 檔追加一行完整的 JSON
 **And** 預設路徑是內容根目錄下的 `audit/mcp.jsonl`，可用 `Audit:Path` 改到別的路徑
@@ -370,11 +398,13 @@ So that 我能回答是誰、對哪個連線、用了什麼條件、回了多少
 **When** 兩者都寫入稽核檔
 **Then** 檔案裡是兩行各自完整的 JSON，沒有一行被寫斷
 
-### Story 1.7: 換 ServerType，同一組工具仍成立
+### Story 1.7: 換 ServerType，除錯路徑上的同一組工具仍成立
 
-As a 整合方,
-I want 只改伺服器組態的連線字串與 `ServerType`，就用同一組工具再查一次,
-So that Agent 端的工具程式不用改，公開的資料存取簽名也不用改。
+As a 營運除錯呼叫者,
+I want 只改伺服器組態的連線字串與 `ServerType`，就用同一組除錯工具再查一次,
+So that 除錯端的工具程式不用改，公開的資料存取簽名也不用改。
+
+這些工具不在 Discovery，除錯清單與 Discovery 分開。公開的換引擎驗收是 Story 2.5。本故事只證明除錯路徑上的 `tables`、`fields`、`query` 在另一個 `ServerType` 仍使用同一組名稱與參數鍵。
 
 **Acceptance Criteria:**
 
@@ -397,3 +427,127 @@ So that Agent 端的工具程式不用改，公開的資料存取簽名也不用
 **Given** 組態裡的 `ServerType` 拼錯
 **When** Agent 對該 `connectionId` 呼叫 `tables`
 **Then** 回應碼為 `connection_failed`，宿主程序仍在，其他具名連線的 `tables` 仍可成功
+
+## Epic 2: 人手寫的模組視圖成為 Agent 的公開目錄
+
+營運者放入一條已寫好的模組視圖，人確認解說後才發布。外部 Agent 的 Discovery 只有這份視圖與它的解說，帶上視圖自己的參數取得列。執行仍是唯讀，不在來源庫建立檢視表。沒有拖拉設計器。
+
+**FRs covered:** FR-16, FR-17, FR-18, FR-19, FR-20, FR-21
+
+這則史詩不包含拖拉設計器、與 ExportData 共用的關聯程式庫，也不包含營運除錯路徑的開關。Story 1.1 負責清單裡沒有六個表級工具。Story 2.1 負責一條人手寫視圖如何進入清單。
+
+### Story 2.1: 發布一條人手寫視圖後，Discovery 只有它
+
+As a 營運者,
+I want 在沒有拖拉設計器時放入一條已寫好的模組視圖並發布,
+So that Agent 的 Discovery 能靠這一份解說選到它。
+
+**Acceptance Criteria:**
+
+**Given** 產品目錄裡恰好一條已發布模組視圖
+**When** 外部 MCP 客戶端列出工具
+**Then** Discovery 只有這一筆，含名稱、短述，以及可讀的長解說
+**And** 長解說含來源表、關聯依據、輸出欄與參數
+**And** 說明不承諾接受 SQL，也不要求 Agent 傳入表名來選擇資料
+
+**Given** 這一條視圖已發布
+**When** 拿掉發布後，客戶端再次列出工具
+**Then** Discovery 不再列出它
+**And** 已取得的舊清單在下次列出時對得上新目錄
+
+### Story 2.2: 解說未確認不得發布
+
+As a 營運者,
+I want 沒有人確認過的解說不能進入 Discovery,
+So that Agent 不會呼叫一份尚未說清楚的視圖。
+
+**Acceptance Criteria:**
+
+**Given** 解說為空或仍屬草稿
+**When** 營運者嘗試發布
+**Then** 發布被拒絕，Discovery 不含該視圖
+
+**Given** 解說已經人確認並發布
+**When** 客戶端讀取該視圖的長解說
+**Then** 讀到的內容與確認後的解說一致
+
+**Given** 已發布視圖的確認被撤回
+**When** 客戶端再次列出工具
+**Then** 該視圖離開 Discovery
+**And** 已在進行的表級除錯呼叫不被當成這份視圖的替代
+
+### Story 2.3: 定義留在產品目錄，不寫回來源庫
+
+As a 營運者,
+I want 模組視圖的定義留在產品自己的目錄,
+So that 發布與呼叫都不會改到來源庫的結構。
+
+**Acceptance Criteria:**
+
+**Given** 一條模組視圖定義
+**When** 讀取它的內容
+**Then** 含目的、解說、來源表、關聯路徑、輸出欄與參數
+**And** 不含連線字串，也不含資料列
+**And** 定義放在檔案、SQLite 或其他媒介，留給架構，這則故事不指定
+
+**Given** 發布這條定義，或 Agent 呼叫已發布的視圖
+**When** 比對來源庫的檢視表數量
+**Then** 兩次都不執行 `CREATE VIEW` 或任何結構變更，呼叫前後數量不變
+
+**Given** 呼叫帶入未宣告的表名或未宣告的欄位
+**When** 宿主收到這次呼叫
+**Then** 宿主拒絕，不執行
+
+**Given** 呼叫的參數都屬於該視圖已宣告的篩選
+**When** 呼叫成功
+**Then** 回傳列的欄集合等於定義的輸出欄
+**And** 沒有符合列時回傳空結果
+
+### Story 2.4: 來源表不連通就不能存
+
+As a 營運者,
+I want 多張來源表之間必須有連通的關聯路徑,
+So that 不能把沒有路徑的表拼成一份視圖。
+
+**Acceptance Criteria:**
+
+**Given** 定義含兩張以上來源表
+**When** 路徑上的每一段要麼是目錄外鍵，要麼是定義裡已寫明並由人接受的關聯
+**Then** 這份定義可以保存
+**And** 未接受的推測不構成路徑
+
+**Given** 來源表之間沒有連通路徑
+**When** 營運者嘗試保存或發布
+**Then** 定義被拒絕，不發布，也不執行出笛卡兒積
+
+**Given** 只有一張來源表
+**When** 保存這份定義
+**Then** 不需要關聯路徑
+**And** 仍須通過 Story 2.2 才能發布
+
+### Story 2.5: 呼叫視圖仍是唯讀，換引擎不改參數鍵
+
+As a 整合方,
+I want 已發布視圖的呼叫不寫入、不接受自由 SQL，而且換引擎時名稱與參數鍵不變,
+So that 公開目錄的成功路徑不是掃表，也不是寫入。
+
+**Acceptance Criteria:**
+
+**Given** 一次成功的模組視圖呼叫
+**When** 讀取該次稽核
+**Then** 含時間、呼叫者、連線名稱、模組視圖名稱、參數、列數或錯誤碼
+**And** 不含連線字串，也不含列內容
+
+**Given** Agent 呼叫一個已發布視圖
+**When** 宿主執行
+**Then** 這次呼叫不執行 `insert`、`update`、`delete`、`sql`
+
+**Given** 視圖名稱未知
+**When** Agent 呼叫該名稱
+**Then** 宿主拒絕，不改落到表級 `query`
+
+**Given** 同一份視圖定義先對一個可連線的具名連線成功，再只改對另一個 `ServerType` 的具名連線
+**When** Agent 以相同參數鍵呼叫
+**Then** 工具名稱與參數鍵不變且成功
+**And** 引擎只出現在伺服器組態
+

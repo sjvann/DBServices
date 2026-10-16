@@ -2,12 +2,14 @@
 title: DBServices 報表工作台 — 技術附錄
 status: draft
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-15
 ---
 
 # Addendum: 報表工作台的技術邊界
 
 本附錄承接 [prd.md](prd.md)。它記錄儲存形狀、解析契約、元件欄位，以及兩條取數表面的對應。它不是畫面設計，也不是專案配置。架構技能可以改媒介與行程，不能改這裡的約束。
+
+> **2026-10-15。** 工作台的 MCP 只轉發已發布模組視圖。表級瀏覽走資料表 Web API。下文的工具表與確認清單已改成一次視圖呼叫。拖拉設計器與共用關聯程式庫不在本附錄。
 
 資料平面的既有約束仍有效，見 [docs/planning/agent-data-plane/addendum.md](../../../../docs/planning/agent-data-plane/addendum.md)。本工作台不修改 `IQuerySession`、Provider、公開的 `IDbService`／`IDbServiceAsync`，也不把 SQL 放進瀏覽器或解析器。
 
@@ -15,7 +17,7 @@ updated: 2026-10-12
 
 1. **範本與常用項目存在工作台儲存。** 不在業務庫建表來放版面、帳號或常用項目。媒介（檔案、SQLite 或其他）未指定。
 2. **連線字串不進入工作台。** 列出連線時只拿名稱與 `ServerType`。請求、檔案、匯出與日誌都不新增連線字串欄位。
-3. **填數只轉發既有能力。** `MCP` 轉發 `tables`、`fields`、`query`、`count`。`Web API` 只發〈Web API〉一節列出的 GET。工作台不呼叫 `get`、`exists`、`insert`、`update`、`delete`、`sql`。
+3. **填數只轉發既有能力。** `MCP` 只轉發已發布模組視圖。表級瀏覽不走 `tables`、`fields`、`query`、`count`。`Web API` 只發〈Web API〉一節列出的 GET。工作台不呼叫 `get`、`exists`、`insert`、`update`、`delete`、`sql`。
 4. **解析器沒有資料庫驅動。** 關鍵字規則與 Python 側車收到的都是〈解析契約〉的輸入。工作台後端在執行前核對輸出。核不通過就不發填數呼叫。
 5. **畫布是順序，不是座標。** 元件以 `order` 由上到下排列。不保存 x、y、寬高。列印依這個順序、以元件為界換頁。
 
@@ -85,10 +87,10 @@ updated: 2026-10-12
 | `title` | `text` | 不呼叫。文字進預覽與匯出 |
 | `text` | `text` | 不呼叫 |
 | `parameter` | `field`、`label` | 不單獨呼叫。其值組成等值篩選 |
-| `table` | `table`、`columns` | 一次列查詢。`columns` 是欄名陣列，至少一個 |
-| `count` | `table` | `MCP` 上一次 `count`。`Web API` 上整份範本拒絕確認 |
+| `table` | `columns` | 不單獨呼叫。欄來自所綁模組視圖的輸出欄。`Web API` 範本改為綁一張表的欄名 |
+| `count` | `column` | 不另發呼叫。綁所綁模組視圖的一個輸出欄。`Web API` 上整份範本拒絕確認 |
 
-參數值由預覽或常用項目提供，不寫在元件上。同一份範本的參數值合成一個物件，每個 `table` 與 `count` 都帶上這整個物件。任一資料表缺少某個參數欄位時，整次確認被拒絕，不發送任何填數呼叫。
+參數值由預覽或常用項目提供，不寫在元件上。同一份 `MCP` 範本的參數值合成一個物件，必須屬於該視圖已宣告的篩選。對不齊時整次確認被拒絕，不發送任何填數呼叫。一次確認恰好呼叫該範本所綁的一個模組視圖，不是每個元件各發一次。
 
 設計器建議的最小形狀：
 
@@ -97,14 +99,14 @@ updated: 2026-10-12
   "components": [
     {
       "type": "table",
-      "table": "sales",
+      "view": "sales-month",
       "columns": ["yearMonth", "sku", "qty"]
     }
   ]
 }
 ```
 
-`columns` 必須等於該次 `fields` 的欄名集合。建議裡沒有參數值與業務列。操作者接受前可以刪改；接受時才寫入畫布。
+`columns` 必須等於該視圖的輸出欄。`Web API` 範本則等於該次 `fieldSet`。建議裡沒有參數值與業務列。操作者接受前可以刪改；接受時才寫入畫布。
 
 ## 解析契約
 
@@ -163,18 +165,15 @@ v1 可以用下列規則通過 FR-18，而不部署模型：
 
 ### MCP
 
-工具端點沿用宿主現況（開發預設 `POST /mcp`）。工作台只呼叫：
+工具端點沿用宿主現況（開發預設 `POST /mcp`）。工作台的 MCP 呼叫是已發布模組視圖，不是表級工具：
 
-| 工具 | 何時 | 引數 |
+| 呼叫 | 何時 | 引數 |
 |------|------|------|
-| `tables` | 結構 | `connectionId`，可省略 `includeView` |
-| `fields` | 結構 | `connectionId`、`table` |
-| `query` | 確認後的資料表元件，或活資料預覽 | `connectionId`、`table`、`filters` |
-| `count` | 確認後的計數元件，或活資料預覽 | 同 `query` |
+| 已發布模組視圖 | 確認後的填數，或 MCP 活資料預覽 | `connectionId`，加上該視圖已宣告的參數 |
 
-`filters` 的鍵是欄位名，值是純量。不把篩選串進 SQL。請求帶 `X-DBServices-Caller`，值是操作者 `id`。
+不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`。請求帶 `X-DBServices-Caller`，值是操作者 `id`。參數值是純量，不把篩選串進 SQL。
 
-列出連線名稱與 `ServerType` 的讀取方式尚未存在於六個工具裡。架構可以新增一個只回名稱與 `ServerType` 的中繼資料讀取，或讓工作台後端讀取與 MCP 相同的組態並剝掉連線字串。兩種都不能把連線字串放進回應，也不能把它做成可執行 SQL 的工具。
+列出連線名稱與 `ServerType` 的讀取不是 Discovery 裡的工具。架構可以新增一個只回名稱與 `ServerType` 的中繼資料讀取，或讓工作台後端讀取與 MCP 相同的組態並剝掉連線字串。兩種都不能把連線字串放進回應，也不能把它做成可執行 SQL 的工具，也不能把它放進 Discovery。
 
 錯誤碼沿用宿主：`invalid_arguments`、`unknown_table`、`connection_failed`、`execution_failed`。工作台顯示代碼與訊息，不重包成另一套會讓 UJ-1 對不上稽核的代碼。
 
@@ -206,27 +205,17 @@ GraphQL 的 `/graphql` 與操作台不在工作台的填數路徑。CLI 也不�
   "calls": [
     {
       "surface": "mcp",
-      "name": "query",
+      "name": "sales-month",
       "connectionId": "inventory",
-      "table": "sales",
-      "filters": { "yearMonth": "2026-10" },
-      "componentId": "c-table"
-    },
-    {
-      "surface": "mcp",
-      "name": "count",
-      "connectionId": "inventory",
-      "table": "sales",
-      "filters": { "yearMonth": "2026-10" },
-      "componentId": "c-count"
+      "parameters": { "yearMonth": "2026-10" }
     }
   ]
 }
 ```
 
-操作者確認時帶回這份清單。執行階段逐筆發送，紀錄實際發送的名稱與引數。比對 SM-3 時，實際集合必須與這份清單相同。
+操作者確認時帶回這份清單。執行階段發送這一筆，紀錄實際發送的視圖名稱與參數。比對 SM-3 時，實際集合必須與這份清單相同。
 
-活資料預覽的查詢按鈕同樣產生只含一個 `query` 或一個 `count` 的清單。結構瀏覽不產生填數清單。
+MCP 活資料預覽的確認同樣產生只含一個已發布模組視圖的清單。結構瀏覽不產生填數清單。`Web API` 的清單是零鍵或單鍵 GET，不是模組視圖。
 
 ## 被拒絕的做法
 

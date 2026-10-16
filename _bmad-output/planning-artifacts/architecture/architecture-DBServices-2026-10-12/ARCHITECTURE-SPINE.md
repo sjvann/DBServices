@@ -31,13 +31,13 @@ companions: []
 | Inherited | From parent | Binds here |
 | --- | --- | --- |
 | parent AD-1 | architecture-DBServices-2026-10-11 | 工作台不修改 `IDbService`、`IDbServiceAsync`、`DbServices.Core`、`FunctionRegistry`、Provider，也不改既有 REST 與 GraphQL 的路徑和查詢形狀 |
-| parent AD-2 | architecture-DBServices-2026-10-11 | MCP 工具清單維持六個。工作台只呼叫 `tables`、`fields`、`query`、`count`。不呼叫 `get`、`exists`、`insert`、`update`、`delete`、`sql` |
+| parent AD-2 | architecture-DBServices-2026-10-11 | Discovery 只列已發布模組視圖。工作台只呼叫該範本所綁的那一個已發布模組視圖，並帶 `X-DBServices-Caller`。不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`，也不呼叫 `insert`、`update`、`delete`、`sql` |
 | parent AD-3 | architecture-DBServices-2026-10-11 | `filters` 維持巢狀純量。工作台不把篩選拼進 SQL，不傳送 `connectionString` |
 | parent AD-4 | architecture-DBServices-2026-10-11 | `Connections` 仍只由 `DbServices.Mcp` 在 `McpService` 進程綁定。工作台進程不載入連線字串 |
 | parent AD-5 | architecture-DBServices-2026-10-11 | MCP 傳輸維持 `McpService` 的 `POST /mcp`，套件 2.2.0 |
 | parent AD-6 | architecture-DBServices-2026-10-11 | 呼叫者標頭維持 `X-DBServices-Caller`。工作台送出操作者 `id`。不在 `McpService` 加登入 |
 | parent AD-7、parent AD-9 | architecture-DBServices-2026-10-11 | MCP 錯誤碼與成功形狀原樣顯示。工作台不重算列、不把空列改成錯誤 |
-| parent AD-8 | architecture-DBServices-2026-10-11 | `unknown_table` 只沿用 `fields` 探表。`query` 與 `count` 不另造缺表碼 |
+| parent AD-8 | architecture-DBServices-2026-10-11 | 工作台不再依賴 `fields` 的 `unknown_table`。MCP 錯誤碼仍原樣顯示 |
 | parent AD-10 | architecture-DBServices-2026-10-11 | MCP 稽核仍是宿主那一個 JSONL。工作台不寫第二份 MCP 稽核，保留天數仍未定 |
 | parent AD-11 | architecture-DBServices-2026-10-11 | 模型不進入 Core 與 MCP 宿主。模型進程由 C# 啟動，不組 SQL、不開資料庫連線。解析輸入不含連線字串與業務列 |
 
@@ -81,13 +81,13 @@ flowchart TD
 
 - **Binds:** FR-4 至 FR-11、FR-20
 - **Prevents:** 工作台自算筆數、改寫查詢，或對 Web API 發送多鍵與寫入
-- **Rule:** MCP 用戶端在 `Workbench.Adapters`，使用 `ModelContextProtocol` 2.2.0，只呼叫 `tables`、`fields`、`query`、`count`，並帶 `X-DBServices-Caller`。Web API 只發送 `GET /meta`、欄位的 `fieldSet` GET、零鍵的資料表 GET，以及單鍵的 `Key` 與 `Value` 查詢。計數、兩個以上篩選、POST、PUT、DELETE 不發送。範本含計數元件且表面是 Web API 時，整次確認拒絕，填數次數為 0。結果列與計數原樣進入預覽，不做第二次彙總。
+- **Rule:** MCP 用戶端在 `Workbench.Adapters`，使用 `ModelContextProtocol` 2.2.0，只呼叫該範本所綁的已發布模組視圖，並帶 `X-DBServices-Caller`。不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`。Web API 只發送 `GET /meta`、欄位的 `fieldSet` GET、零鍵的資料表 GET，以及單鍵的 `Key` 與 `Value` 查詢。計數、兩個以上篩選、POST、PUT、DELETE 不發送。範本含計數元件且表面是 Web API 時，整次確認拒絕，填數次數為 0。結果列原樣進入預覽，不做第二次彙總。
 
 ### AD-4 — 連線中繼資料 [ADOPTED]
 
 - **Binds:** FR-3、FR-8
 - **Prevents:** 工作台進程載入 `ConnectionSnapshot`，或為了列出 `ServerType` 而新增 MCP 工具
-- **Rule:** `McpService` 增加 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入六個工具的廣告清單。回應是 JSON 陣列，每筆只有 `name` 與 `serverType`，且只含組態完整的連線。不回傳連線字串，也不回傳是否可用。`Workbench` 與 `Workbench.Adapters` 不參考 `DbServices.Mcp`。Web API 表面的顯示名稱固定為 `default`，`ServerType` 來自工作台組態 `Surfaces:Web:ServerType`，基底網址來自 `Surfaces:Web:BaseUrl`。工作台不讀 WebService 的組態檔。工作台選項類別不宣告連線字串。不修改 WebService 既有路由與 JSON。
+- **Rule:** `McpService` 增加 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入 Discovery。回應是 JSON 陣列，每筆只有 `name` 與 `serverType`，且只含組態完整的連線。不回傳連線字串，也不回傳是否可用。`Workbench` 與 `Workbench.Adapters` 不參考 `DbServices.Mcp`。Web API 表面的顯示名稱固定為 `default`，`ServerType` 來自工作台組態 `Surfaces:Web:ServerType`，基底網址來自 `Surfaces:Web:BaseUrl`。工作台不讀 WebService 的組態檔。工作台選項類別不宣告連線字串。不修改 WebService 既有路由與 JSON。
 
 ### AD-5 — 工作台儲存與帳密三分 [ADOPTED]
 
@@ -105,13 +105,13 @@ flowchart TD
 
 - **Binds:** FR-6、FR-7、FR-19、FR-20、FR-21、FR-22
 - **Prevents:** 殼自行組出與畫面不同的呼叫，或離開預覽後仍用舊列匯出
-- **Rule:** 結構瀏覽不產生填數清單。活資料預覽的查詢或計數確認，清單恰好一筆 `query` 或一筆 `count`。範本確認的清單由核心產生：每個資料表元件一筆列查詢，MCP 上每個計數元件一筆 `count`，每筆都帶上全部參數合成的等值篩選。任一資料表缺少某個參數欄位時，整次拒絕，填數次數為 0。清單放在宿主記憶體，鍵是操作者 `id` 加上清單識別，值是附錄那個 `calls` 陣列。確認請求帶回該識別。執行前再核對清單、範本、角色與表面能力；不一致則整次拒絕，不部分執行。實際送出的填數呼叫與清單相同。任一筆失敗時預覽只有該錯誤。快照只在同一塊記憶體，值是該次畫面的數字與列。匯出與列印只接受這個識別，且不發出新的填數呼叫。離開該次預覽，或同一操作者的下一次確認，快照與舊清單刪除。同一份快照連續匯出，業務數字相同。快照與清單不寫入 SQLite。PDF 預設 A4，換頁以元件為界。常用項目再次開啟時讀範本目前的版面，套上該筆連線與參數，重新產生清單並確認後才查。範本已刪、失去檢視角色，或參數欄對不齊時，指出差異，停在未確認，填數次數為 0。
+- **Rule:** 結構瀏覽不產生填數清單。MCP 上一次確認恰好一筆該範本所綁的模組視圖呼叫，參數是範本參數裡屬於該視圖已宣告的篩選。Web API 上仍是零鍵或單鍵 GET。清單放在宿主記憶體，鍵是操作者 `id` 加上清單識別，值是附錄那個 `calls` 陣列。確認請求帶回該識別。執行前再核對清單、範本、角色與表面能力；不一致則整次拒絕，不部分執行。實際送出的填數呼叫與清單相同。任一筆失敗時預覽只有該錯誤。快照只在同一塊記憶體，值是該次畫面的數字與列。匯出與列印只接受這個識別，且不發出新的填數呼叫。離開該次預覽，或同一操作者的下一次確認，快照與舊清單刪除。同一份快照連續匯出，業務數字相同。快照與清單不寫入 SQLite。PDF 預設 A4，換頁以元件為界。常用項目再次開啟時讀範本目前的版面，套上該筆連線與參數，重新產生清單並確認後才查。範本已刪、失去檢視角色，或參數欄對不齊時，指出差異，停在未確認，填數次數為 0。
 
 ### AD-8 — 解析管線 [ADOPTED]
 
 - **Binds:** FR-14、FR-18、FR-19、AD-12
 - **Prevents:** 模型與關鍵字各回一份意圖讓殼挑，或把關鍵字寫死成一份不能再長的詞表
-- **Rule:** 關鍵字比對在 `Workbench.Core`，不啟動側車，也不讀常用項目。內建比對使用本次看得到的目錄：語句含連線 `name` 則該連線入候選；含範本 `name` 則該範本入候選；含參數 `field` 或 `label` 時，其後第一個不以空白拆開的詞為值，全由數字組成可作數字；對不到的不補猜。時間範圍只有在同一個詞能當某個參數的一個等值時才成為篩選，否則該參數保持缺少，也不另造區間查詢。AD-12 的有效規則再加上去，參數值仍從語句取出，不從規則取出。合併後由宿主計算狀態：恰好一個連線、一個範本且每個參數都有純量值為 `ready`；連線或範本多於一個為 `ambiguous`；沒有連線、沒有範本或缺少參數值為 `incomplete`。模型啟用且狀態不是 `ready` 時，才把附錄的解析輸入送給側車。該輸入只有 `utterance`、連線的 `name` 與 `serverType`、有權限範本的 `id`、`name`、`groupId` 與參數 `field`、`label`，以及允許的 `surfaces`。詞庫不放進這份輸入。宿主重算狀態。候選若超出本次輸入，整份作廢，填數次數為 0。等值篩選的欄必須是該範本的參數欄。設計器建議只做結構呼叫。建議至少含一個資料表元件，其欄名全集等於該次 `fields`。未知欄名不能接受。忽略不改畫布。接受才把元件加到畫布末尾。建議失敗不改畫布。解析失敗不改範本、常用項目與關鍵字規則，填數次數為 0。
+- **Rule:** 關鍵字比對在 `Workbench.Core`，不啟動側車，也不讀常用項目。內建比對使用本次看得到的目錄：語句含連線 `name` 則該連線入候選；含範本 `name` 則該範本入候選；含參數 `field` 或 `label` 時，其後第一個不以空白拆開的詞為值，全由數字組成可作數字；對不到的不補猜。時間範圍只有在同一個詞能當某個參數的一個等值時才成為篩選，否則該參數保持缺少，也不另造區間查詢。AD-12 的有效規則再加上去，參數值仍從語句取出，不從規則取出。合併後由宿主計算狀態：恰好一個連線、一個範本且每個參數都有純量值為 `ready`；連線或範本多於一個為 `ambiguous`；沒有連線、沒有範本或缺少參數值為 `incomplete`。模型啟用且狀態不是 `ready` 時，才把附錄的解析輸入送給側車。該輸入只有 `utterance`、連線的 `name` 與 `serverType`、有權限範本的 `id`、`name`、`groupId` 與參數 `field`、`label`，以及允許的 `surfaces`。詞庫不放進這份輸入。宿主重算狀態。候選若超出本次輸入，整份作廢，填數次數為 0。等值篩選的欄必須是該範本的參數欄。設計器建議不回傳業務列。MCP 範本的建議來自該視圖的輸出欄與參數，不來自 `fields`。Web API 範本的建議來自該次 `fieldSet`。未知欄名不能接受。忽略不改畫布。接受才把元件加到畫布末尾。建議失敗不改畫布。解析失敗不改範本、常用項目與關鍵字規則，填數次數為 0。
 
 ### AD-9 — 模型設定 [ADOPTED]
 
@@ -141,13 +141,13 @@ flowchart TD
 
 - **Binds:** FR-9、UJ-1
 - **Prevents:** 各畫面自訂一條對不上 MCP 稽核的紀錄
-- **Rule:** 每一次結構呼叫與填數呼叫都在畫面上留一筆軌跡。欄位是操作者 `id`、具名連線名稱、工具或請求種類、等值篩選，以及列數、計數值或錯誤碼。不含業務列與連線字串。MCP 成功的 `query`，其呼叫者、連線名稱、工具、篩選與列數必須能在該次 MCP 稽核找到，且稽核呼叫者等於操作者 `id`。MCP 錯誤碼原樣顯示。Web API 沒有那份稽核檔，軌跡仍用同一組欄位，由工作台顯示，不因此修改 WebService。軌跡不寫入工作台 SQLite。
+- **Rule:** 每一次結構呼叫與填數呼叫都在畫面上留一筆軌跡。欄位是操作者 `id`、具名連線名稱、工具或請求種類、等值篩選，以及列數、計數值或錯誤碼。不含業務列與連線字串。MCP 成功的模組視圖呼叫，其呼叫者、連線名稱、視圖名稱、參數與列數必須能在該次 MCP 稽核找到，且稽核呼叫者等於操作者 `id`。MCP 錯誤碼原樣顯示。Web API 沒有那份稽核檔，軌跡仍用同一組欄位，由工作台顯示，不因此修改 WebService。軌跡不寫入工作台 SQLite。
 
 ### AD-14 — 畫布與建議 [ADOPTED]
 
 - **Binds:** FR-12、FR-13、FR-14、FR-16
 - **Prevents:** 一個故事保存座標，另一個故事用不同的元件欄位
-- **Rule:** 元件 `type` 只許 `title`、`text`、`parameter`、`table`、`count`。`order` 從 0 連續，由上到下。不保存 x、y、寬與高。`title` 與 `text` 只有 `text`。`parameter` 恰好一個 `field` 與一個 `label`，不存值。`table` 恰好一個資料表與至少一個欄名。`count` 恰好一個資料表。建議不含業務列與參數值。儲存後的範本沒有資料列、連線字串、具名連線與參數值。
+- **Rule:** 元件 `type` 只許 `title`、`text`、`parameter`、`table`、`count`。`order` 從 0 連續，由上到下。不保存 x、y、寬與高。`title` 與 `text` 只有 `text`。`parameter` 恰好一個 `field` 與一個 `label`，不存值。`MCP` 範本綁恰好一個已發布模組視圖；`table` 的欄是該視圖的輸出欄；`count` 綁該視圖的一個輸出欄，不另發呼叫。`Web API` 範本的 `table` 仍綁一張表。建議不含業務列與參數值。`MCP` 建議來自視圖輸出欄與參數；`Web API` 建議來自 `fieldSet`。儲存後的範本沒有資料列、連線字串、具名連線與參數值。
 
 ## Consistency Conventions
 

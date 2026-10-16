@@ -21,7 +21,7 @@
 
 ## 連線中繼資料
 
-`McpService` 提供 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入六個工具的廣告清單。
+`McpService` 提供 `GET /connections`。它不是 MCP 工具，不掛在 `/mcp` 之下，也不進入 Discovery。
 
 回應是 JSON 陣列。每筆只有 `name` 與 `serverType`，且只含組態完整的連線。不回傳連線字串，也不回傳是否可用。
 

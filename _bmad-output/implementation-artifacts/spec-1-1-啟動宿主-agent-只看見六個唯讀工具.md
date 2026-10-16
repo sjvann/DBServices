@@ -1,8 +1,8 @@
 ---
-title: 'Story 1.1 啟動宿主，Agent 只看見六個唯讀工具'
+title: 'Story 1.1 啟動宿主，Discovery 只列出已發布模組視圖'
 type: 'feature'
 created: '2026-10-11'
-status: 'done'
+status: 'renegotiated'
 route: 'dispatch'
 baseline_commit: '889d4686c8f4e3d6aaf32e06786e5d883070ac32'
 review_loop_iteration: 1
@@ -13,9 +13,9 @@ context: []
 
 ## Intent
 
-**Problem:** 外部 Agent 沒有唯讀工具入口。清單若含寫入或自由 SQL，會在查資料前走到寫入路徑。
+**Problem:** 外部 Agent 的公開目錄若是表級工具，會在選到已發布視圖之前先掃表。清單若含寫入或自由 SQL，也會走到寫入路徑。
 
-**Approach:** 新增 `McpService` 與 `DbServices.Mcp`。只廣告六個唯讀、非破壞性工具，且不執行。`insert`、`update`、`delete`、`sql` 不註冊，也沒有處理函式。
+**Approach:** 新增 `McpService` 與 `DbServices.Mcp`。Discovery 的名稱集合等於已發布模組視圖。沒有已發布視圖時清單是空的，不回退成六個表級工具。`insert`、`update`、`delete`、`sql` 不執行。2026-10-15 契約取代原先「恰好六個唯讀工具」的驗收。既有實作對的是舊驗收，不得視為新契約已完成。
 
 ## Boundaries & Constraints
 
@@ -23,7 +23,7 @@ context: []
 - `McpService` 是 `net10.0` ASP.NET Core，只參考 `DbServices.Mcp`。套件 `ModelContextProtocol.AspNetCore` 2.2.0。`MapMcp("/mcp")`，`Stateless`，舊版 SSE 關閉。
 - `DbServices.Mcp` 不參考 ASP.NET，也不參考任何 `DbServices.Provider.*`。
 - 位址只來自組態。`AllowedHosts` 為 `*`。無 OpenAPI、Scalar、CORS。
-- 清單恰好是 `tables`、`fields`、`get`、`query`、`count`、`exists`。說明為「列出資料表」「列出欄位」「依 Id 取一列」「鍵值查詢」「計數」「是否存在」，不含 SQL。皆唯讀、非破壞性。
+- 清單的名稱集合等於已發布模組視圖，不多不少。清單不含 `tables`、`fields`、`get`、`query`、`count`、`exists`，也不含 `insert`、`update`、`delete`、`sql`。沒有已發布視圖時清單是空的。說明不承諾接受 SQL。已發布視圖皆唯讀、非破壞性。
 - 清單不因連線筆數或無法辨識的 `ServerType` 而改變。未知 `ServerType` 或空白連線字串啟動時標成不可用，不呼叫 `Create`，程序不結束。
 
 **Never:**
@@ -36,8 +36,8 @@ context: []
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| 列出工具 | 至少一筆已知 `ServerType` 與非空白連線字串 | 恰好六個名稱與上列說明，皆唯讀、非破壞性。四個關閉名稱不在清單 | 不呼叫 `Create` |
-| 未知引擎 | 某一筆 `ServerType` 不在五個名稱內 | 該筆不可用。清單仍是六個。程序仍在 | 啟動時不呼叫 `Create` |
+| 列出工具 | 至少一筆已知 `ServerType` 與非空白連線字串 | 名稱集合等於已發布模組視圖。沒有已發布視圖時清單是空的。四個關閉名稱與六個表級名稱都不在清單 | 不呼叫 `Create` |
+| 未知引擎 | 某一筆 `ServerType` 不在五個名稱內 | 該筆不可用。Discovery 不因此改回六個表級工具。程序仍在 | 啟動時不呼叫 `Create` |
 | 零筆連線 | 沒有組態完整的項目 | 宿主仍啟動，清單仍是六個 | 不呼叫 `Create` |
 
 </frozen-after-approval>

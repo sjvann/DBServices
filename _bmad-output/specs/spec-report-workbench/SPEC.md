@@ -61,7 +61,7 @@ sources:
 - 兩個殼與 `Workbench.Web` 都不參考配接器、`DbServices.Mcp`、`DBService`、Provider 或 `Microsoft.Extensions.AI`，也不持有 MCP 或 Web API 的基底網址；Core 不參考 ASP.NET、Avalonia 與模型套件。
 - 部署恰好一個 `Workbench` 進程：只有它開啟工作台 SQLite，並在記憶體持有工作階段、確認清單與預覽快照；Avalonia 不嵌入 Blazor、不開啟該檔；不另開實例分攤這些物件。
 - 殼的組態只有工作台基底網址；聽取位址來自宿主組態；工作台不讀 WebService 的組態檔，選項類別不宣告連線字串。
-- MCP 廣告清單維持六個工具；工作台只呼叫 `tables`、`fields`、`query`、`count`，傳輸維持 `POST /mcp` 與 ModelContextProtocol 2.2.0，並以操作者 id 填 `X-DBServices-Caller`；不呼叫 `get`、`exists`、`insert`、`update`、`delete`、`sql`，也不在 `McpService` 加登入。
+- Discovery 只列已發布模組視圖。工作台只呼叫該範本所綁的已發布模組視圖，傳輸維持 `POST /mcp` 與 ModelContextProtocol 2.2.0，並以操作者 id 填 `X-DBServices-Caller`；不呼叫 `tables`、`fields`、`get`、`query`、`count`、`exists`、`insert`、`update`、`delete`、`sql`，也不在 `McpService` 加登入。
 - `filters` 維持巢狀純量，不拼進 SQL，請求不帶 `connectionString`。
 - 連線字串只留在 `McpService` 的 `Connections` 與 WebService 的 `ConnectionStrings`；名稱與 ServerType 只經 `GET /connections` 取得，該路由不是 MCP 工具、不在 `/mcp` 之下、不進廣告清單，且不回傳連線字串或是否可用。
 - 工作台登入密碼只以 `PasswordHasher` 的 `passwordVerifier` 存放；模型 `apiKey` 只在模型組態；三者不進同一個可讀欄位；明文密碼不寫入 SQLite、日誌與軌跡；工作台不在業務庫建表。

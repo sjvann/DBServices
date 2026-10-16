@@ -44,7 +44,7 @@
   <a class="docs-card" href="mcp/index.html">
     <i class="bi bi-shield-check" aria-hidden="true"></i>
     <h2>MCP</h2>
-    <p>外部 Agent 用具名連線呼叫六個唯讀工具。寫入與自由 SQL 不廣告。</p>
+    <p>外部 Agent 的 Discovery 只列出已發布模組視圖。寫入與自由 SQL 不廣告。</p>
     <span class="docs-chip">最新</span>
   </a>
   <a class="docs-card" href="architecture/index.html">
@@ -64,7 +64,7 @@
 - **一個介面、五種資料庫**：`IDbService` 對齊 CRUD、結構探索與參數化 SQL。
 - **Session 協定**：CLI、Web、GraphQL、MCP 與 C# SDK 都走 `IQuerySession`（Query／Call／Utility）。
 - **連線用完即還**：一般操作從 pool 取連線、用完 Dispose；只有事務期間才持有連線。
-- **Agent 只看見唯讀工具**：MCP 宿主廣告 `tables`、`fields`、`get`、`query`、`count`、`exists`，連線由伺服器組態登記。
+- **Agent 的 Discovery**：只列出已發布模組視圖。沒有已發布視圖時清單是空的。連線由伺服器組態登記。表級 Call 不是公開目錄。
 
 ## 三分鐘上手
 

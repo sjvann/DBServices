@@ -1,6 +1,6 @@
 # MCP 資料平面
 
-`McpService` 是給外部 Agent 用的唯讀宿主。它用 [Model Context Protocol](https://modelcontextprotocol.io) 的 Streamable HTTP，把已登記的具名連線露出成六個工具。查詢仍由既有的 `IQuerySession` 執行，公開的 `IDbService` 簽名不變。
+`McpService` 是給外部 Agent 用的唯讀宿主。它用 [Model Context Protocol](https://modelcontextprotocol.io) 的 Streamable HTTP。Agent 的 Discovery 只列出已發布模組視圖。沒有已發布視圖時清單是空的，不回退成表級工具。查詢仍由既有的 `IQuerySession` 執行，公開的 `IDbService` 簽名不變。
 
 寫入與自由 SQL 不在廣告清單裡。`insert`、`update`、`delete`、`sql` 不會被這個宿主執行。
 
@@ -42,11 +42,13 @@ dotnet run --project McpService
 | `Oracle` | Oracle |
 | `PostgreSQL` | PostgreSQL |
 
-其他寫法（例如 `sqlite`、`Postgress`）不會建立連線。該次呼叫得到 `connection_failed`，訊息是「無法建立連線。」宿主與其他連線仍可繼續接受呼叫。沒有任何可用連線時，宿主仍會啟動，並廣告同樣的六個工具。
+其他寫法（例如 `sqlite`、`Postgress`）不會建立連線。該次呼叫得到 `connection_failed`，訊息是「無法建立連線。」宿主與其他連線仍可繼續接受呼叫。沒有任何可用連線時，宿主仍會啟動。Discovery 廣告的是已發布模組視圖，可以是空清單。
 
 `connectionId` 與組態鍵的比對不分大小寫。請傳已登記的名稱。
 
-## 六個工具
+## 營運除錯：表級工具
+
+下列六個名稱不是 Agent 的 Discovery。若宿主仍實作它們，只在與 Discovery 分開的營運除錯路徑。除錯未開啟時，公開端點對這些名稱回 `unknown_tool`。
 
 名稱比對不分大小寫。每個工具都標成唯讀、非破壞性。說明不承諾接受 SQL，參數裡也不出現引擎名稱。
 
