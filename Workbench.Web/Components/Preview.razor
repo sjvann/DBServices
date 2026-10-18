@@ -12,11 +12,11 @@
 }
 else
 {
-    <p>
-        <button class="secondary" @onclick="Pdf">匯出 PDF</button>
-        <button class="secondary" @onclick="Print">列印</button>
-        <button class="secondary" @onclick="Csv">匯出 CSV</button>
-    </p>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="Pdf">匯出 PDF</button>
+        <button class="secondary" type="button" @onclick="Print">列印</button>
+        <button class="secondary" type="button" @onclick="Csv">匯出 CSV</button>
+    </div>
     @foreach (var block in _snapshot.Blocks)
     {
         @if (block.Type == ComponentKinds.Table)
@@ -40,8 +40,10 @@ else
             <p>@block.Text</p>
         }
     }
-    <label>說法 <input @bind="_phrase" /></label>
-    <button class="secondary" @onclick="AddKeyword">加入關鍵字</button>
+    <label class="wide">說法 <input @bind="_phrase" /></label>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="AddKeyword">加入關鍵字</button>
+    </div>
     @if (_message is not null) { <p>@_message</p> }
     @if (!string.IsNullOrEmpty(_csv)) { <pre>@_csv</pre> }
 }

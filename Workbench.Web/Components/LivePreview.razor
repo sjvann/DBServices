@@ -12,17 +12,19 @@ else
 {
     @if (_catalogError is not null)
     {
-        <p class="error"><span class="code">@_catalogError</span></p>
+        <div class="error" role="alert"><span class="code">@_catalogError</span></div>
     }
     <label>連線
         <select @bind="_connection">
             @foreach (var item in _connections)
             {
-                <option value="@item.Name">@item.Name <span class="code">@item.ServerType</span></option>
+                <option value="@item.Name">@item.Name · @item.ServerType</option>
             }
         </select>
     </label>
-    <button class="secondary" @onclick="LoadTables">載入資料表</button>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="LoadTables">載入資料表</button>
+    </div>
     @if (_tables.Count == 0)
     {
         <p>沒有資料表。</p>
@@ -36,8 +38,10 @@ else
             }
         </select>
     </label>
-    <label>篩選鍵 <input @bind="_filterKey" /></label>
-    <label>篩選值 <input @bind="_filterValue" /></label>
+    <div class="field-row">
+        <label>篩選鍵 <input @bind="_filterKey" @bind:event="oninput" /></label>
+        <label>篩選值 <input @bind="_filterValue" @bind:event="oninput" /></label>
+    </div>
     <p class="sunken">確認之前，這裡沒有業務列。</p>
     @if (_rows is not null)
     {
@@ -55,10 +59,12 @@ else
     @if (_count is not null) { <p class="code">@_count</p> }
     @if (_error is not null)
     {
-        <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p>
+        <div class="error" role="alert"><span class="code">@_error.Code</span><span>@_error.Message</span></div>
     }
-    <button class="confirm" disabled="@string.IsNullOrWhiteSpace(_table)" @onclick="Query">查詢</button>
-    <button class="confirm" disabled="@string.IsNullOrWhiteSpace(_table)" @onclick="Count">計數</button>
+    <div class="toolbar">
+        <button class="confirm" type="button" disabled="@string.IsNullOrWhiteSpace(_table)" @onclick="Query">查詢</button>
+        <button class="confirm" type="button" disabled="@string.IsNullOrWhiteSpace(_table)" @onclick="Count">計數</button>
+    </div>
     @if (string.IsNullOrWhiteSpace(_table))
     {
         <p class="reason">請先選擇資料表。</p>

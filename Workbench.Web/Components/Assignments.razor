@@ -21,16 +21,22 @@ else
             <legend>@group.Name</legend>
             <label><input type="radio" name="@("g" + group.Id)" checked="@(_groupRoles.GetValueOrDefault(group.Id) == GroupRoles.Design)" @onchange="() => SetGroup(group.Id, GroupRoles.Design)" /> 設計</label>
             <label><input type="radio" name="@("g" + group.Id)" checked="@(_groupRoles.GetValueOrDefault(group.Id) == GroupRoles.View)" @onchange="() => SetGroup(group.Id, GroupRoles.View)" /> 檢視</label>
-            <button class="secondary" @onclick="() => SetGroup(group.Id, null)">清除</button>
+            <button class="secondary" type="button" @onclick="() => SetGroup(group.Id, null)">清除</button>
         </fieldset>
     }
-    <button class="secondary" @onclick="Ask">儲存</button>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="Ask">儲存</button>
+    </div>
     @if (_confirming)
     {
-        <div class="dialog" @onkeydown="OnKey">
-            <p>寫入角色指派？</p>
-            <button class="secondary" @onclick="Commit">確認</button>
-            <button class="secondary" @onclick="Cancel">取消</button>
+        <div class="scrim" @onclick="Cancel">
+            <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="assign-confirm" tabindex="-1" @ref="_dialog" @onkeydown="OnKey" @onclick:stopPropagation="true">
+                <p id="assign-confirm">寫入角色指派？</p>
+                <div class="actions">
+                    <button class="secondary" type="button" @onclick="Commit">確認</button>
+                    <button class="secondary" type="button" @onclick="Cancel">取消</button>
+                </div>
+            </div>
         </div>
     }
     @if (_message is not null) { <p>@_message</p> }
@@ -45,6 +51,8 @@ else
     private bool _editor;
     private bool _terminal;
     private bool _confirming;
+    private bool _dialogFocused;
+    private ElementReference _dialog;
     private List<OperatorDto> _operators = [];
     private List<GroupDto> _groups = [];
     private Dictionary<string, string?> _groupRoles = new(StringComparer.Ordinal);
@@ -87,6 +95,16 @@ else
     {
         _dialogs.Push();
         _confirming = true;
+        _dialogFocused = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_confirming && !_dialogFocused)
+        {
+            _dialogFocused = true;
+            await _dialog.FocusAsync();
+        }
     }
 
     private void OnKey(KeyboardEventArgs args)

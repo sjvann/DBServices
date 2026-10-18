@@ -7,10 +7,19 @@
 else
 {
     <ul>@foreach (var item in _items) { <li>@item.DisplayName</li> }</ul>
-    <label>名稱 <input @bind="_name" /></label>
-    <label>秘密 <input type="password" @bind="_secret" /></label>
-    <button class="secondary" @onclick="Create">建立</button>
-    @if (_error is not null) { <p class="error">@_error.Message</p> }
+    <form class="panel" @onsubmit="Create" @onsubmit:preventDefault="true">
+        <h2>建立操作者</h2>
+        <label for="new-operator-name">名稱
+            <input id="new-operator-name" autocomplete="off" @bind="_name" @bind:event="oninput" />
+        </label>
+        <label for="new-operator-secret">秘密
+            <input id="new-operator-secret" type="password" autocomplete="new-password" @bind="_secret" @bind:event="oninput" />
+        </label>
+        <div class="actions">
+            <button class="secondary" type="submit">建立</button>
+        </div>
+        @if (_error is not null) { <div class="error" role="alert"><span>@_error.Message</span></div> }
+    </form>
 }
 
 @code {

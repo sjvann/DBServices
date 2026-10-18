@@ -85,6 +85,7 @@ else
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.MapStaticAssets();
 app.Use(async (context, next) =>
 {
     if (seed.Unavailable && context.Request.Path.StartsWithSegments("/api"))

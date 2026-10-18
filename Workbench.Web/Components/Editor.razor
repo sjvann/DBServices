@@ -7,30 +7,34 @@
 @if (_denied is not null) { <p>@_denied</p> }
 else if (_template is not null)
 {
-    <label>名稱 <input @bind="_template.Name" /></label>
-    <button class="secondary" @onclick="AddTitle">標題</button>
-    <button class="secondary" @onclick="AddText">文字</button>
-    <button class="secondary" @onclick="AddParameter">參數</button>
-    <button class="secondary" @onclick="AddTable">資料表</button>
-    <button class="secondary" @onclick="AddCount">計數</button>
-    <button class="secondary" @onclick="Suggest">產生建議</button>
-    <button class="secondary" @onclick="Accept">接受</button>
-    @if (_error is not null) { <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p> }
+    <label>名稱 <input @bind="_template.Name" @bind:event="oninput" /></label>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="AddTitle">標題</button>
+        <button class="secondary" type="button" @onclick="AddText">文字</button>
+        <button class="secondary" type="button" @onclick="AddParameter">參數</button>
+        <button class="secondary" type="button" @onclick="AddTable">資料表</button>
+        <button class="secondary" type="button" @onclick="AddCount">計數</button>
+        <button class="secondary" type="button" @onclick="Suggest">產生建議</button>
+        <button class="secondary" type="button" @onclick="Accept">接受</button>
+    </div>
+    @if (_error is not null) { <div class="error" role="alert"><span class="code">@_error.Code</span><span>@_error.Message</span></div> }
     @for (var index = 0; index < _template.Components.Count; index++)
     {
         var slot = index;
         var component = _template.Components[slot];
         <div class="block" draggable="true" @ondrop="() => Drop(slot)" @ondragstart="() => _drag = slot" @key="@(slot * 10)">
             <p class="code">@component.Type</p>
-            <input @bind="component.Text" />
-            <input @bind="component.Field" />
-            <input @bind="component.Table" />
-            <button class="secondary" @key="@(slot * 10 + 1)" @onclick="() => Move(slot, -1)">上移</button>
-            <button class="secondary" @key="@(slot * 10 + 2)" @onclick="() => Move(slot, 1)">下移</button>
-            <button class="secondary" @key="@(slot * 10 + 3)" @onclick="() => Remove(slot)">刪除</button>
+            <label>文字 <input @bind="component.Text" @bind:event="oninput" /></label>
+            <label>欄位 <input @bind="component.Field" @bind:event="oninput" /></label>
+            <label>資料表 <input @bind="component.Table" @bind:event="oninput" /></label>
+            <button class="secondary" type="button" @key="@(slot * 10 + 1)" @onclick="() => Move(slot, -1)">上移</button>
+            <button class="secondary" type="button" @key="@(slot * 10 + 2)" @onclick="() => Move(slot, 1)">下移</button>
+            <button class="secondary" type="button" @key="@(slot * 10 + 3)" @onclick="() => Remove(slot)">刪除</button>
         </div>
     }
-    <button class="secondary" @onclick="Save">儲存</button>
+    <div class="toolbar">
+        <button class="secondary" type="button" @onclick="Save">儲存</button>
+    </div>
 }
 
 @code {

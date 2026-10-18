@@ -7,48 +7,79 @@
 @inject NavigationManager Nav
 @inject PersistentComponentState Persistent
 
-<div class="shell" tabindex="0" @onkeydown="OnKey">
-    <nav class="rail">
-        <p class="meta">工作台</p>
+<div class="shell" tabindex="-1" @onkeydown="OnKey">
+    <nav class="rail" aria-label="工作台">
+        <p class="brand">報表工作台</p>
         @if (_me is null)
         {
-            <a href="/">登入</a>
+            <p class="meta">工作階段</p>
+            <NavLink href="/" Match="NavLinkMatch.All">登入</NavLink>
         }
         else
         {
-            <p>@_me.DisplayName</p>
+            <p class="who">@_me.DisplayName</p>
             @if (_me.Rail.EmptyMessage is not null)
             {
-                <p>@_me.Rail.EmptyMessage</p>
+                <p class="notice">@_me.Rail.EmptyMessage</p>
             }
-            @if (_me.Rail.LivePreview) { <a href="/live">活資料預覽</a> }
-            @if (_me.Rail.Templates) { <a href="/templates">範本庫</a> }
-            @if (_me.Rail.Intent) { <a href="/intent">交談套版</a> }
-            @if (_me.Rail.Favorites) { <a href="/favorites">常用清單</a> }
-            @if (_me.Rail.Preview) { <a href="/preview">預覽</a> }
-            @if (_me.Rail.Accounts) { <a href="/operators">帳號</a> }
-            @if (_me.Rail.Assignments) { <a href="/assignments">角色指派</a> }
-            @if (_me.Rail.Model) { <a href="/model">模型設定</a> }
-            <button class="secondary" @onclick="Logout">登出</button>
+            @if (HasWork)
+            {
+                <p class="meta">工作</p>
+                @if (_me.Rail.LivePreview) { <NavLink href="/live">活資料預覽</NavLink> }
+                @if (_me.Rail.Templates) { <NavLink href="/templates">範本庫</NavLink> }
+                @if (_me.Rail.Intent) { <NavLink href="/intent">交談套版</NavLink> }
+                @if (_me.Rail.Favorites) { <NavLink href="/favorites">常用清單</NavLink> }
+                @if (_me.Rail.Preview) { <NavLink href="/preview">預覽</NavLink> }
+            }
+            @if (HasAdmin)
+            {
+                <p class="meta">管理</p>
+                @if (_me.Rail.Accounts) { <NavLink href="/operators">帳號</NavLink> }
+                @if (_me.Rail.Assignments) { <NavLink href="/assignments">角色指派</NavLink> }
+                @if (_me.Rail.Model) { <NavLink href="/model">模型設定</NavLink> }
+            }
+            <button class="secondary" type="button" @onclick="Logout">登出</button>
         }
     </nav>
     <div class="main">
         <article class="content">
             <CascadingValue Value="this">@Body</CascadingValue>
         </article>
-        <aside class="trace">
-            <p class="meta">軌跡</p>
-            @foreach (var trace in _traces)
-            {
-                <p class="code">@trace.Tool @trace.ErrorCode</p>
-            }
-        </aside>
+        @if (_me is not null)
+        {
+            <aside class="trace" aria-label="取數軌跡">
+                <p class="meta">取數軌跡</p>
+                @if (_traces.Count == 0)
+                {
+                    <p class="empty">這次還沒有結構呼叫或填數呼叫。</p>
+                }
+                else
+                {
+                    @foreach (var trace in _traces)
+                    {
+                        <div class="trace-row">
+                            <p class="code">@trace.Tool</p>
+                            @if (!string.IsNullOrEmpty(trace.Connection))
+                            {
+                                <p class="meta">@trace.Connection</p>
+                            }
+                            @if (!string.IsNullOrEmpty(trace.ErrorCode))
+                            {
+                                <p class="code">@trace.ErrorCode</p>
+                            }
+                        </div>
+                    }
+                }
+            </aside>
+        }
     </div>
 </div>
 
 @code {
     private MeResponse? _me;
     private IReadOnlyList<TraceDto> _traces = [];
+    private bool HasWork => _me is not null && (_me.Rail.LivePreview || _me.Rail.Templates || _me.Rail.Intent || _me.Rail.Favorites || _me.Rail.Preview);
+    private bool HasAdmin => _me is not null && (_me.Rail.Accounts || _me.Rail.Assignments || _me.Rail.Model);
 
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
@@ -59,17 +90,22 @@
         {
             var cookie = HttpContext.Request.Cookies["wb_session"];
             if (!string.IsNullOrEmpty(cookie))
-            {
                 Session.Adopt(cookie);
-                Persistent.PersistAsJson("wb_session", cookie);
-            }
         }
-        else if (Persistent.TryTakeFromJson<string>("wb_session", out var restored))
+        else if (Persistent.TryTakeFromJson<string>("wb_session", out var restored) && !string.IsNullOrEmpty(restored))
         {
             Session.Adopt(restored);
         }
 
+        Persistent.RegisterOnPersisting(PersistSession);
         await RefreshAsync();
+    }
+
+    private Task PersistSession()
+    {
+        if (!string.IsNullOrEmpty(Session.SessionId))
+            Persistent.PersistAsJson("wb_session", Session.SessionId);
+        return Task.CompletedTask;
     }
 
     public async Task RefreshAsync()

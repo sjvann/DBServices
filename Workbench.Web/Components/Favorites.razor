@@ -11,7 +11,7 @@ else
         {
             <li>
                 @item.Name
-                <button class="secondary" @onclick="() => Open(item.Id)">開啟</button>
+                <button class="secondary" type="button" @onclick="() => Open(item.Id)">開啟</button>
             </li>
         }
     </ul>
@@ -25,7 +25,7 @@ else
             }
         </article>
     }
-    @if (_difference is not null) { <p class="error"><span class="code">alignment_failed</span><br />@_difference</p> }
+    @if (_difference is not null) { <div class="error" role="alert"><span class="code">alignment_failed</span><span>@_difference</span></div> }
 }
 
 @code {

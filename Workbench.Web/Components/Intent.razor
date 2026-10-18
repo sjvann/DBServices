@@ -7,8 +7,8 @@
 @if (_denied is not null) { <p>@_denied</p> }
 else
 {
-    <label>語句 <input @bind="_utterance" @onkeydown="OnKey" /></label>
-    <p class="code">@_status</p>
+    <label class="wide">語句 <input value="@_utterance" @oninput="SyncUtterance" @onchange="SyncUtterance" @onkeydown="OnKey" /></label>
+    <p class="@StatusClass" role="status">@_status</p>
     @if (_status == IntentStatuses.Ambiguous)
     {
         <ul>
@@ -18,12 +18,21 @@ else
             }
         </ul>
     }
-    <button class="confirm" disabled="@(!_canConfirm)" @onclick="Confirm">確認</button>
+    <div class="toolbar">
+        <button class="confirm" type="button" disabled="@(!_canConfirm)" @onclick="Confirm">確認</button>
+    </div>
     @if (!_canConfirm) { <p class="reason">@_reason</p> }
-    @if (_error is not null) { <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p> }
+    @if (_error is not null) { <div class="error" role="alert"><span class="code">@_error.Code</span><span>@_error.Message</span></div> }
 }
 
 @code {
+    private string StatusClass => _status switch
+    {
+        IntentStatuses.Ready => "intent ready",
+        IntentStatuses.Ambiguous => "intent ambiguous",
+        _ => "intent incomplete",
+    };
+
     private string _utterance = "";
     private string _status = IntentStatuses.Incomplete;
     private string _reason = "還缺連線、範本或參數值。";
@@ -39,6 +48,8 @@ else
         if (profile is null || !profile.IsTerminal)
             _denied = profile is null ? "尚未登入。" : "沒有權限。";
     }
+
+    private void SyncUtterance(ChangeEventArgs args) => _utterance = args.Value?.ToString() ?? "";
 
     private async Task OnKey(KeyboardEventArgs args)
     {

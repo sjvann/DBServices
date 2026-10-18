@@ -5,14 +5,26 @@
 @inject NavigationManager Nav
 @layout WorkbenchLayout
 
-<h1>登入</h1>
-@if (_error is not null)
-{
-    <p class="error"><span class="code">@_error.Code</span><br />@_error.Message</p>
-}
-<label>名稱 <input @bind="_name" /></label>
-<label>秘密 <input type="password" @bind="_secret" /></label>
-<button class="secondary" @onclick="Submit">登入</button>
+<form class="panel" @onsubmit="Submit" @onsubmit:preventDefault="true">
+    <h1>登入</h1>
+    <p class="meta">以操作者名稱與秘密取得工作階段。</p>
+    @if (_error is not null)
+    {
+        <div class="error" role="alert">
+            <span class="code">@_error.Code</span>
+            <span>@_error.Message</span>
+        </div>
+    }
+    <label for="operator-name">名稱
+        <input id="operator-name" autocomplete="username" @bind="_name" @bind:event="oninput" />
+    </label>
+    <label for="operator-secret">秘密
+        <input id="operator-secret" type="password" autocomplete="current-password" @bind="_secret" @bind:event="oninput" />
+    </label>
+    <div class="actions">
+        <button class="secondary" type="submit">登入</button>
+    </div>
+</form>
 
 @code {
     private string _name = "";

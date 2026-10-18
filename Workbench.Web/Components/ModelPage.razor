@@ -6,14 +6,18 @@
 @if (_denied is not null) { <p>@_denied</p> }
 else if (_model is not null)
 {
+    <div class="panel">
     <label><input type="checkbox" @bind="_enabled" /> 啟用</label>
-    <label>位置 <input @bind="_placement" /></label>
-    <label>端點 <input @bind="_endpoint" /></label>
-    <label>模型 <input @bind="_modelId" /></label>
-    <label>金鑰 <input type="password" @bind="_apiKey" /></label>
-    <p>金鑰已設定：@(_model.ApiKeySet ? "是" : "否")</p>
-    <button class="secondary" @onclick="Save">儲存</button>
-    <button class="secondary" @onclick="Probe">探測</button>
+    <label for="model-placement">位置 <input id="model-placement" @bind="_placement" @bind:event="oninput" /></label>
+    <label for="model-endpoint">端點 <input id="model-endpoint" @bind="_endpoint" @bind:event="oninput" /></label>
+    <label for="model-id">模型 <input id="model-id" @bind="_modelId" @bind:event="oninput" /></label>
+    <label for="model-key">金鑰 <input id="model-key" type="password" autocomplete="off" @bind="_apiKey" @bind:event="oninput" /></label>
+    <p class="meta">金鑰已設定：@(_model.ApiKeySet ? "是" : "否")</p>
+    <div class="actions">
+        <button class="secondary" type="button" @onclick="Save">儲存</button>
+        <button class="secondary" type="button" @onclick="Probe">探測</button>
+    </div>
+    </div>
     @if (_result is not null) { <p class="code">@_result.Code</p><p>@_result.Message</p> }
 }
 
