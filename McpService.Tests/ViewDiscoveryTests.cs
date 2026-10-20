@@ -74,7 +74,14 @@ public class ViewDiscoveryTests
             var result = call.Rpc.GetProperty("result");
             Assert.IsFalse(result.GetProperty("isError").GetBoolean(), call.Body);
             var text = result.GetProperty("content")[0].GetProperty("text").GetString() ?? "";
-            Assert.Contains("one", text);
+            using (var payload = JsonDocument.Parse(text))
+            {
+                var rows = payload.RootElement.GetProperty("rows");
+                Assert.AreEqual(1, rows.GetArrayLength());
+                Assert.AreEqual("one", rows[0][0].GetString());
+            }
+
+            Assert.IsFalse(text.Contains("two", StringComparison.Ordinal), text);
             Assert.IsFalse(call.Body.Contains(connectionString, StringComparison.Ordinal), call.Body);
             Assert.IsFalse(text.Contains("Data Source", StringComparison.OrdinalIgnoreCase));
 
@@ -118,6 +125,132 @@ public class ViewDiscoveryTests
     }
 
     [TestMethod]
+    public async Task Two_source_foreign_key_call_returns_the_joined_row()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"view-join-{Guid.NewGuid():N}.db");
+        var connectionString = "Data Source=" + dbPath;
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, "Sqlite");
+            try
+            {
+                service!.ExecuteSQL("CREATE TABLE customers (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL)");
+                service.ExecuteSQL("CREATE TABLE orders (Id INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL, Title TEXT NOT NULL)");
+                service.ExecuteSQL("INSERT INTO customers (Id, Name) VALUES (1, 'ada')");
+                service.ExecuteSQL("INSERT INTO customers (Id, Name) VALUES (2, 'bob')");
+                service.ExecuteSQL("INSERT INTO orders (Id, CustomerId, Title) VALUES (1, 1, 'box')");
+                service.ExecuteSQL("INSERT INTO orders (Id, CustomerId, Title) VALUES (2, 2, 'tape')");
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
+            var saved = await SendAsync(client, HttpMethod.Put, "/views/join-1", "林可", "unit-catalog-key",
+                """
+                {"id":"join-1","name":"關聯","purpose":"訂單客戶","published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"}],"parameters":[{"name":"標題","column":"Title","source":"orders"}],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
+            var published = await SendAsync(client, HttpMethod.Post, "/views/join-1/publish", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, published.Status, published.Body);
+
+            var call = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"關聯","arguments":{"connectionId":"warehouse","標題":"box"}}}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+            var resultElement = call.Rpc.GetProperty("result");
+            var text = resultElement.GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+            Assert.IsFalse(resultElement.GetProperty("isError").GetBoolean(), text);
+            using var payload = JsonDocument.Parse(text);
+            var rows = payload.RootElement.GetProperty("rows");
+            Assert.AreEqual(1, rows.GetArrayLength(), text);
+            Assert.AreEqual("box", rows[0][0].GetString());
+            Assert.AreEqual("ada", rows[0][1].GetString());
+            Assert.IsFalse(text.Contains("bob", StringComparison.Ordinal), text);
+            Assert.IsFalse(text.Contains("tape", StringComparison.Ordinal), text);
+        }
+        finally
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                assembly.GetType("Microsoft.Data.Sqlite.SqliteConnection")?.GetMethod("ClearAllPools")?.Invoke(null, null);
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Invalid_view_writes_do_not_change_the_stored_document()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var factory = Factory(root, [new("Workbench:CatalogKey", "unit-catalog-key")]);
+            using var client = factory.CreateClient();
+            var saved = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"Ship","purpose":"說明出貨","published":false,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
+            var before = await SendAsync(client, HttpMethod.Get, "/views/ship-1", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, before.Status, before.Body);
+
+            var duplicate = await SendAsync(client, HttpMethod.Put, "/views/ship-2", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-2","name":"Ship","purpose":"另一個","published":false,"sources":["products"],"links":[],"parameters":[],"columns":[]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.Status);
+            Assert.Contains("名稱已存在", duplicate.Body);
+
+            var caseOnly = await SendAsync(client, HttpMethod.Put, "/views/ship-3", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-3","name":"ship","purpose":"大小寫","published":false,"sources":["products"],"links":[],"parameters":[],"columns":[]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, caseOnly.Status);
+            Assert.Contains("名稱已存在", caseOnly.Body);
+
+            var blank = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":" ","purpose":"空白","published":false,"sources":["products"],"links":[],"parameters":[],"columns":[]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, blank.Status);
+            Assert.Contains("名稱不可空白", blank.Body);
+
+            var disconnected = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"Ship","purpose":"斷開","published":false,"sources":["orders","customers"],"links":[],"parameters":[],"columns":[]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, disconnected.Status);
+            Assert.Contains("來源連不起來", disconnected.Body);
+
+            var after = await SendAsync(client, HttpMethod.Get, "/views/ship-1", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, after.Status, after.Body);
+            Assert.AreEqual(before.Body, after.Body);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/views/ship-2", "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/views/ship-3", "林可", "unit-catalog-key")).Status);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public async Task Blank_catalog_key_rejects_the_write()
     {
         var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
@@ -145,6 +278,7 @@ public class ViewDiscoveryTests
         {
             service!.ExecuteSQL("CREATE TABLE products (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL)");
             service.ExecuteSQL("INSERT INTO products (Id, Name) VALUES (1, 'one')");
+            service.ExecuteSQL("INSERT INTO products (Id, Name) VALUES (2, 'two')");
         }
         finally
         {
@@ -204,13 +338,16 @@ public class ViewDiscoveryTests
         return (response.StatusCode, await response.Content.ReadAsStringAsync());
     }
 
-    private static async Task<(HttpStatusCode Status, string Body, JsonElement Rpc)> CallAsync(HttpClient client, string caller)
-    {
-        await InitializeAsync(client);
-        var payload =
+    private static Task<(HttpStatusCode Status, string Body, JsonElement Rpc)> CallAsync(HttpClient client, string caller)
+        => CallPayloadAsync(client,
             """
             {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"warehouse","名稱":"one"}}}
-            """;
+            """,
+            caller);
+
+    private static async Task<(HttpStatusCode Status, string Body, JsonElement Rpc)> CallPayloadAsync(HttpClient client, string payload, string caller = "   ")
+    {
+        await InitializeAsync(client);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json"),

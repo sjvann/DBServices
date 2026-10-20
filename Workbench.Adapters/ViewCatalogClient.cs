@@ -22,17 +22,21 @@ public sealed class ViewCatalogClient : IViewCatalog
     public async Task<IReadOnlyList<ViewDocumentDto>> ListAsync(string callerId, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, "views", callerId, null, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
-            return [];
-        return await response.Content.ReadFromJsonAsync<List<ViewDocumentDto>>(Json, cancellationToken) ?? [];
+            throw Failure(text);
+        return JsonSerializer.Deserialize<List<ViewDocumentDto>>(text, Json) ?? throw Failure(text);
     }
 
     public async Task<ViewDocumentDto?> FindAsync(string id, string callerId, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, "views/" + Uri.EscapeDataString(id), callerId, null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
-        return await response.Content.ReadFromJsonAsync<ViewDocumentDto>(Json, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw Failure(text);
+        return JsonSerializer.Deserialize<ViewDocumentDto>(text, Json) ?? throw Failure(text);
     }
 
     public Task<CatalogWriteResult> SaveAsync(ViewDocumentDto document, string callerId, CancellationToken cancellationToken)
@@ -71,6 +75,13 @@ public sealed class ViewCatalogClient : IViewCatalog
         if (body is not null)
             request.Content = JsonContent.Create(body, options: Json);
         return await _http.SendAsync(request, cancellationToken);
+    }
+
+    private static InvalidOperationException Failure(string text)
+    {
+        var result = ReadFailure(text);
+        var message = string.IsNullOrWhiteSpace(result.Message) ? "目錄沒有讀取。" : result.Message;
+        return new InvalidOperationException(message);
     }
 
     private static CatalogWriteResult ReadFailure(string text)

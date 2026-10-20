@@ -55,6 +55,9 @@ builder.Services
 
         var arguments = request.Params?.Arguments;
         var connectionId = ArgumentText(arguments, "connectionId") ?? "";
+        if (ParameterMissing(view, arguments))
+            return ValueTask.FromResult(ToolResult(TableDispatchResult.InvalidArguments()));
+
         var parameters = ReadParameters(arguments);
         var outcome = ViewDispatch.Execute(
             services.GetRequiredService<ToolCatalog>(),
@@ -94,9 +97,16 @@ app.MapGet("/connections", (ToolCatalog catalog) =>
     return Results.Json(payload);
 });
 
-app.MapGet("/views", (ViewCatalog views) => Results.Json(views.List()));
-app.MapGet("/views/{id}", (string id, ViewCatalog views) =>
+app.MapGet("/views", (HttpContext http, ViewCatalog views, IConfiguration configuration) =>
 {
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    return Results.Json(views.List());
+});
+app.MapGet("/views/{id}", (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
     var document = views.Find(id);
     return document is null ? Results.NotFound(new { code = "not_found", message = "找不到檢視。" }) : Results.Json(document);
 });
@@ -175,6 +185,36 @@ static Tool ToTool(ViewDocument view)
             DestructiveHint = false,
         },
     };
+}
+
+static bool ParameterMissing(ViewDocument view, IDictionary<string, JsonElement>? arguments)
+{
+    foreach (var parameter in view.Parameters ?? [])
+    {
+        if (string.IsNullOrWhiteSpace(parameter.Name))
+            continue;
+        if (!TryArgument(arguments, parameter.Name, out var element) || !TryScalar(element, out _))
+            return true;
+    }
+
+    return false;
+}
+
+static bool TryArgument(IDictionary<string, JsonElement>? arguments, string name, out JsonElement element)
+{
+    element = default;
+    if (arguments is null)
+        return false;
+
+    foreach (var pair in arguments)
+    {
+        if (!pair.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+            continue;
+        element = pair.Value;
+        return true;
+    }
+
+    return false;
 }
 
 static Dictionary<string, object?> ReadParameters(IDictionary<string, JsonElement>? arguments)

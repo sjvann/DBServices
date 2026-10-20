@@ -149,7 +149,9 @@ namespace DbServices.Core.SqlStringGenerator
         {
             if (tableName == null) return null;
             var queryString = MapForQueryKeyValues(values);
-            return $"SELECT * FROM {tableName} WHERE {queryString};";
+            return string.IsNullOrEmpty(queryString)
+                ? $"SELECT * FROM {tableName};"
+                : $"SELECT * FROM {tableName} WHERE {queryString};";
         }
         /// <summary>
         /// 取得根據多個鍵值查詢的 SQL 語句（字串拼接方式，不建議使用）
@@ -161,7 +163,9 @@ namespace DbServices.Core.SqlStringGenerator
         {
             if (tableName == null) return null;
             string queryString = MapForQueryKeyValues(values);
-            return $"SELECT * FROM {tableName} WHERE {queryString};";
+            return string.IsNullOrEmpty(queryString)
+                ? $"SELECT * FROM {tableName};"
+                : $"SELECT * FROM {tableName} WHERE {queryString};";
         }
 
         /// <summary>

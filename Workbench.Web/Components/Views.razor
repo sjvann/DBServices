@@ -71,7 +71,10 @@ else
     private async Task Save()
     {
         var profile = Gate.Current!;
-        var result = await ViewEditor.SaveAsync(profile.Id, Document(), CancellationToken.None);
+        var document = await KeepStoredAsync(profile.Id);
+        if (document is null)
+            return;
+        var result = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
         _error = result.Error;
         if (result.Ok)
             await Reload(profile.Id);
@@ -80,7 +83,10 @@ else
     private async Task Publish()
     {
         var profile = Gate.Current!;
-        var saved = await ViewEditor.SaveAsync(profile.Id, Document(), CancellationToken.None);
+        var document = await KeepStoredAsync(profile.Id);
+        if (document is null)
+            return;
+        var saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
         if (!saved.Ok)
         {
             _error = saved.Error;
@@ -90,6 +96,27 @@ else
         var published = await ViewEditor.PublishAsync(profile.Id, saved.Value!.Id, CancellationToken.None);
         _error = published.Error;
         await Reload(profile.Id);
+    }
+
+    private async Task<ViewDocumentDto?> KeepStoredAsync(string operatorId)
+    {
+        var document = Document();
+        if (string.IsNullOrWhiteSpace(document.Id))
+            return document;
+
+        var existing = await ViewEditor.ReadAsync(operatorId, document.Id, CancellationToken.None);
+        if (existing.Ok && existing.Value is not null)
+        {
+            document.Published = existing.Value.Published;
+            document.Links = existing.Value.Links ?? [];
+            return document;
+        }
+
+        if (existing.Error?.Code == "not_found")
+            return document;
+
+        _error = existing.Error;
+        return null;
     }
 
     private async Task Reload(string operatorId)

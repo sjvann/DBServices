@@ -217,6 +217,7 @@ internal sealed class RecordingCatalog : IViewCatalog
 internal sealed class RecordingCaller : IViewCaller
 {
     public List<string> ToolNames { get; } = [];
+    public List<string> ConnectionIds { get; } = [];
     public List<Dictionary<string, string>> Parameters { get; } = [];
     public int Count => ToolNames.Count;
     public bool Fail { get; set; }
@@ -233,6 +234,7 @@ internal sealed class RecordingCaller : IViewCaller
         CancellationToken cancellationToken)
     {
         ToolNames.Add(viewName);
+        ConnectionIds.Add(connectionId);
         Parameters.Add(new Dictionary<string, string>(parameters, StringComparer.Ordinal));
         if (Fail)
             return Task.FromResult(new ViewCallOutcome { Code = FailCode, Message = FailMessage });

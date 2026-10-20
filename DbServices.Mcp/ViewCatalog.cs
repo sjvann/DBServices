@@ -244,16 +244,8 @@ public sealed class ViewCatalog
             return _documents;
         }
 
-        try
-        {
-            var text = File.ReadAllText(_path);
-            _documents = JsonSerializer.Deserialize<List<ViewDocument>>(text, Json) ?? [];
-        }
-        catch (Exception exception) when (exception is IOException or JsonException)
-        {
-            _documents = [];
-        }
-
+        var text = File.ReadAllText(_path);
+        _documents = JsonSerializer.Deserialize<List<ViewDocument>>(text, Json) ?? [];
         return _documents;
     }
 

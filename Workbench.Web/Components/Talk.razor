@@ -32,6 +32,17 @@ else
             <button class="secondary" type="button" @onclick="Leave">離開</button>
         </div>
     </form>
+    @foreach (var block in _blocks.OrderBy(item => item.Order))
+    {
+        @if (block.Type is "title" or "text")
+        {
+            <p>@block.Text</p>
+        }
+        else if (block.Type == "parameter")
+        {
+            <p>@block.Label</p>
+        }
+    }
     @if (_rows.Count > 0 || _columns.Count > 0)
     {
         <table>
@@ -54,6 +65,7 @@ else
     private string _notice = "";
     private List<string> _columns = [];
     private List<List<string>> _rows = [];
+    private List<StyleBlockDto> _blocks = [];
 
     protected override void OnInitialized()
     {
@@ -66,14 +78,16 @@ else
         if (!result.Ok)
         {
             _notice = result.Error!.Message;
-            _columns = [];
-            _rows = [];
             return;
         }
 
         _notice = result.Value!.Status == "ready" ? "" : result.Value.Reason;
+        if (result.Value.Status != "ready")
+            return;
+
         _columns = result.Value.Columns;
         _rows = result.Value.Rows;
+        _blocks = result.Value.Blocks;
     }
 
     private void SaveRecord() => SaveRecordShared(false);
@@ -108,6 +122,7 @@ else
         Utterances.Leave(Session.SessionId ?? "");
         _columns = [];
         _rows = [];
+        _blocks = [];
         _notice = "已離開這份尚未另存的報表。";
     }
 }

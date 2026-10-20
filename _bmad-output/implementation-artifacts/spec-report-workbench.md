@@ -2,15 +2,30 @@
 title: '三個入口的檢視與報表'
 type: 'feature'
 created: '2026-10-20'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '338d4aab4b74ca5a6527d3e125ffc2b9c4e84a63'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings:
   - multiple-goals
   - oversized
-deferred: []
+deferred:
+  - summary: >-
+      多段關聯若同一對來源有兩條以上的鍵，合併可能只套到其中一條。
+    evidence: |-
+      審查指出 ViewDispatch 的 JoinOrder 併入來源後沒有把剩餘連到該來源的 link 都當成條件。這次沒有逐行再跑兩條鍵的資料，所以尚未證實列會不會多留。
+    location: >-
+      DbServices.Mcp/ViewDispatch.cs
+    severity: "medium (unverified)"
+  - summary: >-
+      沒有微軟正黑體時，PDF 寫入器可能在型別初始化失敗。
+    evidence: |-
+      實作註冊本機 msjh.ttc。這台機器的測試能抽出中文。沒有該字型的環境尚未執行匯出。
+    location: >-
+      Workbench.Adapters/SnapshotPdfWriter.cs
+    severity: "medium"
+
 ---
 
 <intent-contract>
@@ -131,3 +146,59 @@ session.Execute(new QueryRequest {
 **Commands:**
 - `dotnet test E:\sjvann\DBServices\Workbench.Tests\Workbench.Tests.csproj` -- expected: 矩陣與五條驗收通過，輸出不含密碼與連線字串
 - `dotnet test E:\sjvann\DBServices\McpService.Tests\McpService.Tests.csproj` -- expected: Discovery 等於已發布檢視；`GET /connections` 仍只有 name 與 serverType
+
+## Review Triage Log
+
+### 2026-10-20 — Review pass
+- verdicts: 18 findings — high 5, medium 6, low 1, false 4, maybe-false 2
+- findings:
+  - `[high]` `[patch]` 損壞的目錄 JSON 會被當成空清單並在下次保存覆寫 — 已改為讀取失敗不快取空清單，保存不會替換原檔。
+  - `[medium]` `[patch]` 讀取 `/views` 不核對目錄金鑰與呼叫者 — GET 已改走與寫入相同的拒絕。
+  - `[false]` `[reject]` 持有目錄金鑰可繞過樣式凍結 — 規格要求凍結在核心先做，McpService 不開啟工作台 SQLite，因此不能在目錄進程重做樣式引用檢查。
+  - `[high]` `[patch]` 已發布檢視少帶參數仍會查出整表 — 缺參數或非純量改回既有的 invalid_arguments，不送 query。多來源的空白來源同樣失敗。
+  - `[false]` `[reject]` 檢視名稱不得與六個表級工具相同 — 規格要的是 Discovery 等於已發布名稱，沒有另禁這些字。
+  - `[medium]` `[patch]` PDF 表頭與儲存格依查詢順序錯位 — 匯出改依欄名放儲存格。
+  - `[medium]` `[defer]` 沒有微軟正黑體時 PDF 初始化可能失敗 — 這台機器測試通過；沒有該字型的環境未跑，記在 deferred。
+  - `[high]` `[patch]` 檢視表單再存一次會取消發布並清掉關聯 — 識別已存在時先讀回文件，保留 Published 與 Links。
+  - `[high]` `[patch]` 入口勾選一開始是空的，保存會清空 — 載入該操作者目前的入口，換人時更新。
+  - `[low]` `[reject]` 未就緒後畫面清掉表格但仍可能匯出上一份成功報表 — 未就緒與失敗不會產生新報表；上一份仍在，直到離開。交談頁改為未就緒時保留畫面上的上一份，並畫出標題、文字與參數區塊。
+  - `[false]` `[reject]` 短樣式名稱會讓語句同時命中多筆 — 規格就是語句含樣式名稱才入候選，多筆時讀列次數為 0。
+  - `[false]` `[reject]` 連線端點失敗與零筆連線共用同一句訊息 — 規格對不是恰好一筆可用連線的情況就用這句，不另造錯誤碼。
+  - `[high]` `[patch]` 單表呼叫測試只有一列，看不出篩選 — 已再插入不該出現的列，並斷言只回傳符合的列。
+  - `[medium]` `[patch]` 多來源合併沒有測試會執行 — 已加兩表外部鍵的 tools/call，斷言連結列而不是笛卡兒積。
+  - `[medium]` `[patch]` 真實目錄沒有測到重複名稱、空白名稱與未連線 — 這些 PUT 現在斷言 HTTP 400，且原文件不變。
+  - `[medium]` `[patch]` 就緒呼叫沒有核對 connectionId — RecordingCaller 記下名稱，就緒用例斷言等於那一筆可用連線。
+  - `[maybe-false]` `[defer]` 同一對來源的第二條關聯鍵可能沒有參加合併 — 尚未用兩條鍵的資料證實，記在 deferred。
+  - `[low]` `[reject]` 意圖只說落地，測試打的是 HTTP 而不是瀏覽器點擊 — 規格的驗收在 Discovery、讀列次數、存放與兩殼登出；Blazor 與 Avalonia 有改檔，這次沒有打開視窗。
+
+## Auto Run Result
+
+Status: done
+
+Summary: 工作台改成系統分析師、報表設計師、終端使用者三個入口。檢視目錄在 McpService 的 `/views`。Discovery 只列出已發布檢視名稱。語句在核心比對，就緒後恰好呼叫該檢視一次。生成紀錄與 PDF 不再呼叫 MCP。
+
+Files changed:
+- `DbServices.Mcp/ViewCatalog.cs` — 檢視文件的保存、發布與名稱唯一
+- `DbServices.Mcp/ViewDispatch.cs` — 依檢視定義呼叫既有 query，多表只沿關聯合併
+- `McpService/Program.cs` — `/views` 與只含已發布名稱的 Discovery
+- `Workbench.Core/UseCases.cs` — 登入、入口、樣式、語句、紀錄與匯出
+- `Workbench.Storage.Sqlite/SqliteStores.cs` — 操作者、入口、樣式、生成紀錄
+- `Workbench.Adapters/ViewCatalogClient.cs` 與 `McpViewCaller.cs` — 目錄與一次檢視呼叫
+- `Workbench.Web/Components/` — 三站、帳號與入口指派
+- `Workbench.Avalonia/ShellApi.cs` — 同一組 HTTP 與 sessionId
+- `Workbench.Tests/ReportWorkbenchTests.cs` 與 `McpService.Tests/ViewDiscoveryTests.cs` — 矩陣與 Discovery
+
+Review findings breakdown:
+- Patches applied: 5 high、5 medium。目錄讀取失敗不再覆寫；讀取也要金鑰；缺參數不查表；PDF 依欄名；表單保留發布與關聯；入口勾選載入現況；測試補上篩選、兩表、目錄拒絕與 connectionId。
+- Deferred: 第二條關聯鍵是否生效（未證實）；沒有正黑體時的 PDF。
+- Rejected: 目錄進程不能重做樣式凍結；檢視名稱不必避開六個表級工具的字；短名稱命中多筆是規格；連線失敗與零筆共用同一句；未就緒不取代上一份已產生的報表。
+
+Follow-up review recommendation: true。這次修了高嚴重度的目錄覆寫、缺參數查整表，以及 PDF 錯欄。尚未在瀏覽器點過三站，也沒有打開 Avalonia 視窗。
+
+Verification:
+- `dotnet test Workbench.Tests\Workbench.Tests.csproj`：16 通過，0 失敗。
+- `dotnet test McpService.Tests\McpService.Tests.csproj`：54 通過，0 失敗。
+- 測試輸出沒有密碼或連線字串。
+
+Residual risks: 瀏覽器與桌面視窗沒有實際點過。PDF 依賴本機微軟正黑體。多段關聯的第二條鍵尚未用資料證實。
+

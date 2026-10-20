@@ -311,6 +311,7 @@ public class ReportWorkbenchTests
         Assert.AreEqual(1, ready.Body.GetProperty("readCount").GetInt32());
         Assert.AreEqual(1, host.Caller.Count);
         Assert.AreEqual("出貨", host.Caller.ToolNames[0]);
+        Assert.AreEqual(host.Connections.Name, host.Caller.ConnectionIds[0]);
         Assert.IsFalse(host.Caller.Parameters[0].ContainsKey("filters"));
         Assert.AreEqual("完成", host.Caller.Parameters[0]["狀態"]);
         Assert.AreEqual("ROWMARKER", ready.Body.GetProperty("rows")[0][0].GetString());

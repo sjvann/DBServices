@@ -18,6 +18,9 @@ public static class ViewDispatch
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(parameters);
 
+        if (RejectParameters(view, parameters) is { } rejected)
+            return rejected;
+
         var sources = view.Sources ?? [];
         if (sources.Count == 0)
             return TableDispatchResult.QueryExecutionFailed();
@@ -118,6 +121,29 @@ public static class ViewDispatch
 
         return steps;
     }
+
+    private static TableDispatchResult? RejectParameters(ViewDocument view, IReadOnlyDictionary<string, object?> parameters)
+    {
+        var sources = view.Sources ?? [];
+        var known = new HashSet<string>(sources, StringComparer.OrdinalIgnoreCase);
+        var multi = sources.Count > 1;
+        foreach (var parameter in view.Parameters ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(parameter.Name))
+                continue;
+            if (multi && (string.IsNullOrWhiteSpace(parameter.Source) || !known.Contains(parameter.Source)))
+                return TableDispatchResult.InvalidArguments();
+            if (!parameters.TryGetValue(parameter.Name, out var value) || !IsScalar(value))
+                return TableDispatchResult.InvalidArguments();
+        }
+
+        return null;
+    }
+
+    private static bool IsScalar(object? value)
+        => value is null or string or bool
+            or byte or sbyte or short or ushort or int or uint or long or ulong
+            or float or double or decimal;
 
     private static Dictionary<string, object?> ParametersFor(
         ViewDocument view,

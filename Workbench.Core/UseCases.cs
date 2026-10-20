@@ -938,11 +938,13 @@ public sealed class ExportService
         {
             if (block.Type == BlockKinds.Table)
             {
+                var headers = block.Columns.Count > 0 ? block.Columns.ToList() : columns.ToList();
+                var indexes = headers.Select(header => ColumnIndex(columns, header)).ToList();
                 print.Blocks.Add(new PrintBlock
                 {
                     Type = BlockKinds.Table,
-                    Columns = block.Columns.Count > 0 ? block.Columns.ToList() : columns.ToList(),
-                    Rows = rows.Select(row => row.ToList()).ToList(),
+                    Columns = headers,
+                    Rows = rows.Select(row => indexes.Select(index => index >= 0 && index < row.Count ? row[index] ?? "" : "").ToList()).ToList(),
                 });
                 continue;
             }
@@ -954,6 +956,17 @@ public sealed class ExportService
         }
 
         return print;
+    }
+
+    private static int ColumnIndex(IReadOnlyList<string> columns, string name)
+    {
+        for (var index = 0; index < columns.Count; index++)
+        {
+            if (string.Equals(columns[index], name, StringComparison.OrdinalIgnoreCase))
+                return index;
+        }
+
+        return -1;
     }
 
     private static string ParameterText(StyleBlockDto block, IReadOnlyDictionary<string, string> parameters)
