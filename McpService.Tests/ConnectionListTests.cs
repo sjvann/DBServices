@@ -13,14 +13,9 @@ namespace McpService.Tests;
 [DoNotParallelize]
 public class ConnectionListTests
 {
-    private static readonly (string Name, string Description)[] Expected =
+    private static readonly string[] Closed =
     [
-        ("tables", "列出資料表"),
-        ("fields", "列出欄位"),
-        ("get", "依 Id 取一列"),
-        ("query", "鍵值查詢"),
-        ("count", "計數"),
-        ("exists", "是否存在"),
+        "tables", "fields", "get", "query", "count", "exists", "insert", "update", "delete", "sql",
     ];
 
     [TestMethod]
@@ -57,9 +52,10 @@ public class ConnectionListTests
         Assert.AreEqual("Sqlite", rows[0].GetProperty("serverType").GetString());
 
         var tools = await ListToolsAsync(client);
-        var advertised = tools.Select(tool => (tool.GetProperty("name").GetString(), tool.GetProperty("description").GetString())).ToArray();
-        CollectionAssert.AreEquivalent(Expected, advertised);
-        Assert.IsFalse(advertised.Any(tool => tool.Item1 is "insert" or "update" or "delete" or "sql"));
+        var advertised = tools.Select(tool => tool.GetProperty("name").GetString()).ToArray();
+        Assert.AreEqual(0, advertised.Length);
+        foreach (var name in Closed)
+            Assert.IsFalse(advertised.Contains(name, StringComparer.OrdinalIgnoreCase));
     }
 
     private static WebApplicationFactory<Program> CreateFactory(IEnumerable<KeyValuePair<string, string?>> settings)

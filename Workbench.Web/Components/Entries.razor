@@ -1,0 +1,73 @@
+@page "/entries"
+@inject OperatorGate Gate
+@inject OperatorService Accounts
+@layout WorkbenchLayout
+
+<h1>入口指派</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    @if (_error is not null)
+    {
+        <div class="error" role="alert"><span>@_error.Message</span></div>
+    }
+    <label>操作者
+        <select @bind="_operatorId">
+            @foreach (var item in _operators)
+            {
+                <option value="@item.Id">@item.DisplayName</option>
+            }
+        </select>
+    </label>
+    @foreach (var entry in EntryNames.All)
+    {
+        var current = entry;
+        <label>
+            <input type="checkbox" checked="@_selected.Contains(current)" @onchange="args => Toggle(current, args)" />
+            @EntryNames.Label(current)
+        </label>
+    }
+    <div class="actions">
+        <button class="secondary" type="button" @onclick="Save">保存入口</button>
+    </div>
+}
+
+@code {
+    private bool _denied;
+    private ErrorDto? _error;
+    private string _operatorId = "";
+    private IReadOnlyList<OperatorDto> _operators = [];
+    private HashSet<string> _selected = new(StringComparer.Ordinal);
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        if (profile is not { IsAdmin: true })
+        {
+            _denied = true;
+            return;
+        }
+
+        var listed = Accounts.List(profile.Id);
+        _operators = listed.Ok ? listed.Value! : [];
+        _operatorId = _operators.FirstOrDefault()?.Id ?? "";
+    }
+
+    private void Toggle(string entry, ChangeEventArgs args)
+    {
+        if (args.Value is bool selected && selected)
+            _selected.Add(entry);
+        else
+            _selected.Remove(entry);
+    }
+
+    private void Save()
+    {
+        var profile = Gate.Current!;
+        var result = Accounts.Assign(profile.Id, _operatorId, _selected.ToList());
+        _error = result.Error;
+    }
+}

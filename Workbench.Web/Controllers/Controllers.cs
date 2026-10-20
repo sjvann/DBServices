@@ -10,6 +10,9 @@ public static class ApiResults
     public static IActionResult From<T>(OpResult<T> result)
         => result.Ok ? new OkObjectResult(result.Value) : Error(result.Error!);
 
+    public static async Task<IActionResult> FromAsync<T>(Task<OpResult<T>> result)
+        => From(await result);
+
     public static IActionResult Error(ErrorDto error)
     {
         var status = error.Code switch
@@ -58,285 +61,194 @@ public sealed class SessionsController : ControllerBase
 [Route("api/me")]
 public sealed class MeController : ControllerBase
 {
-    private readonly RoleRailService _roles;
+    private readonly OperatorService _operators;
 
-    public MeController(RoleRailService roles) => _roles = roles;
+    public MeController(OperatorService operators) => _operators = operators;
 
     [HttpGet]
-    public IActionResult Get() => ApiResults.From(_roles.Me(ApiResults.OperatorId(HttpContext)));
+    public IActionResult Get() => ApiResults.From(_operators.Me(ApiResults.OperatorId(HttpContext)));
 }
 
 [ApiController]
 [Route("api/operators")]
 public sealed class OperatorsController : ControllerBase
 {
-    private readonly AccountService _accounts;
+    private readonly OperatorService _operators;
 
-    public OperatorsController(AccountService accounts) => _accounts = accounts;
+    public OperatorsController(OperatorService operators) => _operators = operators;
 
     [HttpGet]
-    public IActionResult List() => ApiResults.From(_accounts.List(ApiResults.OperatorId(HttpContext)));
+    public IActionResult List() => ApiResults.From(_operators.List(ApiResults.OperatorId(HttpContext)));
 
     [HttpPost]
     public IActionResult Create([FromBody] OperatorWriteRequest request)
-        => ApiResults.From(_accounts.Create(ApiResults.OperatorId(HttpContext), request.DisplayName, request.Secret));
-}
-
-[ApiController]
-[Route("api/groups")]
-public sealed class GroupsController : ControllerBase
-{
-    private readonly RoleRailService _roles;
-
-    public GroupsController(RoleRailService roles) => _roles = roles;
-
-    [HttpGet]
-    public IActionResult List() => ApiResults.From(_roles.ListGroups(ApiResults.OperatorId(HttpContext)));
-
-    [HttpPost]
-    public IActionResult Create([FromBody] GroupWriteRequest request)
-        => ApiResults.From(_roles.AddGroup(ApiResults.OperatorId(HttpContext), request.Name));
+        => ApiResults.From(_operators.Create(ApiResults.OperatorId(HttpContext), request));
 
     [HttpPut("{id}")]
-    public IActionResult Rename(string id, [FromBody] GroupWriteRequest request)
-        => ApiResults.From(_roles.RenameGroup(ApiResults.OperatorId(HttpContext), id, request.Name));
+    public IActionResult RejectAdmin(string id, [FromBody] OperatorWriteRequest request)
+        => ApiResults.From(_operators.RejectAdminChange(ApiResults.OperatorId(HttpContext), request));
 
-    [HttpDelete("{id}")]
-    public IActionResult Delete(string id) => ApiResults.From(_roles.DeleteGroup(ApiResults.OperatorId(HttpContext), id));
+    [HttpPut("{id}/entries")]
+    public IActionResult Assign(string id, [FromBody] EntryAssignmentRequest request)
+        => ApiResults.From(_operators.Assign(ApiResults.OperatorId(HttpContext), id, request.Entries));
 }
 
 [ApiController]
-[Route("api/assignments")]
-public sealed class AssignmentsController : ControllerBase
+[Route("api/views")]
+public sealed class ViewsController : ControllerBase
 {
-    private readonly RoleRailService _roles;
+    private readonly ViewService _views;
 
-    public AssignmentsController(RoleRailService roles) => _roles = roles;
-
-    [HttpGet("{operatorId}")]
-    public IActionResult Get(string operatorId) => ApiResults.From(_roles.GetAssignments(ApiResults.OperatorId(HttpContext), operatorId));
-
-    [HttpPut("{operatorId}")]
-    public IActionResult Save(string operatorId, [FromBody] AssignmentDto request)
-        => ApiResults.From(_roles.SaveAssignments(ApiResults.OperatorId(HttpContext), operatorId, request));
-}
-
-[ApiController]
-[Route("api/connections")]
-public sealed class ConnectionsController : ControllerBase
-{
-    private readonly LivePreviewService _preview;
-
-    public ConnectionsController(LivePreviewService preview) => _preview = preview;
+    public ViewsController(ViewService views) => _views = views;
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string surface, CancellationToken cancellationToken)
+    public Task<IActionResult> List(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_views.ListAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
+
+    [HttpGet("{id}")]
+    public Task<IActionResult> Read(string id, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_views.ReadAsync(ApiResults.OperatorId(HttpContext), id, cancellationToken));
+
+    [HttpPut("{id}")]
+    public Task<IActionResult> Save(string id, [FromBody] ViewDocumentDto document, CancellationToken cancellationToken)
     {
-        var result = await _preview.ConnectionsAsync(ApiResults.OperatorId(HttpContext), surface, cancellationToken);
+        document.Id = id;
+        return ApiResults.FromAsync(_views.SaveAsync(ApiResults.OperatorId(HttpContext), document, cancellationToken));
+    }
+
+    [HttpDelete("{id}")]
+    public Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_views.DeleteAsync(ApiResults.OperatorId(HttpContext), id, cancellationToken));
+
+    [HttpPost("{id}/publish")]
+    public Task<IActionResult> Publish(string id, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_views.PublishAsync(ApiResults.OperatorId(HttpContext), id, cancellationToken));
+
+    [HttpPost("{id}/unpublish")]
+    public Task<IActionResult> Unpublish(string id, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_views.UnpublishAsync(ApiResults.OperatorId(HttpContext), id, cancellationToken));
+}
+
+[ApiController]
+[Route("api/styles")]
+public sealed class StylesController : ControllerBase
+{
+    private readonly StyleService _styles;
+
+    public StylesController(StyleService styles) => _styles = styles;
+
+    [HttpGet]
+    public IActionResult List() => ApiResults.From(_styles.List(ApiResults.OperatorId(HttpContext)));
+
+    [HttpPost("suggest")]
+    public Task<IActionResult> Suggest([FromBody] SuggestRequest request, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_styles.SuggestAsync(ApiResults.OperatorId(HttpContext), request.ViewId, cancellationToken));
+
+    [HttpPost]
+    public Task<IActionResult> Accept([FromBody] StyleWriteRequest request, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_styles.AcceptAsync(ApiResults.OperatorId(HttpContext), request, cancellationToken));
+
+    [HttpPost("ignore")]
+    public IActionResult Ignore([FromBody] IgnoreStyleRequest request)
+        => ApiResults.From(_styles.Ignore(ApiResults.OperatorId(HttpContext), request.StyleId));
+
+    [HttpPost("{id}/move")]
+    public IActionResult Move(string id, [FromBody] MoveBlockRequest request)
+        => ApiResults.From(_styles.Move(ApiResults.OperatorId(HttpContext), id, request.Index, request.Direction));
+}
+
+[ApiController]
+[Route("api/utterance")]
+public sealed class UtteranceController : ControllerBase
+{
+    private readonly UtteranceService _utterances;
+
+    public UtteranceController(UtteranceService utterances) => _utterances = utterances;
+
+    [HttpPost]
+    public Task<IActionResult> Submit([FromBody] UtteranceRequest request, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_utterances.SubmitAsync(
+            ApiResults.OperatorId(HttpContext),
+            ApiResults.SessionId(HttpContext),
+            request.Text,
+            request.StyleId,
+            cancellationToken));
+}
+
+[ApiController]
+[Route("api/reports")]
+public sealed class ReportsController : ControllerBase
+{
+    private readonly UtteranceService _utterances;
+    private readonly StyleService _styles;
+
+    public ReportsController(UtteranceService utterances, StyleService styles)
+    {
+        _utterances = utterances;
+        _styles = styles;
+    }
+
+    [HttpGet("current")]
+    public IActionResult Current()
+        => ApiResults.From(_utterances.Current(ApiResults.OperatorId(HttpContext), ApiResults.SessionId(HttpContext)));
+
+    [HttpPost("leave")]
+    public IActionResult Leave()
+    {
+        _utterances.Leave(ApiResults.SessionId(HttpContext));
+        return Ok();
+    }
+
+    [HttpPost("style")]
+    public IActionResult SaveStyle([FromBody] LayoutWriteRequest request)
+        => ApiResults.From(_styles.SaveLayout(ApiResults.OperatorId(HttpContext), ApiResults.SessionId(HttpContext), request));
+}
+
+[ApiController]
+[Route("api/records")]
+public sealed class RecordsController : ControllerBase
+{
+    private readonly RecordService _records;
+
+    public RecordsController(RecordService records) => _records = records;
+
+    [HttpGet]
+    public IActionResult List() => ApiResults.From(_records.List(ApiResults.OperatorId(HttpContext)));
+
+    [HttpPost]
+    public IActionResult Save([FromBody] RecordWriteRequest request)
+        => ApiResults.From(_records.Save(ApiResults.OperatorId(HttpContext), ApiResults.SessionId(HttpContext), request.Shared));
+
+    [HttpGet("{id}")]
+    public IActionResult Open(string id) => ApiResults.From(_records.Open(ApiResults.OperatorId(HttpContext), id));
+
+    [HttpPut("{id}")]
+    public IActionResult Share(string id, [FromBody] RecordWriteRequest request)
+        => ApiResults.From(_records.SetShared(ApiResults.OperatorId(HttpContext), id, request.Shared));
+
+    [HttpDelete("{id}")]
+    public IActionResult Delete(string id) => ApiResults.From(_records.Delete(ApiResults.OperatorId(HttpContext), id));
+}
+
+[ApiController]
+[Route("api/export")]
+public sealed class ExportController : ControllerBase
+{
+    private readonly ExportService _export;
+
+    public ExportController(ExportService export) => _export = export;
+
+    [HttpGet("pdf")]
+    public IActionResult Pdf([FromQuery] string? recordId) => FileOf(recordId);
+
+    [HttpGet("print")]
+    public IActionResult Print([FromQuery] string? recordId) => FileOf(recordId);
+
+    private IActionResult FileOf(string? recordId)
+    {
+        var result = _export.Pdf(ApiResults.OperatorId(HttpContext), ApiResults.SessionId(HttpContext), recordId);
         if (!result.Ok)
             return ApiResults.Error(result.Error!);
-        if (!result.Value!.Ok)
-            return ApiResults.Error(new ErrorDto { Code = result.Value.ErrorCode ?? "connection_failed", Message = result.Value.ErrorMessage ?? "" });
-        return Ok(result.Value.Connections);
+        return File(result.Value!, "application/pdf");
     }
-}
-
-[ApiController]
-[Route("api/structure")]
-public sealed class StructureController : ControllerBase
-{
-    private readonly LivePreviewService _preview;
-
-    public StructureController(LivePreviewService preview) => _preview = preview;
-
-    [HttpGet("tables")]
-    public async Task<IActionResult> Tables([FromQuery] string surface, [FromQuery] string connection, CancellationToken cancellationToken)
-        => ApiResults.From(await _preview.TablesAsync(ApiResults.OperatorId(HttpContext), surface, connection, cancellationToken));
-
-    [HttpGet("fields")]
-    public async Task<IActionResult> Fields([FromQuery] string surface, [FromQuery] string connection, [FromQuery] string table, CancellationToken cancellationToken)
-        => ApiResults.From(await _preview.FieldsAsync(ApiResults.OperatorId(HttpContext), surface, connection, table, cancellationToken));
-}
-
-[ApiController]
-[Route("api/plans")]
-public sealed class PlansController : ControllerBase
-{
-    private readonly LivePreviewService _preview;
-
-    public PlansController(LivePreviewService preview) => _preview = preview;
-
-    [HttpPost("query")]
-    public async Task<IActionResult> Query([FromBody] PlanRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _preview.ConfirmQueryAsync(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), request, cancellationToken));
-
-    [HttpPost("count")]
-    public async Task<IActionResult> Count([FromBody] PlanRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _preview.ConfirmCountAsync(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), request, cancellationToken));
-}
-
-[ApiController]
-[Route("api/templates")]
-public sealed class TemplatesController : ControllerBase
-{
-    private readonly TemplateLibraryService _templates;
-
-    public TemplatesController(TemplateLibraryService templates) => _templates = templates;
-
-    [HttpGet]
-    public IActionResult List() => ApiResults.From(_templates.List(ApiResults.OperatorId(HttpContext)));
-
-    [HttpGet("{id}")]
-    public IActionResult Get(string id) => ApiResults.From(_templates.Get(ApiResults.OperatorId(HttpContext), id));
-
-    [HttpPost]
-    public IActionResult Create([FromBody] TemplateDto template)
-        => ApiResults.From(_templates.Save(ApiResults.OperatorId(HttpContext), template));
-
-    [HttpPut("{id}")]
-    public IActionResult Save(string id, [FromBody] TemplateDto template)
-    {
-        template.Id = id;
-        return ApiResults.From(_templates.Save(ApiResults.OperatorId(HttpContext), template));
-    }
-
-    [HttpDelete("{id}")]
-    public IActionResult Delete(string id) => ApiResults.From(_templates.Delete(ApiResults.OperatorId(HttpContext), id));
-
-    [HttpPost("{id}/preview")]
-    public async Task<IActionResult> Preview(string id, [FromBody] PlanRequest request, CancellationToken cancellationToken)
-    {
-        var parameters = request.Filters.ToDictionary(item => item.Key, item => item.Value ?? "", StringComparer.Ordinal);
-        return ApiResults.From(await _templates.PreviewAsync(
-            ApiResults.SessionId(HttpContext),
-            ApiResults.OperatorId(HttpContext),
-            id,
-            request.Surface ?? "",
-            request.Connection ?? "",
-            parameters,
-            cancellationToken));
-    }
-}
-
-[ApiController]
-[Route("api/suggestions")]
-public sealed class SuggestionsController : ControllerBase
-{
-    private readonly SuggestionService _suggestions;
-
-    public SuggestionsController(SuggestionService suggestions) => _suggestions = suggestions;
-
-    [HttpPost]
-    public async Task<IActionResult> Propose([FromBody] SuggestionRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _suggestions.ProposeAsync(ApiResults.OperatorId(HttpContext), request, cancellationToken));
-
-    [HttpPost("accept")]
-    public async Task<IActionResult> Accept([FromBody] SuggestionRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _suggestions.AcceptAsync(ApiResults.OperatorId(HttpContext), request, cancellationToken));
-}
-
-[ApiController]
-[Route("api/intent")]
-public sealed class IntentController : ControllerBase
-{
-    private readonly IntentService _intent;
-
-    public IntentController(IntentService intent) => _intent = intent;
-
-    [HttpPost("parse")]
-    public async Task<IActionResult> Parse([FromBody] IntentParseRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _intent.ParseAsync(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), request.Utterance, request.Surface, cancellationToken));
-
-    [HttpPost("confirm")]
-    public async Task<IActionResult> Confirm([FromBody] ConfirmRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _intent.ConfirmAsync(ApiResults.SessionId(HttpContext), request.PlanId ?? "", cancellationToken));
-}
-
-[ApiController]
-[Route("api/favorites")]
-public sealed class FavoritesController : ControllerBase
-{
-    private readonly FavoriteService _favorites;
-
-    public FavoritesController(FavoriteService favorites) => _favorites = favorites;
-
-    [HttpGet]
-    public IActionResult List() => ApiResults.From(_favorites.List(ApiResults.OperatorId(HttpContext)));
-
-    [HttpPost]
-    public IActionResult Create([FromBody] FavoriteWriteRequest request)
-        => ApiResults.From(_favorites.Save(ApiResults.OperatorId(HttpContext), request));
-
-    [HttpPost("{id}/open")]
-    public IActionResult Open(string id) => ApiResults.From(_favorites.Open(ApiResults.OperatorId(HttpContext), id));
-}
-
-[ApiController]
-[Route("api/preview")]
-public sealed class PreviewController : ControllerBase
-{
-    private readonly SnapshotExportService _export;
-
-    public PreviewController(SnapshotExportService export) => _export = export;
-
-    [HttpGet("{id}")]
-    public IActionResult Get(string id) => ApiResults.From(_export.Get(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), id));
-
-    [HttpGet("{id}/pdf")]
-    public IActionResult Pdf(string id)
-    {
-        var result = _export.Pdf(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), id);
-        return result.Ok ? File(result.Value!, "application/pdf") : ApiResults.Error(result.Error!);
-    }
-
-    [HttpGet("{id}/csv")]
-    public IActionResult Csv(string id)
-    {
-        var result = _export.Csv(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), id);
-        return result.Ok ? Content(result.Value!, "text/csv") : ApiResults.Error(result.Error!);
-    }
-
-    [HttpGet("{id}/print")]
-    public IActionResult Print(string id)
-    {
-        var result = _export.Print(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), id);
-        return result.Ok ? Content(result.Value!, "text/html") : ApiResults.Error(result.Error!);
-    }
-}
-
-[ApiController]
-[Route("api/keyword-rules")]
-public sealed class KeywordRulesController : ControllerBase
-{
-    private readonly KeywordService _keywords;
-
-    public KeywordRulesController(KeywordService keywords) => _keywords = keywords;
-
-    [HttpPost]
-    public IActionResult Create([FromBody] KeywordWriteRequest request)
-        => ApiResults.From(_keywords.AddHuman(ApiResults.OperatorId(HttpContext), request));
-
-    [HttpPost("from-confirm")]
-    public IActionResult FromConfirm([FromBody] KeywordWriteRequest request)
-        => ApiResults.From(_keywords.AddFromConfirm(ApiResults.SessionId(HttpContext), ApiResults.OperatorId(HttpContext), request));
-}
-
-[ApiController]
-[Route("api/model")]
-public sealed class ModelController : ControllerBase
-{
-    private readonly ModelSettingsService _model;
-
-    public ModelController(ModelSettingsService model) => _model = model;
-
-    [HttpGet]
-    public IActionResult Get() => ApiResults.From(_model.Read(ApiResults.OperatorId(HttpContext)));
-
-    [HttpPut]
-    public IActionResult Save([FromBody] ModelWriteRequest request)
-        => ApiResults.From(_model.Save(ApiResults.OperatorId(HttpContext), request));
-
-    [HttpPost("probe")]
-    public async Task<IActionResult> Probe([FromBody] ProbeRequest request, CancellationToken cancellationToken)
-        => ApiResults.From(await _model.ProbeAsync(ApiResults.OperatorId(HttpContext), request, cancellationToken));
 }

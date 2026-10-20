@@ -1,50 +1,36 @@
 namespace Workbench.Contracts;
 
-public static class WorkRoles
+public static class EntryNames
 {
-    public const string Planner = "planner";
-    public const string Editor = "editor";
+    public const string Analyst = "analyst";
+    public const string Designer = "designer";
     public const string Terminal = "terminal";
+
+    public static readonly string[] All = [Analyst, Designer, Terminal];
+
+    public static string Label(string entry) => entry switch
+    {
+        Analyst => "系統分析師",
+        Designer => "設計師",
+        Terminal => "終端使用者",
+        _ => entry,
+    };
+
+    public static string Home(string entry) => entry switch
+    {
+        Analyst => "/views",
+        Designer => "/styles",
+        Terminal => "/talk",
+        _ => "/stations",
+    };
 }
 
-public static class GroupRoles
-{
-    public const string Design = "design";
-    public const string View = "view";
-}
-
-public static class SurfaceNames
-{
-    public const string Mcp = "mcp";
-    public const string Web = "web";
-}
-
-public static class ComponentKinds
+public static class BlockKinds
 {
     public const string Title = "title";
     public const string Text = "text";
     public const string Parameter = "parameter";
     public const string Table = "table";
-    public const string Count = "count";
-}
 
-public static class IntentStatuses
-{
-    public const string Ready = "ready";
-    public const string Ambiguous = "ambiguous";
-    public const string Incomplete = "incomplete";
-}
-
-public static class KeywordSources
-{
-    public const string Human = "human";
-    public const string Ai = "ai";
-}
-
-public static class ModelCodes
-{
-    public const string Ok = "model_ok";
-    public const string InvalidSettings = "model_invalid_settings";
-    public const string Unreachable = "model_unreachable";
-    public const string Timeout = "model_timeout";
+    public static bool Known(string? type) => type is Title or Text or Parameter or Table;
 }

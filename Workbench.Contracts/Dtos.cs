@@ -17,269 +17,160 @@ public sealed class SessionResponse
     public string SessionId { get; set; } = "";
 }
 
-public sealed class RailDto
-{
-    public bool LivePreview { get; set; }
-    public bool Templates { get; set; }
-    public bool Intent { get; set; }
-    public bool Favorites { get; set; }
-    public bool Preview { get; set; }
-    public bool Accounts { get; set; }
-    public bool Assignments { get; set; }
-    public bool Model { get; set; }
-    public string? EmptyMessage { get; set; }
-}
-
 public sealed class MeResponse
 {
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public bool IsAdmin { get; set; }
-    public RailDto Rail { get; set; } = new();
+    public List<string> Entries { get; set; } = [];
+    public string Destination { get; set; } = "/";
 }
 
 public sealed class OperatorWriteRequest
 {
     public string? DisplayName { get; set; }
     public string? Secret { get; set; }
+    public bool IsAdmin { get; set; }
 }
 
 public sealed class OperatorDto
 {
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
+    public bool IsAdmin { get; set; }
+    public List<string> Entries { get; set; } = [];
 }
 
-public sealed class GroupWriteRequest
+public sealed class EntryAssignmentRequest
 {
-    public string? Name { get; set; }
+    public List<string> Entries { get; set; } = [];
 }
 
-public sealed class GroupDto
+public sealed class ViewLinkDto
+{
+    public string Kind { get; set; } = "";
+    public string From { get; set; } = "";
+    public string FromColumn { get; set; } = "";
+    public string To { get; set; } = "";
+    public string ToColumn { get; set; } = "";
+}
+
+public sealed class ViewParameterDto
+{
+    public string Name { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Source { get; set; } = "";
+}
+
+public sealed class ViewColumnDto
+{
+    public string Name { get; set; } = "";
+    public string Source { get; set; } = "";
+}
+
+public sealed class ViewDocumentDto
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string Purpose { get; set; } = "";
+    public bool Published { get; set; }
+    public List<string> Sources { get; set; } = [];
+    public List<ViewLinkDto> Links { get; set; } = [];
+    public List<ViewParameterDto> Parameters { get; set; } = [];
+    public List<ViewColumnDto> Columns { get; set; } = [];
 }
 
-public sealed class GroupRoleDto
+public sealed class ViewSummaryDto
 {
-    public string GroupId { get; set; } = "";
-    public string? Role { get; set; }
-}
-
-public sealed class AssignmentDto
-{
-    public List<string> WorkRoles { get; set; } = [];
-    public List<GroupRoleDto> Groups { get; set; } = [];
-}
-
-public sealed class ConnectionDto
-{
+    public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    public string ServerType { get; set; } = "";
+    public string Purpose { get; set; } = "";
+    public bool Published { get; set; }
 }
 
-public sealed class FieldDto
-{
-    public string Name { get; set; } = "";
-    public string Type { get; set; } = "";
-    public bool PrimaryKey { get; set; }
-    public bool NotNull { get; set; }
-}
-
-public sealed class FilterDto
-{
-    public string Key { get; set; } = "";
-    public string? Value { get; set; }
-}
-
-public sealed class PlanRequest
-{
-    public string? Surface { get; set; }
-    public string? Connection { get; set; }
-    public string? Table { get; set; }
-    public List<FilterDto> Filters { get; set; } = [];
-}
-
-public sealed class TraceDto
-{
-    public string OperatorId { get; set; } = "";
-    public string Connection { get; set; } = "";
-    public string Tool { get; set; } = "";
-    public Dictionary<string, string> Filters { get; set; } = new(StringComparer.Ordinal);
-    public int? RowCount { get; set; }
-    public decimal? Count { get; set; }
-    public string? ErrorCode { get; set; }
-    public bool? AuditMatched { get; set; }
-    public DateTime AtUtc { get; set; }
-}
-
-public sealed class PlanResponse
-{
-    public string? PlanId { get; set; }
-    public string? SnapshotId { get; set; }
-    public List<string> Tools { get; set; } = [];
-    public List<string> ParameterKeys { get; set; } = [];
-    public List<string> Columns { get; set; } = [];
-    public List<List<string>> Rows { get; set; } = [];
-    public decimal? Count { get; set; }
-    public string? ErrorCode { get; set; }
-    public string? ErrorMessage { get; set; }
-    public bool? AuditMatched { get; set; }
-    public List<TraceDto> Traces { get; set; } = [];
-    public string? Notice { get; set; }
-}
-
-public sealed class ComponentDto
+public sealed class StyleBlockDto
 {
     public string Type { get; set; } = "";
     public int Order { get; set; }
     public string? Text { get; set; }
-    public string? Field { get; set; }
+    public string? Parameter { get; set; }
     public string? Label { get; set; }
-    public string? Table { get; set; }
     public List<string> Columns { get; set; } = [];
 }
 
-public sealed class TemplateDto
+public sealed class StyleDto
 {
     public string Id { get; set; } = "";
-    public string GroupId { get; set; } = "";
     public string Name { get; set; } = "";
-    public List<ComponentDto> Components { get; set; } = [];
+    public string ViewId { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public bool Shared { get; set; }
+    public List<StyleBlockDto> Blocks { get; set; } = [];
 }
 
-public sealed class SuggestionRequest
+public sealed class StyleWriteRequest
 {
-    public string? Surface { get; set; }
-    public string? Connection { get; set; }
-    public string? Table { get; set; }
-    public string? TemplateId { get; set; }
-    public List<ComponentDto>? Proposal { get; set; }
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public string? ViewId { get; set; }
+    public bool Shared { get; set; }
+    public List<StyleBlockDto> Blocks { get; set; } = [];
 }
 
-public sealed class IntentParseRequest
+public sealed class SuggestRequest
 {
-    public string? Utterance { get; set; }
-    public string? Surface { get; set; }
+    public string? ViewId { get; set; }
 }
 
-public sealed class IntentCandidateDto
+public sealed class IgnoreStyleRequest
 {
-    public string? Connection { get; set; }
-    public string? TemplateId { get; set; }
-    public string? TemplateName { get; set; }
+    public string? StyleId { get; set; }
+}
+
+public sealed class MoveBlockRequest
+{
+    public int Index { get; set; }
+    public int Direction { get; set; }
+}
+
+public sealed class UtteranceRequest
+{
+    public string? Text { get; set; }
+    public string? StyleId { get; set; }
+}
+
+public sealed class UtteranceResponse
+{
+    public string Status { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public int ReadCount { get; set; }
+    public string? StyleId { get; set; }
+    public string? ReportId { get; set; }
     public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.Ordinal);
+    public List<string> Columns { get; set; } = [];
+    public List<List<string>> Rows { get; set; } = [];
+    public List<StyleBlockDto> Blocks { get; set; } = [];
 }
 
-public sealed class IntentParseResponse
+public sealed class RecordWriteRequest
 {
-    public string Status { get; set; } = IntentStatuses.Incomplete;
-    public string? PlanId { get; set; }
-    public List<IntentCandidateDto> Candidates { get; set; } = [];
-    public string? ConfirmReason { get; set; }
-    public bool CanConfirm { get; set; }
+    public bool Shared { get; set; }
 }
 
-public sealed class ConfirmRequest
+public sealed class RecordDto
 {
-    public string? PlanId { get; set; }
+    public string Id { get; set; } = "";
+    public string OwnerId { get; set; } = "";
+    public bool Shared { get; set; }
+    public List<StyleBlockDto> Blocks { get; set; } = [];
+    public List<string> Columns { get; set; } = [];
+    public List<List<string>> Rows { get; set; } = [];
+    public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.Ordinal);
+    public DateTime CreatedUtc { get; set; }
 }
 
-public sealed class FavoriteWriteRequest
+public sealed class LayoutWriteRequest
 {
     public string? Name { get; set; }
-    public string? TemplateId { get; set; }
-    public string? Surface { get; set; }
-    public string? ConnectionName { get; set; }
-    public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.Ordinal);
-}
-
-public sealed class FavoriteDto
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string TemplateId { get; set; } = "";
-    public string Surface { get; set; } = "";
-    public string ConnectionName { get; set; } = "";
-    public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.Ordinal);
-}
-
-public sealed class FavoriteOpenResponse
-{
-    public TemplateDto? Template { get; set; }
-    public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.Ordinal);
-    public string? Difference { get; set; }
-    public string? ErrorCode { get; set; }
-}
-
-public sealed class KeywordWriteRequest
-{
-    public string? Phrase { get; set; }
-    public string? TemplateId { get; set; }
-    public List<string> ColumnNames { get; set; } = [];
-    public string? SnapshotId { get; set; }
-}
-
-public sealed class ModelDto
-{
-    public bool Enabled { get; set; }
-    public string Placement { get; set; } = "";
-    public string Endpoint { get; set; } = "";
-    public string ModelId { get; set; } = "";
-    public bool ApiKeySet { get; set; }
-}
-
-public sealed class ModelWriteRequest
-{
-    public bool Enabled { get; set; }
-    public string? Placement { get; set; }
-    public string? Endpoint { get; set; }
-    public string? ModelId { get; set; }
-    public string? ApiKey { get; set; }
-}
-
-public sealed class ProbeRequest
-{
-    public string? Placement { get; set; }
-    public string? Endpoint { get; set; }
-    public string? ModelId { get; set; }
-    public string? ApiKey { get; set; }
-}
-
-public sealed class ModelResultDto
-{
-    public string Code { get; set; } = "";
-    public string Message { get; set; } = "";
-}
-
-public sealed class SidecarProbeInput
-{
-    public string Kind { get; set; } = "probe";
-    public string Placement { get; set; } = "";
-    public string Endpoint { get; set; } = "";
-    public string ModelId { get; set; } = "";
-}
-
-public sealed class SidecarConnectionInput
-{
-    public string Name { get; set; } = "";
-    public string ServerType { get; set; } = "";
-}
-
-public sealed class SidecarTemplateInput
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public List<string> Parameters { get; set; } = [];
-    public List<string> Tables { get; set; } = [];
-}
-
-public sealed class SidecarParseInput
-{
-    public string Kind { get; set; } = "parse";
-    public string Utterance { get; set; } = "";
-    public List<SidecarConnectionInput> Connections { get; set; } = [];
-    public List<SidecarTemplateInput> Templates { get; set; } = [];
-    public List<string> Surfaces { get; set; } = [];
+    public bool Shared { get; set; }
 }

@@ -1,14 +1,14 @@
 using System.Net.Http.Headers;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Data.Sqlite;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
-using Workbench.Adapters;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Workbench.Contracts;
 using Workbench.Core.Ports;
 
@@ -18,15 +18,6 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string _root;
-    public RecordingSurface Surface { get; }
-    public RecordingCatalog Catalog { get; }
-    public RecordingAudit Audit { get; }
-    public RecordingSidecar Sidecar { get; }
-    public string SqlitePath { get; }
-    public bool PreserveRoot { get; }
-    public string AdminName { get; }
-    public string AdminPassword { get; }
-    public bool SeedAdmin { get; }
 
     public WorkbenchHost(Action<HostOptions>? configure = null)
     {
@@ -34,10 +25,9 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         configure?.Invoke(options);
         _root = options.ContentRoot ?? Path.Combine(Path.GetTempPath(), "wb-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        Surface = options.Surface ?? new RecordingSurface();
         Catalog = options.Catalog ?? new RecordingCatalog();
-        Audit = options.Audit ?? new RecordingAudit();
-        Sidecar = options.Sidecar ?? new RecordingSidecar();
+        Caller = options.Caller ?? new RecordingCaller();
+        Connections = options.Connections ?? new RecordingConnections();
         SqlitePath = Path.Combine(_root, "workbench.db");
         PreserveRoot = options.PreserveRoot;
         AdminName = options.AdminName;
@@ -47,6 +37,14 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
     }
 
     public HostOptions Options { get; }
+    public RecordingCatalog Catalog { get; }
+    public RecordingCaller Caller { get; }
+    public RecordingConnections Connections { get; }
+    public string SqlitePath { get; }
+    public bool PreserveRoot { get; }
+    public string AdminName { get; }
+    public string AdminPassword { get; }
+    public bool SeedAdmin { get; }
     public string ContentRoot => _root;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -71,13 +69,8 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
             {
                 ["AllowedHosts"] = "*",
                 ["Workbench:SqlitePath"] = SqlitePath,
-                ["Surfaces:Web:ServerType"] = Options.WebServerType,
+                ["Workbench:CatalogKey"] = "unit-catalog-key",
                 ["Surfaces:Mcp:BaseUrl"] = "http://127.0.0.1:9",
-                ["Surfaces:Web:BaseUrl"] = "http://127.0.0.1:9",
-                ["Model:enabled"] = Options.ModelEnabled ? "true" : "false",
-                ["Model:placement"] = "local",
-                ["Model:endpoint"] = "http://127.0.0.1:9",
-                ["Model:modelId"] = "unit",
             };
             if (SeedAdmin)
             {
@@ -91,19 +84,9 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         });
         builder.ConfigureTestServices(services =>
         {
-            if (Options.UseRecordingSurface)
-                services.AddSingleton<IDataSurface>(Surface);
-            else if (Options.SurfaceOverride is not null)
-                services.AddSingleton(Options.SurfaceOverride);
-            if (Options.UseRecordingCatalog)
-                services.AddSingleton<IConnectionCatalog>(Catalog);
-            else if (Options.CatalogOverride is not null)
-                services.AddSingleton(Options.CatalogOverride);
-            if (Options.UseRecordingAudit)
-                services.AddSingleton<IAuditReader>(Audit);
-            else if (Options.AuditOverride is not null)
-                services.AddSingleton(Options.AuditOverride);
-            services.AddSingleton<IModelSidecar>(Sidecar);
+            services.AddSingleton<IViewCatalog>(Catalog);
+            services.AddSingleton<IViewCaller>(Caller);
+            services.AddSingleton<IConnectionCount>(Connections);
         });
     }
 
@@ -124,7 +107,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         }, Json);
         var body = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(((int)response.StatusCode).ToString());
+            throw new InvalidOperationException(((int)response.StatusCode) + " " + body);
         var sessionId = JsonSerializer.Deserialize<SessionResponse>(body, Json)!.SessionId;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sessionId);
         var me = await client.GetFromJsonAsync<MeResponse>("api/me", Json);
@@ -134,6 +117,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
+        SqliteConnection.ClearAllPools();
         if (!PreserveRoot && Directory.Exists(_root))
         {
             try { Directory.Delete(_root, true); }
@@ -149,24 +133,16 @@ internal sealed class HostOptions
     public bool SeedAdmin { get; set; } = true;
     public string? ContentRoot { get; set; }
     public bool PreserveRoot { get; set; }
-    public string WebServerType { get; set; } = "Sqlite";
-    public bool ModelEnabled { get; set; }
-    public bool UseRecordingSurface { get; set; } = true;
-    public bool UseRecordingCatalog { get; set; } = true;
-    public bool UseRecordingAudit { get; set; } = true;
-    public RecordingSurface? Surface { get; set; }
     public RecordingCatalog? Catalog { get; set; }
-    public RecordingAudit? Audit { get; set; }
-    public RecordingSidecar? Sidecar { get; set; }
-    public IDataSurface? SurfaceOverride { get; set; }
-    public IConnectionCatalog? CatalogOverride { get; set; }
-    public IAuditReader? AuditOverride { get; set; }
+    public RecordingCaller? Caller { get; set; }
+    public RecordingConnections? Connections { get; set; }
     public Dictionary<string, string?> Extra { get; } = new(StringComparer.Ordinal);
 }
 
 internal sealed class Session
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
     public Session(HttpClient client, string sessionId, MeResponse me)
     {
         Client = client;
@@ -178,22 +154,7 @@ internal sealed class Session
     public string SessionId { get; }
     public MeResponse Me { get; }
 
-    public async Task<JsonElement> GetAsync(string url)
-    {
-        using var response = await Client.GetAsync(url);
-        return await ReadAsync(response);
-    }
-
-    public async Task<JsonElement> SendAsync(HttpMethod method, string url, object? body = null)
-    {
-        using var request = new HttpRequestMessage(method, url);
-        if (body is not null)
-            request.Content = JsonContent.Create(body, options: Json);
-        using var response = await Client.SendAsync(request);
-        return await ReadAsync(response);
-    }
-
-    public async Task<(int Status, JsonElement Body)> RawAsync(HttpMethod method, string url, object? body = null)
+    public async Task<(int Status, string Text, JsonElement Body)> RawAsync(HttpMethod method, string url, object? body = null)
     {
         using var request = new HttpRequestMessage(method, url);
         if (body is not null)
@@ -201,148 +162,98 @@ internal sealed class Session
         using var response = await Client.SendAsync(request);
         var text = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "null" : text);
-        return ((int)response.StatusCode, document.RootElement.Clone());
-    }
-
-    private static async Task<JsonElement> ReadAsync(HttpResponseMessage response)
-    {
-        var text = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(((int)response.StatusCode).ToString());
-        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "null" : text);
-        return document.RootElement.Clone();
+        return ((int)response.StatusCode, text, document.RootElement.Clone());
     }
 }
 
-internal sealed class RecordingSurface : IDataSurface
+internal sealed class RecordingCatalog : IViewCatalog
 {
-    public List<string> Calls { get; } = [];
-    public List<string> ParameterKeys { get; } = [];
-    public List<string> Tables { get; set; } = ["products"];
-    public Dictionary<string, List<FieldDto>> Fields { get; } = new(StringComparer.Ordinal)
-    {
-        ["products"] = [new FieldDto { Name = "Id", Type = "INTEGER", PrimaryKey = true, NotNull = true }, new FieldDto { Name = "Name", Type = "TEXT", NotNull = true }],
-        ["salary"] = [new FieldDto { Name = "Amount", Type = "INTEGER", NotNull = true }],
-    };
-    public List<List<string>> Rows { get; set; } = [["1", "one"]];
-    public decimal CountValue { get; set; } = 1;
-    public string? FailQueryConnection { get; set; }
-    public bool FailCount { get; set; }
-    public string? UnknownTable { get; set; }
-    public bool IncludeViewSeen { get; set; }
+    private readonly List<ViewDocumentDto> _documents = [];
 
-    public Task<SurfaceOutcome> TablesAsync(SurfaceRequest request, CancellationToken cancellationToken)
+    public IReadOnlyList<string> PublishedNames()
+        => _documents.Where(document => document.Published).Select(document => document.Name).ToList();
+
+    public ViewDocumentDto? Stored(string id)
+        => _documents.FirstOrDefault(document => document.Id == id);
+
+    public Task<IReadOnlyList<ViewDocumentDto>> ListAsync(string callerId, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<ViewDocumentDto>>(_documents.Select(Clone).ToList());
+
+    public Task<ViewDocumentDto?> FindAsync(string id, string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(Stored(id) is { } found ? Clone(found) : null);
+
+    public Task<CatalogWriteResult> SaveAsync(ViewDocumentDto document, string callerId, CancellationToken cancellationToken)
     {
-        Note("tables", request);
-        IncludeViewSeen = request.IncludeViewOmitted;
-        return Task.FromResult(new SurfaceOutcome { Ok = true, Tool = "tables", Tables = Tables.ToList() });
+        var copy = Clone(document);
+        var index = _documents.FindIndex(item => item.Id == copy.Id);
+        if (index < 0)
+            _documents.Add(copy);
+        else
+            _documents[index] = copy;
+        return Task.FromResult(CatalogWriteResult.Success(Clone(copy)));
     }
 
-    public Task<SurfaceOutcome> FieldsAsync(SurfaceRequest request, CancellationToken cancellationToken)
+    public Task<CatalogWriteResult> DeleteAsync(string id, string callerId, CancellationToken cancellationToken)
     {
-        Note("fields", request);
-        if (request.Table == UnknownTable)
-            return Task.FromResult(Fail("fields", "unknown_table", "找不到資料表。"));
-        if (request.Table is null || !Fields.TryGetValue(request.Table, out var fields))
-            return Task.FromResult(Fail("fields", "unknown_table", "找不到資料表。"));
-        return Task.FromResult(new SurfaceOutcome { Ok = true, Tool = "fields", Fields = fields.ToList() });
+        var removed = _documents.RemoveAll(item => item.Id == id);
+        return Task.FromResult(removed == 1
+            ? CatalogWriteResult.Success(null)
+            : CatalogWriteResult.Fail("not_found", "找不到檢視。"));
     }
 
-    public Task<SurfaceOutcome> QueryAsync(SurfaceRequest request, CancellationToken cancellationToken)
+    public Task<CatalogWriteResult> SetPublishedAsync(string id, bool published, string callerId, CancellationToken cancellationToken)
     {
-        Note("query", request);
-        if (request.Connection == FailQueryConnection)
-            return Task.FromResult(Fail("query", "connection_failed", "無法建立連線。"));
-        return Task.FromResult(new SurfaceOutcome
-        {
-            Ok = true,
-            Tool = "query",
-            Columns = ["Id", "Name"],
-            Rows = Rows.Select(row => row.ToList()).ToList(),
-            ParameterKeys = request.Filters.Select(filter => filter.Key).ToList(),
-        });
+        var found = Stored(id);
+        if (found is null)
+            return Task.FromResult(CatalogWriteResult.Fail("not_found", "找不到檢視。"));
+        found.Published = published;
+        return Task.FromResult(CatalogWriteResult.Success(Clone(found)));
     }
 
-    public Task<SurfaceOutcome> CountAsync(SurfaceRequest request, CancellationToken cancellationToken)
-    {
-        Note("count", request);
-        if (FailCount || request.Connection == FailQueryConnection)
-            return Task.FromResult(Fail("count", FailCount ? "execution_failed" : "connection_failed", "無法完成。"));
-        return Task.FromResult(new SurfaceOutcome
-        {
-            Ok = true,
-            Tool = "count",
-            Count = CountValue,
-            ParameterKeys = request.Filters.Select(filter => filter.Key).ToList(),
-        });
-    }
-
-    public void AssertAllowed()
-    {
-        foreach (var call in Calls)
-            AssertTool(call);
-    }
-
-    public static void AssertTool(string tool) =>
-        Assert.IsTrue(tool is "tables" or "fields" or "query" or "count");
-
-    private void Note(string tool, SurfaceRequest request)
-    {
-        Calls.Add(tool);
-        foreach (var filter in request.Filters)
-            ParameterKeys.Add(filter.Key);
-    }
-
-    private static SurfaceOutcome Fail(string tool, string code, string message) => new()
-    {
-        Ok = false,
-        Tool = tool,
-        ErrorCode = code,
-        ErrorMessage = message,
-    };
+    private static ViewDocumentDto Clone(ViewDocumentDto document)
+        => JsonSerializer.Deserialize<ViewDocumentDto>(JsonSerializer.Serialize(document))!;
 }
 
-internal sealed class RecordingCatalog : IConnectionCatalog
+internal sealed class RecordingCaller : IViewCaller
 {
-    public List<ConnectionDto> Mcp { get; set; } =
-    [
-        new ConnectionDto { Name = "inventory", ServerType = "SqlServer" },
-        new ConnectionDto { Name = "inventory_pg", ServerType = "PostgreSQL" },
-    ];
+    public List<string> ToolNames { get; } = [];
+    public List<Dictionary<string, string>> Parameters { get; } = [];
+    public int Count => ToolNames.Count;
     public bool Fail { get; set; }
-    public string WebServerType { get; set; } = "Sqlite";
+    public string FailCode { get; set; } = "execution_failed";
+    public string FailMessage { get; set; } = "鍵值查詢失敗。";
+    public List<string> Columns { get; set; } = ["Name"];
+    public List<List<string>> Rows { get; set; } = [["ROWMARKER"]];
 
-    public Task<CatalogOutcome> ListAsync(string surface, CancellationToken cancellationToken)
+    public Task<ViewCallOutcome> CallAsync(
+        string viewName,
+        string connectionId,
+        IReadOnlyDictionary<string, string> parameters,
+        string callerId,
+        CancellationToken cancellationToken)
     {
+        ToolNames.Add(viewName);
+        Parameters.Add(new Dictionary<string, string>(parameters, StringComparer.Ordinal));
         if (Fail)
-            return Task.FromResult(new CatalogOutcome { ErrorCode = "connection_failed", ErrorMessage = "無法建立連線。" });
-        if (surface == SurfaceNames.Web)
-            return Task.FromResult(new CatalogOutcome { Connections = [new ConnectionDto { Name = "default", ServerType = WebServerType }] });
-        return Task.FromResult(new CatalogOutcome { Connections = Mcp.ToList() });
+            return Task.FromResult(new ViewCallOutcome { Code = FailCode, Message = FailMessage });
+        return Task.FromResult(new ViewCallOutcome
+        {
+            Ok = true,
+            Columns = Columns.ToList(),
+            Rows = Rows.Select(row => row.ToList()).ToList(),
+        });
     }
 }
 
-internal sealed class RecordingAudit : IAuditReader
+internal sealed class RecordingConnections : IConnectionCount
 {
-    public List<AuditEntry> Entries { get; } = [];
-    public bool ThrowOnRead { get; set; }
+    public int Available { get; set; } = 1;
+    public string Name { get; set; } = "warehouse";
 
-    public AuditRead ReadAll()
-    {
-        if (ThrowOnRead)
-            throw new IOException("locked");
-        return new AuditRead { Entries = Entries.ToList() };
-    }
-}
-
-internal sealed class RecordingSidecar : IModelSidecar
-{
-    public List<SidecarRequest> Requests { get; } = [];
-    public SidecarResponse Next { get; set; } = new() { Code = ModelCodes.Ok, Message = "ok", Started = true, Stdout = "" };
-
-    public Task<SidecarResponse> InvokeAsync(SidecarRequest request, CancellationToken cancellationToken)
-    {
-        Requests.Add(request);
-        return Task.FromResult(Next);
-    }
+    public Task<ConnectionTally> TallyAsync(CancellationToken cancellationToken)
+        => Task.FromResult(new ConnectionTally
+        {
+            Available = Available,
+            OnlyName = Available == 1 ? Name : null,
+        });
 }

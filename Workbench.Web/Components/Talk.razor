@@ -1,0 +1,113 @@
+@page "/talk"
+@inject OperatorGate Gate
+@inject UtteranceService Utterances
+@inject RecordService Records
+@inject StyleService Styles
+@inject ExportService Export
+@inject CircuitSession Session
+@inject IJSRuntime Js
+@layout WorkbenchLayout
+
+<h1>交談</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_notice))
+    {
+        <p role="status">@_notice</p>
+    }
+    <form class="panel" @onsubmit="Submit" @onsubmit:preventDefault="true">
+        <label for="utterance">語句
+            <input id="utterance" @bind="_text" @bind:event="oninput" />
+        </label>
+        <div class="actions">
+            <button class="secondary" type="submit">送出</button>
+            <button class="secondary" type="button" @onclick="SaveRecord">存成紀錄</button>
+            <button class="secondary" type="button" @onclick="() => SaveRecordShared(true)">存成共享紀錄</button>
+            <button class="secondary" type="button" @onclick="SaveStyle">存回樣式</button>
+            <button class="secondary" type="button" @onclick="Download">匯出 PDF</button>
+            <button class="secondary" type="button" @onclick="Leave">離開</button>
+        </div>
+    </form>
+    @if (_rows.Count > 0 || _columns.Count > 0)
+    {
+        <table>
+            <thead>
+                <tr>@foreach (var column in _columns) { <th>@column</th> }</tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>@foreach (var cell in row) { <td>@cell</td> }</tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private bool _denied;
+    private string _text = "";
+    private string _notice = "";
+    private List<string> _columns = [];
+    private List<List<string>> _rows = [];
+
+    protected override void OnInitialized()
+    {
+        _denied = Gate.Current is not { } profile || !profile.Has(EntryNames.Terminal);
+    }
+
+    private async Task Submit()
+    {
+        var result = await Utterances.SubmitAsync(Gate.Current!.Id, Session.SessionId ?? "", _text, null, CancellationToken.None);
+        if (!result.Ok)
+        {
+            _notice = result.Error!.Message;
+            _columns = [];
+            _rows = [];
+            return;
+        }
+
+        _notice = result.Value!.Status == "ready" ? "" : result.Value.Reason;
+        _columns = result.Value.Columns;
+        _rows = result.Value.Rows;
+    }
+
+    private void SaveRecord() => SaveRecordShared(false);
+
+    private void SaveRecordShared(bool shared)
+    {
+        var result = Records.Save(Gate.Current!.Id, Session.SessionId ?? "", shared);
+        _notice = result.Ok ? "已保存生成紀錄。" : result.Error!.Message;
+    }
+
+    private void SaveStyle()
+    {
+        var result = Styles.SaveLayout(Gate.Current!.Id, Session.SessionId ?? "", new LayoutWriteRequest { Name = "", Shared = false });
+        _notice = result.Ok ? "已存回樣式。" : result.Error!.Message;
+    }
+
+    private async Task Download()
+    {
+        var result = Export.Pdf(Gate.Current!.Id, Session.SessionId ?? "", null);
+        if (!result.Ok)
+        {
+            _notice = result.Error!.Message;
+            return;
+        }
+
+        var base64 = Convert.ToBase64String(result.Value!);
+        await Js.InvokeVoidAsync("eval", "(() => { const a = document.createElement('a'); a.href = 'data:application/pdf;base64," + base64 + "'; a.download = 'report.pdf'; a.click(); })()");
+    }
+
+    private void Leave()
+    {
+        Utterances.Leave(Session.SessionId ?? "");
+        _columns = [];
+        _rows = [];
+        _notice = "已離開這份尚未另存的報表。";
+    }
+}

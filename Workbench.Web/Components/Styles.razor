@@ -1,0 +1,112 @@
+@page "/styles"
+@inject OperatorGate Gate
+@inject StyleService StyleEditor
+@layout WorkbenchLayout
+
+<h1>樣式</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    @if (_error is not null)
+    {
+        <div class="error" role="alert"><span>@_error.Message</span></div>
+    }
+    <form class="panel" @onsubmit="Suggest" @onsubmit:preventDefault="true">
+        <label>檢視識別<input @bind="_viewId" @bind:event="oninput" /></label>
+        <label>樣式名稱<input @bind="_name" @bind:event="oninput" /></label>
+        <label><input type="checkbox" @bind="_shared" /> 共享</label>
+        <div class="actions">
+            <button class="secondary" type="submit">建議</button>
+            <button class="secondary" type="button" @onclick="Accept">接受</button>
+            <button class="secondary" type="button" @onclick="Ignore">忽略</button>
+        </div>
+    </form>
+    <ol>
+        @for (var index = 0; index < _blocks.Count; index++)
+        {
+            var block = _blocks[index];
+            var current = index;
+            <li>
+                <span class="code">@block.Type</span>
+                <span>@(block.Text ?? block.Parameter ?? string.Join("、", block.Columns))</span>
+                <button type="button" @onclick="() => Move(current, -1)">上移</button>
+                <button type="button" @onclick="() => Move(current, 1)">下移</button>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    private bool _denied;
+    private ErrorDto? _error;
+    private string _viewId = "";
+    private string _name = "";
+    private bool _shared;
+    private string? _styleId;
+    private List<StyleBlockDto> _blocks = [];
+
+    protected override void OnInitialized()
+    {
+        _denied = Gate.Current is not { } profile || !profile.Has(EntryNames.Designer);
+    }
+
+    private async Task Suggest()
+    {
+        var result = await StyleEditor.SuggestAsync(Gate.Current!.Id, _viewId, CancellationToken.None);
+        if (!result.Ok)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        _error = null;
+        _blocks = result.Value!.ToList();
+    }
+
+    private async Task Accept()
+    {
+        var result = await StyleEditor.AcceptAsync(Gate.Current!.Id, new StyleWriteRequest
+        {
+            Id = _styleId,
+            Name = _name,
+            ViewId = _viewId,
+            Shared = _shared,
+            Blocks = _blocks,
+        }, CancellationToken.None);
+        _error = result.Error;
+        if (result.Ok)
+        {
+            _styleId = result.Value!.Id;
+            _blocks = result.Value.Blocks;
+        }
+    }
+
+    private void Ignore()
+    {
+        var result = StyleEditor.Ignore(Gate.Current!.Id, _styleId);
+        _error = result.Error;
+        if (result.Ok && result.Value is not null)
+            _blocks = result.Value.Blocks;
+    }
+
+    private void Move(int index, int direction)
+    {
+        if (string.IsNullOrEmpty(_styleId))
+        {
+            var target = index + direction;
+            if (index < 0 || target < 0 || index >= _blocks.Count || target >= _blocks.Count)
+                return;
+            (_blocks[index], _blocks[target]) = (_blocks[target], _blocks[index]);
+            _blocks = StyleService.Reindex(_blocks);
+            return;
+        }
+
+        var result = StyleEditor.Move(Gate.Current!.Id, _styleId, index, direction);
+        _error = result.Error;
+        if (result.Ok)
+            _blocks = result.Value!.Blocks;
+    }
+}

@@ -1,0 +1,107 @@
+@page "/records"
+@inject OperatorGate Gate
+@inject RecordService RecordEditor
+@inject ExportService Export
+@inject CircuitSession Session
+@inject IJSRuntime Js
+@layout WorkbenchLayout
+
+<h1>生成紀錄</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_notice))
+    {
+        <p role="status">@_notice</p>
+    }
+    <ul>
+        @foreach (var record in _records)
+        {
+            <li>
+                <button type="button" @onclick="() => Open(record.Id)">開啟</button>
+                @if (record.OwnerId == _operatorId)
+                {
+                    <button type="button" @onclick="() => Delete(record.Id)">刪除</button>
+                }
+                <span class="meta">@(record.Shared ? "共享" : "私有")</span>
+            </li>
+        }
+    </ul>
+    @if (_open is not null)
+    {
+        <p class="meta">參數：@string.Join("、", _open.Parameters.Select(pair => pair.Key + "=" + pair.Value))</p>
+        <table>
+            <thead><tr>@foreach (var column in _open.Columns) { <th>@column</th> }</tr></thead>
+            <tbody>
+                @foreach (var row in _open.Rows)
+                {
+                    <tr>@foreach (var cell in row) { <td>@cell</td> }</tr>
+                }
+            </tbody>
+        </table>
+        <button type="button" @onclick="ExportOpen">匯出這份紀錄</button>
+    }
+}
+
+@code {
+    private bool _denied;
+    private string _operatorId = "";
+    private string _notice = "";
+    private IReadOnlyList<RecordDto> _records = [];
+    private RecordDto? _open;
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        if (profile is null || !profile.Has(EntryNames.Terminal))
+        {
+            _denied = true;
+            return;
+        }
+
+        _operatorId = profile.Id;
+        Reload();
+    }
+
+    private void Reload()
+    {
+        var listed = RecordEditor.List(_operatorId);
+        _records = listed.Ok ? listed.Value! : [];
+        if (!listed.Ok)
+            _notice = listed.Error!.Message;
+    }
+
+    private void Open(string id)
+    {
+        var result = RecordEditor.Open(_operatorId, id);
+        _open = result.Ok ? result.Value : null;
+        _notice = result.Ok ? "" : result.Error!.Message;
+    }
+
+    private void Delete(string id)
+    {
+        var result = RecordEditor.Delete(_operatorId, id);
+        _notice = result.Ok ? "已刪除。" : result.Error!.Message;
+        if (result.Ok && _open?.Id == id)
+            _open = null;
+        Reload();
+    }
+
+    private async Task ExportOpen()
+    {
+        if (_open is null)
+            return;
+        var result = Export.Pdf(_operatorId, Session.SessionId ?? "", _open.Id);
+        if (!result.Ok)
+        {
+            _notice = result.Error!.Message;
+            return;
+        }
+
+        var base64 = Convert.ToBase64String(result.Value!);
+        await Js.InvokeVoidAsync("eval", "(() => { const a = document.createElement('a'); a.href = 'data:application/pdf;base64," + base64 + "'; a.download = 'record.pdf'; a.click(); })()");
+    }
+}

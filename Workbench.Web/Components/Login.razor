@@ -1,5 +1,6 @@
 @page "/"
 @inject SessionService Sessions
+@inject OperatorGate Gate
 @inject CircuitSession Session
 @inject IJSRuntime Js
 @inject NavigationManager Nav
@@ -42,6 +43,8 @@
 
         Session.Adopt(result.Value!.SessionId);
         await Js.InvokeVoidAsync("wbSetSession", result.Value.SessionId);
-        Nav.NavigateTo("/live", forceLoad: true);
+        var profile = Gate.Current;
+        var destination = profile is null ? "/" : OperatorService.ToMe(profile).Destination;
+        Nav.NavigateTo(destination, forceLoad: true);
     }
 }

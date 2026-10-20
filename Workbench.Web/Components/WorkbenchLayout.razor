@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @inject CircuitSession Session
 @inject OperatorGate Gate
-@inject RoleRailService Roles
+@inject OperatorService Operators
 @inject SessionService Sessions
 @inject IJSRuntime Js
 @inject NavigationManager Nav
@@ -18,25 +18,35 @@
         else
         {
             <p class="who">@_me.DisplayName</p>
-            @if (_me.Rail.EmptyMessage is not null)
+            @if (_station is null && _me.Entries.Count > 1)
             {
-                <p class="notice">@_me.Rail.EmptyMessage</p>
+                <p class="meta">換站</p>
             }
-            @if (HasWork)
+            else if (_station == EntryNames.Analyst)
             {
-                <p class="meta">工作</p>
-                @if (_me.Rail.LivePreview) { <NavLink href="/live">活資料預覽</NavLink> }
-                @if (_me.Rail.Templates) { <NavLink href="/templates">範本庫</NavLink> }
-                @if (_me.Rail.Intent) { <NavLink href="/intent">交談套版</NavLink> }
-                @if (_me.Rail.Favorites) { <NavLink href="/favorites">常用清單</NavLink> }
-                @if (_me.Rail.Preview) { <NavLink href="/preview">預覽</NavLink> }
+                <p class="meta">系統分析師</p>
+                <NavLink href="/views">檢視定義</NavLink>
             }
-            @if (HasAdmin)
+            else if (_station == EntryNames.Designer)
+            {
+                <p class="meta">設計師</p>
+                <NavLink href="/styles">樣式</NavLink>
+            }
+            else if (_station == EntryNames.Terminal)
+            {
+                <p class="meta">終端使用者</p>
+                <NavLink href="/talk">交談</NavLink>
+                <NavLink href="/records">生成紀錄</NavLink>
+            }
+            @if (_me.Entries.Count > 1)
+            {
+                <NavLink href="/stations">換站</NavLink>
+            }
+            @if (_me.IsAdmin)
             {
                 <p class="meta">管理</p>
-                @if (_me.Rail.Accounts) { <NavLink href="/operators">帳號</NavLink> }
-                @if (_me.Rail.Assignments) { <NavLink href="/assignments">角色指派</NavLink> }
-                @if (_me.Rail.Model) { <NavLink href="/model">模型設定</NavLink> }
+                <NavLink href="/operators">帳號</NavLink>
+                <NavLink href="/entries">入口指派</NavLink>
             }
             <button class="secondary" type="button" @onclick="Logout">登出</button>
         }
@@ -45,41 +55,12 @@
         <article class="content">
             <CascadingValue Value="this">@Body</CascadingValue>
         </article>
-        @if (_me is not null)
-        {
-            <aside class="trace" aria-label="取數軌跡">
-                <p class="meta">取數軌跡</p>
-                @if (_traces.Count == 0)
-                {
-                    <p class="empty">這次還沒有結構呼叫或填數呼叫。</p>
-                }
-                else
-                {
-                    @foreach (var trace in _traces)
-                    {
-                        <div class="trace-row">
-                            <p class="code">@trace.Tool</p>
-                            @if (!string.IsNullOrEmpty(trace.Connection))
-                            {
-                                <p class="meta">@trace.Connection</p>
-                            }
-                            @if (!string.IsNullOrEmpty(trace.ErrorCode))
-                            {
-                                <p class="code">@trace.ErrorCode</p>
-                            }
-                        </div>
-                    }
-                }
-            </aside>
-        }
     </div>
 </div>
 
 @code {
     private MeResponse? _me;
-    private IReadOnlyList<TraceDto> _traces = [];
-    private bool HasWork => _me is not null && (_me.Rail.LivePreview || _me.Rail.Templates || _me.Rail.Intent || _me.Rail.Favorites || _me.Rail.Preview);
-    private bool HasAdmin => _me is not null && (_me.Rail.Accounts || _me.Rail.Assignments || _me.Rail.Model);
+    private string? _station;
 
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
@@ -111,11 +92,17 @@
     public async Task RefreshAsync()
     {
         var profile = Gate.Current;
-        _me = profile is null ? null : RoleRailService.ToMe(profile);
+        _me = profile is null ? null : OperatorService.ToMe(profile);
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        _station = relative switch
+        {
+            "views" => EntryNames.Analyst,
+            "styles" => EntryNames.Designer,
+            "talk" or "records" => EntryNames.Terminal,
+            _ => null,
+        };
         await InvokeAsync(StateHasChanged);
     }
-
-    public void ShowTraces(IReadOnlyList<TraceDto>? traces) => _traces = traces ?? [];
 
     private async Task Logout()
     {

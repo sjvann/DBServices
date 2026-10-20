@@ -44,82 +44,97 @@ public sealed class ShellApi
         _http.DefaultRequestHeaders.Authorization = null;
     }
 
-    public Task<List<ConnectionDto>> ConnectionsAsync(string surface, CancellationToken cancellationToken = default)
-        => ReadAsync<List<ConnectionDto>>("api/connections?surface=" + surface, cancellationToken);
+    public Task<MeResponse?> MeAsync(CancellationToken cancellationToken = default)
+        => ReadAsync<MeResponse>("api/me", cancellationToken);
 
-    public Task<SurfacePayload> TablesAsync(string surface, string connection, CancellationToken cancellationToken = default)
-        => ReadAsync<SurfacePayload>("api/structure/tables?surface=" + Uri.EscapeDataString(surface) + "&connection=" + Uri.EscapeDataString(connection), cancellationToken);
+    public Task<List<OperatorDto>?> OperatorsAsync(CancellationToken cancellationToken = default)
+        => ReadAsync<List<OperatorDto>>("api/operators", cancellationToken);
 
-    public Task<SurfacePayload> FieldsAsync(string surface, string connection, string table, CancellationToken cancellationToken = default)
-        => ReadAsync<SurfacePayload>("api/structure/fields?surface=" + Uri.EscapeDataString(surface) + "&connection=" + Uri.EscapeDataString(connection) + "&table=" + Uri.EscapeDataString(table), cancellationToken);
+    public Task<OperatorDto?> CreateOperatorAsync(string displayName, string secret, CancellationToken cancellationToken = default)
+        => PostAsync<OperatorDto>("api/operators", new OperatorWriteRequest { DisplayName = displayName, Secret = secret }, cancellationToken);
 
-    public Task<PlanResponse> QueryAsync(PlanRequest request, CancellationToken cancellationToken = default)
-        => PostAsync<PlanResponse>("api/plans/query", request, cancellationToken);
+    public Task<OperatorDto?> AssignEntriesAsync(string operatorId, IReadOnlyList<string> entries, CancellationToken cancellationToken = default)
+        => PutAsync<OperatorDto>("api/operators/" + operatorId + "/entries", new EntryAssignmentRequest { Entries = entries.ToList() }, cancellationToken);
 
-    public Task<PlanResponse> CountAsync(PlanRequest request, CancellationToken cancellationToken = default)
-        => PostAsync<PlanResponse>("api/plans/count", request, cancellationToken);
+    public Task<List<ViewSummaryDto>?> ViewsAsync(CancellationToken cancellationToken = default)
+        => ReadAsync<List<ViewSummaryDto>>("api/views", cancellationToken);
 
-    public Task<List<GroupDto>> GroupsAsync(CancellationToken cancellationToken = default)
-        => ReadAsync<List<GroupDto>>("api/groups", cancellationToken);
+    public Task<ViewDocumentDto?> SaveViewAsync(ViewDocumentDto document, CancellationToken cancellationToken = default)
+        => PutAsync<ViewDocumentDto>("api/views/" + Uri.EscapeDataString(document.Id), document, cancellationToken);
 
-    public Task<AssignmentDto> GetAssignmentsAsync(string operatorId, CancellationToken cancellationToken = default)
-        => ReadAsync<AssignmentDto>("api/assignments/" + operatorId, cancellationToken);
+    public Task<ViewDocumentDto?> PublishViewAsync(string id, CancellationToken cancellationToken = default)
+        => PostAsync<ViewDocumentDto>("api/views/" + Uri.EscapeDataString(id) + "/publish", new { }, cancellationToken);
 
-    public Task<AssignmentDto> SaveAssignmentsAsync(string operatorId, AssignmentDto assignment, CancellationToken cancellationToken = default)
-        => PutAsync<AssignmentDto>("api/assignments/" + operatorId, assignment, cancellationToken);
+    public Task<List<StyleDto>?> StylesAsync(CancellationToken cancellationToken = default)
+        => ReadAsync<List<StyleDto>>("api/styles", cancellationToken);
 
-    public Task<FavoriteOpenResponse> OpenFavoriteAsync(string id, CancellationToken cancellationToken = default)
-        => PostAsync<FavoriteOpenResponse>("api/favorites/" + id + "/open", new { }, cancellationToken);
+    public Task<StyleDto?> AcceptStyleAsync(StyleWriteRequest request, CancellationToken cancellationToken = default)
+        => PostAsync<StyleDto>("api/styles", request, cancellationToken);
 
-    public Task<byte[]> PdfAsync(string snapshotId, CancellationToken cancellationToken = default)
-        => BytesAsync("api/preview/" + snapshotId + "/pdf", cancellationToken);
+    public Task<UtteranceResponse?> SubmitAsync(string text, CancellationToken cancellationToken = default)
+        => PostAsync<UtteranceResponse>("api/utterance", new UtteranceRequest { Text = text }, cancellationToken);
 
-    public Task<string> CsvAsync(string snapshotId, CancellationToken cancellationToken = default)
-        => TextAsync("api/preview/" + snapshotId + "/csv", cancellationToken);
+    public Task<List<RecordDto>?> RecordsAsync(CancellationToken cancellationToken = default)
+        => ReadAsync<List<RecordDto>>("api/records", cancellationToken);
 
-    public Task<string> PrintAsync(string snapshotId, CancellationToken cancellationToken = default)
-        => TextAsync("api/preview/" + snapshotId + "/print", cancellationToken);
+    public Task<RecordDto?> OpenRecordAsync(string id, CancellationToken cancellationToken = default)
+        => ReadAsync<RecordDto>("api/records/" + Uri.EscapeDataString(id), cancellationToken);
 
-    public Task<bool> AddKeywordAsync(KeywordWriteRequest request, CancellationToken cancellationToken = default)
-        => PostOkAsync("api/keyword-rules/from-confirm", request, cancellationToken);
+    public Task<RecordDto?> SaveRecordAsync(bool shared, CancellationToken cancellationToken = default)
+        => PostAsync<RecordDto>("api/records", new RecordWriteRequest { Shared = shared }, cancellationToken);
 
-    private async Task<T> ReadAsync<T>(string url, CancellationToken cancellationToken) where T : new()
+    public Task<byte[]> PdfAsync(string? recordId, CancellationToken cancellationToken = default)
+        => BytesAsync(string.IsNullOrEmpty(recordId) ? "api/export/pdf" : "api/export/pdf?recordId=" + Uri.EscapeDataString(recordId), cancellationToken);
+
+    private async Task<T?> ReadAsync<T>(string url, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, url, null, cancellationToken);
         if (!response.IsSuccessStatusCode)
-            return new T();
-        return await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken) ?? new T();
+        {
+            LastError = await response.Content.ReadAsStringAsync(cancellationToken);
+            return default;
+        }
+
+        LastError = null;
+        return await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken);
     }
 
-    private async Task<T> PostAsync<T>(string url, object body, CancellationToken cancellationToken) where T : new()
+    private async Task<T?> PostAsync<T>(string url, object body, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Post, url, body, cancellationToken);
-        var payload = await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken);
-        return payload ?? new T();
+        return await ReadBodyAsync<T>(response, cancellationToken);
     }
 
-    private async Task<T> PutAsync<T>(string url, object body, CancellationToken cancellationToken) where T : new()
+    private async Task<T?> PutAsync<T>(string url, object body, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Put, url, body, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken) ?? new T();
+        return await ReadBodyAsync<T>(response, cancellationToken);
     }
 
-    private async Task<bool> PostOkAsync(string url, object body, CancellationToken cancellationToken)
+    private async Task<T?> ReadBodyAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Post, url, body, cancellationToken);
-        return response.IsSuccessStatusCode;
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            LastError = text;
+            return default;
+        }
+
+        LastError = null;
+        return JsonSerializer.Deserialize<T>(text, Json);
     }
 
     private async Task<byte[]> BytesAsync(string url, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, url, null, cancellationToken);
-        return response.IsSuccessStatusCode ? await response.Content.ReadAsByteArrayAsync(cancellationToken) : [];
-    }
+        if (!response.IsSuccessStatusCode)
+        {
+            LastError = await response.Content.ReadAsStringAsync(cancellationToken);
+            return [];
+        }
 
-    private async Task<string> TextAsync(string url, CancellationToken cancellationToken)
-    {
-        using var response = await SendAsync(HttpMethod.Get, url, null, cancellationToken);
-        return await response.Content.ReadAsStringAsync(cancellationToken);
+        LastError = null;
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
     private Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body, CancellationToken cancellationToken)
@@ -129,11 +144,4 @@ public sealed class ShellApi
             request.Content = JsonContent.Create(body);
         return _http.SendAsync(request, cancellationToken);
     }
-}
-
-public sealed class SurfacePayload
-{
-    public List<string> Tables { get; set; } = [];
-    public List<FieldDto> Fields { get; set; } = [];
-    public string? ErrorCode { get; set; }
 }

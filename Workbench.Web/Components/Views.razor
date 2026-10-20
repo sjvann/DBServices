@@ -1,0 +1,101 @@
+@page "/views"
+@inject OperatorGate Gate
+@inject ViewService ViewEditor
+@layout WorkbenchLayout
+
+<h1>檢視定義</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    @if (_error is not null)
+    {
+        <div class="error" role="alert"><span>@_error.Message</span></div>
+    }
+    <form class="panel" @onsubmit="Save" @onsubmit:preventDefault="true">
+        <label>識別<input @bind="_id" @bind:event="oninput" /></label>
+        <label>名稱<input @bind="_name" @bind:event="oninput" /></label>
+        <label>目的<input @bind="_purpose" @bind:event="oninput" /></label>
+        <label>來源表<input @bind="_source" @bind:event="oninput" /></label>
+        <label>參數名<input @bind="_parameter" @bind:event="oninput" /></label>
+        <label>參數欄<input @bind="_parameterColumn" @bind:event="oninput" /></label>
+        <label>輸出欄<input @bind="_column" @bind:event="oninput" /></label>
+        <div class="actions">
+            <button class="secondary" type="submit">保存檢視</button>
+            <button class="secondary" type="button" @onclick="Publish">發布</button>
+        </div>
+    </form>
+    @foreach (var view in _views)
+    {
+        <p>@view.Name<span class="meta"> @(view.Published ? "已發布" : "未發布")</span></p>
+    }
+}
+
+@code {
+    private bool _denied;
+    private ErrorDto? _error;
+    private string _id = "";
+    private string _name = "";
+    private string _purpose = "";
+    private string _source = "";
+    private string _parameter = "";
+    private string _parameterColumn = "";
+    private string _column = "";
+    private IReadOnlyList<ViewSummaryDto> _views = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Analyst))
+        {
+            _denied = true;
+            return;
+        }
+
+        var listed = await ViewEditor.ListAsync(profile.Id, CancellationToken.None);
+        if (listed.Ok)
+            _views = listed.Value!;
+    }
+
+    private ViewDocumentDto Document() => new()
+    {
+        Id = _id.Trim(),
+        Name = _name.Trim(),
+        Purpose = _purpose,
+        Sources = string.IsNullOrWhiteSpace(_source) ? [] : [_source.Trim()],
+        Parameters = string.IsNullOrWhiteSpace(_parameter) ? [] : [new ViewParameterDto { Name = _parameter.Trim(), Column = _parameterColumn.Trim(), Source = _source.Trim() }],
+        Columns = string.IsNullOrWhiteSpace(_column) ? [] : [new ViewColumnDto { Name = _column.Trim(), Source = _source.Trim() }],
+    };
+
+    private async Task Save()
+    {
+        var profile = Gate.Current!;
+        var result = await ViewEditor.SaveAsync(profile.Id, Document(), CancellationToken.None);
+        _error = result.Error;
+        if (result.Ok)
+            await Reload(profile.Id);
+    }
+
+    private async Task Publish()
+    {
+        var profile = Gate.Current!;
+        var saved = await ViewEditor.SaveAsync(profile.Id, Document(), CancellationToken.None);
+        if (!saved.Ok)
+        {
+            _error = saved.Error;
+            return;
+        }
+
+        var published = await ViewEditor.PublishAsync(profile.Id, saved.Value!.Id, CancellationToken.None);
+        _error = published.Error;
+        await Reload(profile.Id);
+    }
+
+    private async Task Reload(string operatorId)
+    {
+        var listed = await ViewEditor.ListAsync(operatorId, CancellationToken.None);
+        if (listed.Ok)
+            _views = listed.Value!;
+    }
+}

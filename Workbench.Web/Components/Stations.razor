@@ -1,0 +1,38 @@
+@page "/stations"
+@inject OperatorGate Gate
+@layout WorkbenchLayout
+
+<h1>換站</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    <p class="meta">選擇一個入口。三個站不會同時出現在同一條軌。</p>
+    <div class="actions">
+        @foreach (var entry in _entries)
+        {
+            <a class="secondary" href="@EntryNames.Home(entry)">@EntryNames.Label(entry)</a>
+        }
+    </div>
+}
+
+@code {
+    private bool _denied;
+    private List<string> _entries = [];
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        if (profile is null || profile.Entries.Count < 2)
+        {
+            _denied = profile is not null && profile.Entries.Count < 2 && !profile.IsAdmin;
+            if (profile is { } current && current.Entries.Count == 1)
+                _entries = current.Entries.ToList();
+            return;
+        }
+
+        _entries = profile.Entries.ToList();
+    }
+}

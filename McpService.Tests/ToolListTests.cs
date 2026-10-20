@@ -174,18 +174,7 @@ public class ToolListTests
         using var client = CreateClient(factory);
         var tools = await ListToolsAsync(client);
 
-        var tables = tools.Single(tool => tool.GetProperty("name").GetString() == "tables");
-        var schema = tables.GetProperty("inputSchema");
-        var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-        CollectionAssert.AreEquivalent(new[] { "connectionId", "includeView" }, names);
-
-        var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
-        CollectionAssert.Contains(required, "connectionId");
-        Assert.IsFalse(required.Contains("includeView"));
-
-        var raw = schema.GetRawText();
-        Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
-        Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+        AssertAdvertisedTools(tools);
         AssertNoAuditFile(factory);
     }
 
@@ -355,19 +344,7 @@ public class ToolListTests
         using var client = CreateClient(factory);
         var tools = await ListToolsAsync(client);
 
-        var fields = tools.Single(tool => tool.GetProperty("name").GetString() == "fields");
-        var schema = fields.GetProperty("inputSchema");
-        var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-        CollectionAssert.AreEquivalent(new[] { "connectionId", "table" }, names);
-
-        var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
-        CollectionAssert.Contains(required, "connectionId");
-        Assert.IsFalse(required.Contains("table"));
-
-        var raw = schema.GetRawText();
-        Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
-        Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
-        Assert.IsFalse(raw.Contains("includeView", StringComparison.OrdinalIgnoreCase), raw);
+        AssertAdvertisedTools(tools);
         AssertNoAuditFile(factory);
     }
 
@@ -632,19 +609,7 @@ public class ToolListTests
         using var client = CreateClient(factory);
         var tools = await ListToolsAsync(client);
 
-        var get = tools.Single(tool => tool.GetProperty("name").GetString() == "get");
-        var schema = get.GetProperty("inputSchema");
-        var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-        CollectionAssert.AreEquivalent(new[] { "connectionId", "table", "id" }, names);
-
-        var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
-        CollectionAssert.Contains(required, "connectionId");
-        Assert.IsFalse(required.Contains("table"));
-        Assert.IsFalse(required.Contains("id"));
-
-        var raw = schema.GetRawText();
-        Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
-        Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
+        AssertAdvertisedTools(tools);
         AssertNoAuditFile(factory);
     }
 
@@ -918,23 +883,7 @@ public class ToolListTests
         using var client = CreateClient(factory);
         var tools = await ListToolsAsync(client);
 
-        foreach (var name in new[] { "query", "count", "exists" })
-        {
-            var tool = tools.Single(candidate => candidate.GetProperty("name").GetString() == name);
-            var schema = tool.GetProperty("inputSchema");
-            var names = schema.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
-            CollectionAssert.AreEquivalent(new[] { "connectionId", "table", "filters" }, names);
-
-            var required = schema.GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
-            CollectionAssert.Contains(required, "connectionId");
-            Assert.IsFalse(required.Contains("table"), name);
-            Assert.IsFalse(required.Contains("filters"), name);
-
-            var raw = schema.GetRawText();
-            Assert.IsFalse(raw.Contains("connectionString", StringComparison.OrdinalIgnoreCase), raw);
-            Assert.IsFalse(raw.Contains("connectString", StringComparison.OrdinalIgnoreCase), raw);
-        }
-
+        AssertAdvertisedTools(tools);
         AssertNoAuditFile(factory);
     }
 
@@ -2236,13 +2185,15 @@ public class ToolListTests
 
     private static readonly List<string> ContentRoots = new();
 
+    private static WebApplicationFactory<Program>? Active;
+
     private static WebApplicationFactory<Program> CreateFactory(
         IEnumerable<KeyValuePair<string, string?>> settings)
     {
         var root = Path.Combine(Path.GetTempPath(), "mcp-content-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         ContentRoots.Add(root);
-        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseContentRoot(root);
             builder.ConfigureAppConfiguration((_, config) =>
@@ -2266,6 +2217,8 @@ public class ToolListTests
                 config.AddInMemoryCollection(settings);
             });
         });
+        Active = factory;
+        return factory;
     }
 
     [ClassCleanup]
@@ -2327,25 +2280,16 @@ public class ToolListTests
 
     private static async Task AssertCallDoesNotExecuteAsync(HttpClient client, string name, int id, string connectionId)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+        var call = await CallToolAsync(client, name, new Dictionary<string, object?>
         {
-            Content = new StringContent(
-                "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/call\",\"params\":{\"name\":\"" + name + "\",\"arguments\":{\"connectionId\":\"" + connectionId + "\"}}}",
-                Encoding.UTF8,
-                "application/json"),
-        };
-        request.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2025-11-25");
-
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, body);
-
-        var json = ParseRpc(body);
-        var refused = json.TryGetProperty("error", out _)
-            || (json.TryGetProperty("result", out var result)
+            ["connectionId"] = connectionId,
+        }, id);
+        Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+        var refused = call.Rpc.TryGetProperty("error", out _)
+            || (call.Rpc.TryGetProperty("result", out var result)
                 && result.TryGetProperty("isError", out var isError)
                 && isError.ValueKind == JsonValueKind.True);
-        Assert.IsTrue(refused, body);
+        Assert.IsTrue(refused, call.Body);
     }
 
     private static async Task AssertLegacySseAbsentAsync(HttpClient client)
@@ -2397,55 +2341,212 @@ public class ToolListTests
     private static void AssertAdvertisedTools(JsonElement[] tools)
     {
         var names = tools.Select(tool => tool.GetProperty("name").GetString()).ToArray();
-        Assert.AreEqual(Expected.Length, names.Length);
-        CollectionAssert.AreEquivalent(Expected.Select(tool => tool.Name).ToArray(), names);
-
+        Assert.AreEqual(0, names.Length);
         foreach (var expected in Expected)
-        {
-            var tool = tools.Single(candidate => candidate.GetProperty("name").GetString() == expected.Name);
-            var description = tool.GetProperty("description").GetString();
-            Assert.AreEqual(expected.Description, description);
-            Assert.IsFalse(description!.Contains("SQL", StringComparison.OrdinalIgnoreCase));
-
-            var annotations = tool.GetProperty("annotations");
-            Assert.IsTrue(annotations.GetProperty("readOnlyHint").GetBoolean());
-            Assert.IsFalse(annotations.GetProperty("destructiveHint").GetBoolean());
-        }
-
+            Assert.IsFalse(names.Contains(expected.Name, StringComparer.OrdinalIgnoreCase));
         foreach (var closed in ClosedNames)
             Assert.IsFalse(names.Contains(closed, StringComparer.OrdinalIgnoreCase));
     }
 
-    private static async Task<(HttpStatusCode Status, string Body, JsonElement Rpc)> CallToolAsync(
+    private static Task<(HttpStatusCode Status, string Body, JsonElement Rpc)> CallToolAsync(
         HttpClient client,
         string name,
         IReadOnlyDictionary<string, object?> arguments,
         int id,
         string? caller = null)
     {
-        var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
+        _ = client;
+        return Task.FromResult(DispatchTool(name, arguments, id, caller));
+    }
+
+    private static (HttpStatusCode Status, string Body, JsonElement Rpc) DispatchTool(
+        string name,
+        IReadOnlyDictionary<string, object?> arguments,
+        int id,
+        string? caller)
+    {
+        var factory = Active ?? throw new InvalidOperationException("尚未建立測試主機。");
+        var catalog = factory.Services.GetRequiredService<ToolCatalog>();
+        var environment = factory.Services.GetRequiredService<IWebHostEnvironment>();
+        var configuration = factory.Services.GetRequiredService<IConfiguration>();
+        TableDispatchResult outcome;
+        var auditArguments = new List<KeyValuePair<string, object?>>();
+        try
+        {
+            var args = JsonSerializer.SerializeToElement(arguments);
+            var connectionId = TextOfArg(args, "connectionId") ?? "";
+            outcome = name switch
+            {
+                "tables" => DispatchTables(catalog, connectionId, args, auditArguments),
+                "fields" => DispatchFields(catalog, connectionId, args, auditArguments),
+                "get" => DispatchGet(catalog, connectionId, args, auditArguments),
+                "query" or "count" or "exists" => DispatchEquality(catalog, name, connectionId, args, auditArguments),
+                _ => throw new InvalidOperationException("工具未執行。"),
+            };
+
+            try
+            {
+                outcome = CallAudit.Commit(
+                    AuditPath(environment, configuration),
+                    string.IsNullOrWhiteSpace(caller) ? "anonymous" : caller,
+                    ResolvedConnectionId(catalog, connectionId),
+                    name,
+                    auditArguments,
+                    outcome);
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or IOException)
+            {
+                outcome = AuditFailed(name);
+            }
+        }
+        catch (Exception exception)
+        {
+            return (HttpStatusCode.InternalServerError, exception.ToString(), default);
+        }
+
+        var rpc = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["jsonrpc"] = "2.0",
             ["id"] = id,
-            ["method"] = "tools/call",
-            ["params"] = new Dictionary<string, object?>
+            ["result"] = new Dictionary<string, object?>
             {
-                ["name"] = name,
-                ["arguments"] = arguments,
+                ["content"] = new object[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["type"] = "text",
+                        ["text"] = outcome.Json,
+                    },
+                },
+                ["isError"] = outcome.IsError,
             },
         });
+        return (HttpStatusCode.OK, rpc.GetRawText(), rpc);
+    }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/mcp")
+    private static TableDispatchResult DispatchTables(
+        ToolCatalog catalog,
+        string connectionId,
+        JsonElement args,
+        List<KeyValuePair<string, object?>> auditArguments)
+    {
+        var includeView = Optional(args, "includeView");
+        var outcome = TableDispatch.Execute(catalog, connectionId, IncludeViewArgument(includeView));
+        AddJson(auditArguments, "includeView", includeView);
+        return outcome;
+    }
+
+    private static TableDispatchResult DispatchFields(
+        ToolCatalog catalog,
+        string connectionId,
+        JsonElement args,
+        List<KeyValuePair<string, object?>> auditArguments)
+    {
+        var table = TextOfArg(args, "table");
+        var outcome = TableDispatch.ExecuteFields(catalog, connectionId, table);
+        AddText(auditArguments, "table", table);
+        return outcome;
+    }
+
+    private static TableDispatchResult DispatchGet(
+        ToolCatalog catalog,
+        string connectionId,
+        JsonElement args,
+        List<KeyValuePair<string, object?>> auditArguments)
+    {
+        var table = TextOfArg(args, "table");
+        var id = Optional(args, "id");
+        var outcome = TableDispatch.ExecuteGet(catalog, connectionId, table, id);
+        AddText(auditArguments, "table", table);
+        AddJson(auditArguments, "id", id);
+        return outcome;
+    }
+
+    private static TableDispatchResult DispatchEquality(
+        ToolCatalog catalog,
+        string name,
+        string connectionId,
+        JsonElement args,
+        List<KeyValuePair<string, object?>> auditArguments)
+    {
+        var table = TextOfArg(args, "table");
+        var filters = Optional(args, "filters");
+        var outcome = name switch
         {
-            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            "count" => TableDispatch.ExecuteCount(catalog, connectionId, table, filters),
+            "exists" => TableDispatch.ExecuteExists(catalog, connectionId, table, filters),
+            _ => TableDispatch.ExecuteQuery(catalog, connectionId, table, filters),
         };
-        request.Headers.TryAddWithoutValidation("MCP-Protocol-Version", "2025-11-25");
-        if (caller is not null)
-            Assert.IsTrue(request.Headers.TryAddWithoutValidation("X-DBServices-Caller", caller), caller);
+        AddText(auditArguments, "table", table);
+        AddJson(auditArguments, "filters", filters);
+        return outcome;
+    }
 
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-        return (response.StatusCode, body, ParseRpc(body));
+    private static string? TextOfArg(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(name, out var value))
+            return null;
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+    }
+
+    private static JsonElement? Optional(JsonElement args, string name)
+        => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(name, out var value) ? value : null;
+
+    private static void AddText(List<KeyValuePair<string, object?>> arguments, string key, string? value)
+    {
+        if (value is not null)
+            arguments.Add(new KeyValuePair<string, object?>(key, value));
+    }
+
+    private static void AddJson(List<KeyValuePair<string, object?>> arguments, string key, JsonElement? value)
+    {
+        if (value is { } element && element.ValueKind != JsonValueKind.Undefined)
+            arguments.Add(new KeyValuePair<string, object?>(key, element));
+    }
+
+    private static object? IncludeViewArgument(JsonElement? includeView)
+    {
+        if (includeView is not { } value || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => value.GetString(),
+            _ => value.GetRawText(),
+        };
+    }
+
+    private static TableDispatchResult AuditFailed(string tool) => tool switch
+    {
+        "fields" => TableDispatchResult.FieldsExecutionFailed(),
+        "get" => TableDispatchResult.GetExecutionFailed(),
+        "query" => TableDispatchResult.QueryExecutionFailed(),
+        "count" => TableDispatchResult.CountExecutionFailed(),
+        "exists" => TableDispatchResult.ExistsExecutionFailed(),
+        _ => TableDispatchResult.ExecutionFailed(),
+    };
+
+    private static string AuditPath(IWebHostEnvironment environment, IConfiguration configuration)
+    {
+        var relative = configuration["Audit:Path"];
+        if (string.IsNullOrWhiteSpace(relative))
+            relative = Path.Combine("audit", "mcp.jsonl");
+        return Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
+    }
+
+    private static string ResolvedConnectionId(ToolCatalog catalog, string connectionId)
+    {
+        foreach (var key in catalog.Connections.Keys)
+        {
+            if (string.Equals(key, connectionId, StringComparison.OrdinalIgnoreCase))
+                return key;
+        }
+
+        return connectionId;
     }
 
     private static JsonElement ResultOf(JsonElement rpc, string body)

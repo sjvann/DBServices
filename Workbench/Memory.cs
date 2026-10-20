@@ -27,54 +27,26 @@ public sealed class MemorySessionStore : ISessionStore
     public void Clear() => _sessions.Clear();
 }
 
-public sealed class MemoryPreviewStore : IPreviewMemory
+public sealed class MemoryReportStore : IReportMemory
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, FillPlan> _plans = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Snapshot> _current = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ReportDocument> _current = new(StringComparer.Ordinal);
 
-    public void SavePlan(FillPlan plan)
+    public void Save(string sessionId, ReportDocument report)
     {
         lock (_gate)
-            _plans[plan.Id] = plan;
+            _current[sessionId] = report;
     }
 
-    public FillPlan? FindPlan(string planId)
+    public ReportDocument? Current(string sessionId)
     {
         lock (_gate)
-            return _plans.TryGetValue(planId, out var plan) ? plan : null;
+            return _current.TryGetValue(sessionId, out var report) ? report : null;
     }
 
-    public bool MarkUsed(string planId)
+    public void Clear(string sessionId)
     {
         lock (_gate)
-        {
-            if (!_plans.TryGetValue(planId, out var plan) || plan.Used)
-                return false;
-            plan.Used = true;
-            return true;
-        }
-    }
-
-    public void ReplaceSnapshot(Snapshot snapshot)
-    {
-        lock (_gate)
-            _current[snapshot.SessionId] = snapshot;
-    }
-
-    public Snapshot? Current(string sessionId)
-    {
-        lock (_gate)
-            return _current.TryGetValue(sessionId, out var snapshot) ? snapshot : null;
-    }
-
-    public Snapshot? FindSnapshot(string sessionId, string snapshotId)
-    {
-        lock (_gate)
-        {
-            if (!_current.TryGetValue(sessionId, out var snapshot) || snapshot.Id != snapshotId)
-                return null;
-            return snapshot;
-        }
+            _current.Remove(sessionId);
     }
 }
