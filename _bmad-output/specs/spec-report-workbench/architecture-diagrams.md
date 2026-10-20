@@ -2,7 +2,7 @@
 
 ## 依賴
 
-`Workbench.Web` 的 Blazor 在進程內呼叫 Core。Avalonia 只依賴契約，經宿主 HTTP 進入同一組端口。側車只依賴契約。儲存與配接器實作 Core 的端口。
+Blazor 在進程內呼叫 Core。Avalonia 只依賴契約，經宿主 HTTP 進入同一組端口。儲存與配接器實作 Core 的端口。側車不在這張圖裡：倉儲留著專案，三個入口不啟動它。
 
 ```mermaid
 flowchart TD
@@ -13,7 +13,6 @@ flowchart TD
   core[Workbench.Core]
   adapters[Workbench.Adapters]
   store[Workbench.Storage.Sqlite]
-  sidecar[DbServices.ModelSidecar]
   avalonia --> contracts
   web --> core
   web --> contracts
@@ -22,48 +21,44 @@ flowchart TD
   host --> store
   adapters --> core
   core --> contracts
-  sidecar --> contracts
   store --> core
 ```
 
 ## 執行
 
-一個工作台進程持有 SQLite、`model.json`，以及工作階段、確認清單與預覽快照。側車是子程序，連到操作者指定的雲端 `https` 或本機迴圈位址。業務庫連線留在 `McpService` 與 `WebService`。
+瀏覽器與 Avalonia 都進入同一個工作台進程。檢視目錄在 `McpService`。Web API 的箭頭是尚未綁定的轉置，不用來產生動態報表。
 
 ```mermaid
 flowchart LR
   browser[Browser]
   desktop[Avalonia]
   workbench[Workbench_host]
-  modelFile[model.json]
   dbFile[(workbench.sqlite)]
-  memory[Session_confirm_snapshot]
-  sidecar[Model_sidecar]
-  endpoint[Cloud_or_loopback_model]
+  memory[Session_and_unsaved_report]
   mcp[McpService]
+  catalog[DbServices.Mcp_catalog]
   webapi[WebService]
   browser --> workbench
   desktop --> workbench
   workbench --> dbFile
   workbench --> memory
-  workbench --> modelFile
-  workbench --> sidecar
-  sidecar --> endpoint
-  workbench -->|GET_connections_and_POST_mcp| mcp
-  workbench --> webapi
+  workbench -->|views_and_one_connection_count| mcp
+  mcp --> catalog
+  workbench -.->|transpose_not_yet_bound| webapi
 ```
 
-## 專案樹
+## 專案
 
 ```text
 Workbench/                      # 組裝：DI、聽取位址、沒有畫面
 Workbench.Web/                  # Blazor，只參考 Core 與 Contracts
 Workbench.Core/                 # 端口與應用規則
-Workbench.Contracts/            # 元件、意圖、確認清單、探測與軌跡
-Workbench.Adapters/             # MCP、Web API、GET /connections、側車程序
-Workbench.Storage.Sqlite/       # 工作台 SQLite
+Workbench.Contracts/            # 樣式、意圖、動態報表
+Workbench.Adapters/             # MCP 檢視呼叫、目錄 HTTP、連線筆數
+Workbench.Storage.Sqlite/       # 操作者、入口、樣式、生成紀錄
 Workbench.Avalonia/             # 桌面殼，只呼叫工作台 HTTP
-DbServices.ModelSidecar/        # 自包含側車，唯一的 IChatClient
-Workbench.Tests/
-McpService/                     # 既有宿主，另加 GET /connections
+McpService/                     # 既有宿主。GET /connections 已在。目錄寫入在 /mcp 之外
+DbServices.Mcp/                 # 檢視目錄與 Discovery
 ```
+
+`Workbench.Tests` 與 `DbServices.ModelSidecar` 沿用現有方案。側車不參考 `DbServices.Core`、Provider 或 `DbServices.Mcp`。

@@ -1,6 +1,6 @@
-# 工作台形狀
+# 存放與語句形狀
 
-欄位是契約，不是資料庫綱要。名稱可以不同。不得多出連線字串、模型金鑰、明文密碼或業務列，除非該節明文允許快照在記憶體中持有該次列。
+欄位是契約，不是資料庫綱要。名稱可以不同。不得多出連線字串、模型金鑰或明文密碼。業務列只允許出現在生成紀錄與尚未保存的動態報表。
 
 ## 操作者
 
@@ -8,144 +8,88 @@
 | --- | --- |
 | `id` | 穩定識別。呼叫 MCP 時寫入 `X-DBServices-Caller` |
 | `displayName` | 畫面上的名稱 |
-| `passwordVerifier` | `PasswordHasher` 驗證材料。不是明文密碼 |
+| `passwordVerifier` | 密碼驗證材料。不是明文密碼 |
 | `admin` | 是否為管理員 |
+| `entries` | `analyst`、`designer`、`enduser` 的子集 |
 
-沒有註冊 API。儲存裡零個操作者時，宿主讀 `Workbench:InitialAdmin:DisplayName` 與 `Workbench:InitialAdmin:Password`，寫入恰好一個管理員。已有操作者之後這兩個鍵不再使用。
+沒有註冊 API。沒有群組，也沒有 `design` 或 `view` 角色欄位。儲存裡零個操作者時，宿主讀 `Workbench:InitialAdmin:DisplayName` 與 `Workbench:InitialAdmin:Password`，寫入恰好一個 `admin`。已有操作者之後這兩個鍵不再使用。明文密碼不寫入 SQLite 與日誌。
 
-## 群組與角色
+## 檢視
 
-| 欄位 | 語意 |
-| --- | --- |
-| 群組 `id`、`name` | 群組識別與名稱 |
-| 指派 `operatorId`、`groupId`、`role` | `role` 只會是 `design` 或 `view` |
+```json
+{
+  "id": "view-sales-month",
+  "name": "銷貨月檢視",
+  "purpose": "依年月回答銷貨",
+  "published": true,
+  "sources": ["sales", "product"],
+  "links": [{ "from": "sales", "to": "product", "by": "productId", "kind": "foreign-key" }],
+  "parameters": [{ "field": "yearMonth", "label": "年月" }],
+  "columns": ["yearMonth", "sku", "qty"]
+}
+```
 
-一個操作者對一個群組至多一筆指派。`design` 在讀取時視同 `view`。
+沒有 `connectionString`，也沒有 `rows`。`id` 穩定。`name` 是 MCP 工具名稱，目錄內不重複，比對不區分大小寫。`published` 為 false 時，目錄不含這筆。`sources` 只有一張表時，`links` 為空陣列。兩張以上時，每一段的 `kind` 只許 `foreign-key` 或 `accepted`；否則不能保存。仍被樣式的 `viewId` 引用時，不能刪除、不能取消發布，也不能改 `name`、`columns`、`parameters`、`sources` 或 `links`。`purpose` 可以改。
 
-## 報表範本
+## 樣式範本
 
 ```json
 {
   "id": "tmpl-sales-month",
-  "groupId": "grp-sales",
+  "ownerId": "op-zhou",
+  "visibility": "shared",
   "name": "銷貨月報",
+  "viewId": "view-sales-month",
   "components": []
 }
 ```
 
-`name` 在同一個 `groupId` 內唯一。沒有連線名稱、連線字串、參數值或資料列。
+`visibility` 只會是 `private` 或 `shared`。沒有 `connectionId`、`connectionString`、參數值或 `rows`。`components` 依 `order` 升冪，從 0 起連續。`type` 只會是：
 
-## 常用項目
+| type | 必要欄位 | 讀列時 |
+| --- | --- | --- |
+| `title` | `text` | 不呼叫。文字進動態報表與匯出 |
+| `text` | `text` | 不呼叫 |
+| `parameter` | `field`、`label` | 不單獨呼叫。其值組成該檢視的參數 |
+| `table` | `columns` | 不單獨呼叫。欄來自所綁檢視的輸出欄 |
+
+一筆樣式恰好一個 `viewId`。參數值由就緒的交談提供，不寫在區塊上。
+
+設計建議的最小集合是一個 `table`，其 `columns` 等於該檢視的輸出欄，再加上每個已宣告參數各一個 `parameter`。建議裡沒有參數值與業務列。未知欄名不能接受。
+
+## 報表生成紀錄
 
 ```json
 {
-  "id": "fav-1",
+  "id": "gen-1",
   "ownerId": "op-chen",
-  "name": "十月銷貨",
+  "visibility": "private",
   "templateId": "tmpl-sales-month",
-  "surface": "mcp",
-  "connectionId": "inventory",
-  "parameters": { "yearMonth": "2026-10" }
+  "viewId": "view-sales-month",
+  "parameters": { "yearMonth": "2026-10" },
+  "components": [],
+  "columns": ["yearMonth", "sku", "qty"],
+  "rows": []
 }
 ```
 
-`surface` 只會是 `mcp` 或 `web`。`parameters` 的鍵是參數元件的欄位名稱，值是純量。沒有版面複本，也沒有資料列。參數值可能是業務鍵值，與業務列分開存放。清單以 `ownerId` 過濾。
+`components` 是當時的區塊順序與文字。`columns` 與 `rows` 是該次呼叫的結果。`parameters` 是純量。沒有 `connectionString`。再開讀這幾欄，不回讀樣式，也不呼叫 MCP。`private` 只對 `ownerId` 可讀。`shared` 對持有 `enduser` 的其他人可讀。產品介面不提供管理員跨人讀取私有紀錄。
 
-## 預覽快照與確認清單
+## 語句
 
-快照與清單只在那一個宿主進程的記憶體。鍵是操作者 `id` 加上清單識別。快照的值是該次畫面的數字與列。不寫入 SQLite。離開該次預覽，或同一操作者的下一次確認，兩份都刪除。沒有閒置逾時。
-
-## 五種元件
-
-`components` 依 `order` 升冪。`order` 從 0 起連續。`type` 只會是下表之一。不保存 x、y、寬與高。
-
-| type | 必要欄位 | 填數時 |
-| --- | --- | --- |
-| `title` | `text` | 不呼叫。文字進預覽與匯出 |
-| `text` | `text` | 不呼叫 |
-| `parameter` | `field`、`label` | 不單獨呼叫。其值組成等值篩選。元件上不存值 |
-| `table` | `table`、`columns` | 一次列查詢。`columns` 至少一個欄名 |
-| `count` | `table` | MCP 上一次 `count`。Web API 上整份範本拒絕確認 |
-
-同一份範本的參數值合成一個物件，每個 `table` 與 `count` 都帶上這整個物件。任一資料表缺少某個參數欄位時，整次確認被拒絕，不發送任何填數呼叫。
-
-設計器建議的最小形狀是一個 `table`，其 `columns` 等於該次 `fields` 的欄名集合。建議裡沒有參數值與業務列。類型只會是上表五種。
-
-## 解析輸入與狀態
-
-送給側車的輸入只有：
+輸入只有：
 
 | 輸入 | 內容 |
 | --- | --- |
-| `kind` | 解析時為 `parse` |
 | `utterance` | 語句原文 |
-| `connections` | `name` 與 `serverType`。沒有連線字串 |
-| `templates` | 有權限範本的 `id`、`name`、`groupId`，以及參數的 `field` 與 `label` |
-| `surfaces` | 這次允許的取數表面 |
+| `templates` | 可讀樣式的 `id`、`name`、`viewId`，以及參數的 `field` 與 `label` |
 
-不傳業務列、連線字串、密碼、詞庫或其他操作者的常用項目。
+不傳業務列、連線字串、連線清單、密碼或其他人的私有紀錄。
 
-宿主計算的 `status` 只會是：
+輸出的 `status` 只會是 `ready`、`ambiguous`、`incomplete`。`ready` 是恰好一筆樣式且每個參數都有純量值。`ambiguous` 是樣式多於一筆。`incomplete` 是沒有樣式，或缺少參數值。宿主重算這個狀態。候選若含輸入清單以外的樣式，整份作廢。
 
-| status | 條件 |
-| --- | --- |
-| `ready` | 恰好一個連線、恰好一個範本，且該範本每個參數都有一個純量值 |
-| `ambiguous` | 連線或範本候選多於一個 |
-| `incomplete` | 沒有連線、沒有範本，或缺少參數值 |
+比對規則：語句包含某個樣式 `name` 才讓該樣式進入候選。包含某個參數的 `field` 或 `label` 時，其後第一個不以空白拆開的詞是值；全由數字組成可作數字。對不到的不補猜。範圍詞只有在同一個詞也能當參數值時才採用。不從語句擷取連線名稱。
 
-不以解析器自報的狀態作為可以確認的依據。候選若含有本次輸入以外的連線或範本，整份作廢，填數次數為 0。等值篩選的欄必須是該範本的參數欄。
+## 工作階段
 
-關鍵字比對在核心完成，不啟動側車：
-
-- 語句含連線 `name`，該連線入候選。
-- 語句含範本 `name`，該範本入候選。
-- 語句含參數 `field` 或 `label` 時，其後第一個不以空白拆開的詞為值。值維持字串；全由數字組成可作數字。
-- 對不到的不補猜。
-- 時間範圍只有在同一個詞能當某個參數的一個等值時才成為篩選。否則該參數保持缺少，也不另造區間查詢。
-
-有效的關鍵字規則再加上去。參數值仍從語句取出，不從規則取出。模型啟用且合併後的狀態不是 `ready` 時，才把上表輸入送給側車，然後由宿主重算狀態。
-
-## 關鍵字規則
-
-一筆規則含 `phrase`、可省略的連線名稱、可省略的範本識別、參數欄名陣列、`source`（`human` 或 `ai`）、建立者，以及是否有效。
-
-`phrase` 非空白，且連線、範本、參數欄名至少有一項。沒有參數值、資料列、連線字串、模型金鑰與密碼。
-
-人為新增立即有效。操作者只能為自己看得到的範本加規則。只綁連線名稱時，已登入操作者即可新增。來自 AI 的規則只在操作者確認該次意圖後，按一次加入關鍵字才寫入。`phrase` 可由語句帶入，並在寫入前修改。參數只留欄名。模型自行完成的解析不寫入規則。建立者或管理員可把規則改為無效。比對時略過這位操作者現在看不到的範本。解析不讀常用項目。
-
-## 確認清單
-
-一次就緒的範本預覽由核心產生，例如：
-
-```json
-{
-  "calls": [
-    {
-      "surface": "mcp",
-      "name": "query",
-      "connectionId": "inventory",
-      "table": "sales",
-      "filters": { "yearMonth": "2026-10" },
-      "componentId": "c-table"
-    },
-    {
-      "surface": "mcp",
-      "name": "count",
-      "connectionId": "inventory",
-      "table": "sales",
-      "filters": { "yearMonth": "2026-10" },
-      "componentId": "c-count"
-    }
-  ]
-}
-```
-
-每個資料表元件一筆列查詢。MCP 上每個計數元件一筆 `count`。確認請求帶回清單識別。執行前再核對清單、範本、角色與表面能力。實際送出的填數呼叫與清單相同，沒有額外的 `query`、`count` 或 Web API 資料 GET。
-
-## 模型設定與探測
-
-有效設定只有一份。欄位是 `enabled`、`placement`（`cloud` 或 `local`）、`endpoint`、`modelId`、`apiKey`、`probeTimeoutSeconds`、`parseTimeoutSeconds`。
-
-`cloud` 的 `endpoint` 必須是 `https`，且有效金鑰非空白。`local` 的主機必須是 `localhost`、`127.0.0.1` 或 `::1`，金鑰可空白。
-
-探測的標準輸入只有 `kind` 為 `probe`、`placement`、`endpoint`、`modelId`。草稿有帶金鑰就用草稿，否則用目前有效設定。解析不使用草稿。
+宿主記憶體的一筆是 `sessionId` 與操作者 `id`。尚未寫入生成紀錄的動態報表也在這個進程的記憶體，鍵是操作者 `id`。離開該次報表，或同一人產生下一份，這塊記憶體刪除。

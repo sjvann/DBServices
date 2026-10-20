@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>交談</title>
+<style>
+/* Governs: DESIGN.md report-well, intent-status, commit-button.
+   EXPERIENCE.md 交談, UJ-3 edge. Not ready: no rows. Spine wins on conflict. */
+:root {
+  --surface-base: #F3F5F7;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #E7ECF1;
+  --ink-primary: #1B2430;
+  --ink-secondary: #4E5D6C;
+  --border: #D0D7DE;
+  --action: #0F4C5C;
+  --action-foreground: #FFFFFF;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #D5DDE3;
+  font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.frame { width: 1100px; height: 800px; margin: 24px auto; background: var(--surface-base); border: 1px solid var(--border); padding: 24px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+.station { font-size: 12px; color: var(--ink-secondary); margin: 4px 0 24px; }
+.utter { display: flex; gap: 8px; }
+input { flex: 1; border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font: inherit; background: var(--surface-raised); }
+.commit { background: var(--action); color: var(--action-foreground); border: 0; border-radius: 4px; padding: 8px 12px; font: inherit; }
+.status { margin: 16px 0; color: var(--ink-secondary); }
+.well { background: var(--surface-sunken); color: var(--ink-secondary); border-radius: 4px; min-height: 280px; padding: 24px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <h1>Chat 報表生成器</h1>
+  <p class="station">終端使用者</p>
+  <form class="utter">
+    <input value="銷貨月報" aria-label="語句">
+    <button class="commit" type="button">送出語句</button>
+  </form>
+  <p class="status">缺少條件。還缺年月。</p>
+  <section class="well">這裡還沒有動態報表。</section>
+</div>
+</body>
+</html>

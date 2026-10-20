@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>檢視定義</title>
+<style>
+/* Governs: DESIGN.md commit-button, Layout. EXPERIENCE.md 檢視定義, UJ-1.
+   One station. No connection string. Spine wins on conflict. */
+:root {
+  --surface-base: #F3F5F7;
+  --surface-raised: #FFFFFF;
+  --ink-primary: #1B2430;
+  --ink-secondary: #4E5D6C;
+  --border: #D0D7DE;
+  --action: #0F4C5C;
+  --action-foreground: #FFFFFF;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #D5DDE3;
+  font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.frame { width: 1100px; height: 800px; margin: 24px auto; background: var(--surface-base); display: flex; border: 1px solid var(--border); }
+.list { width: 240px; padding: 24px 16px; border-right: 1px solid var(--border); }
+.list h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+.station { font-size: 12px; color: var(--ink-secondary); margin-bottom: 24px; }
+.row { display: block; padding: 8px 12px; border-radius: 4px; background: var(--surface-raised); border: 1px solid var(--border); margin-bottom: 8px; }
+.page { flex: 1; padding: 24px; }
+.head { display: flex; justify-content: space-between; align-items: center; }
+.page h2 { font-size: 20px; font-weight: 600; margin: 0; }
+.commit { background: var(--action); color: var(--action-foreground); border: 0; border-radius: 4px; padding: 8px 12px; font: inherit; }
+.meta { color: var(--ink-secondary); font-size: 12px; margin: 8px 0 24px; }
+label { display: block; font-size: 12px; color: var(--ink-secondary); margin: 16px 0 4px; }
+input, textarea { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font: inherit; background: var(--surface-raised); }
+.code { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <aside class="list">
+    <h1>檢視</h1>
+    <p class="station">模組設計工具</p>
+    <div class="row">銷貨月檢視</div>
+  </aside>
+  <main class="page">
+    <div class="head">
+      <h2>銷貨月檢視</h2>
+      <button class="commit" type="button">發布</button>
+    </div>
+    <p class="meta">二代平台的表與欄。尚未發布。</p>
+    <label for="purpose">目的</label>
+    <textarea id="purpose" rows="2">依年月回答銷貨</textarea>
+    <label>來源表</label>
+    <p>sales、product</p>
+    <label>關聯</label>
+    <p class="code">sales.productId → product.productId</p>
+    <label>輸出欄</label>
+    <p class="code">yearMonth、sku、qty</p>
+    <label>參數</label>
+    <p>年月 <span class="code">yearMonth</span></p>
+  </main>
+</div>
+</body>
+</html>

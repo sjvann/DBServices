@@ -1,189 +1,199 @@
-# Adversary review — Architecture Spine DBServices 報表工作台 2026-10-12
+# Adversary review — Architecture Spine DBServices 檢視與報表 2026-10-20
 
 - **Lens:** adversarial
 - **Content class:** docs (architecture spine, behavioral)
-- **Content:** `ARCHITECTURE-SPINE.md`
-- **Method:** 往下一層組兩套實作。單元是史詩或故事。每一套都必須能引用現行 Rules，而且不新增產品範圍。兩邊仍對不上的共享資料形狀、同一實體的兩個主人、或兩條狀態變更路徑，才算一個洞。
+- **Content:** `ARCHITECTURE-SPINE.md`（altitude: feature；其下單元是史詩或故事）
+- **Parent:** `architecture-DBServices-2026-10-11`。父 AD-12、父 AD-6 整句有效；父 AD-3 自承只描述營運除錯路徑。
+- **Method:** 往下一層組兩套實作。每一套都引用現行 Rules，不新增產品範圍，也不把 Deferred 已鎖住的選項當成已採用。兩邊仍對不上的共享資料形狀、同一實體的兩個主人、或兩條狀態變更路徑，才算一個洞。
 - **Verdict:** holes
 
-Deferred 已寫明 PDF／CSV 套件、稽核保留天數、資料表級授權、SSO、公開註冊、GraphQL 填數、自由 SQL、區間與跨表，以及沒有 OpenAI 相容 HTTP 的本地執行庫。這些不計入下面的洞：現在就選定其中一種的單元，無法引用「再定」。
+引用位置都指這份主幹的 Rules、Design Paradigm、Structural Seed 與 Consistency Conventions。父脊只在子脊沒有把該句收進來、而兩套又能各自符合子脊時，拿來說明縫在哪裡。
 
-引用位置都指這份主幹的 Rules、Design Paradigm、Structural Seed 與 Consistency Conventions。既有 WebService 的 JSON 只在某一條 AD 已經把「原樣進入預覽」交進去時，才拿來當碰撞的現場。
+Deferred 已寫明：規劃期表結構通道、轉置是否落地、詞庫新增介面、模型設定與側車啟動、PDF／CSV 套件、稽核保留天數、呼叫者身分證明（目錄寫入只拒絕空白）、資料表級授權、SSO、公開註冊、GraphQL、自由 SQL、區間與跨表。父 AD-12 的目錄媒介（檔案、SQLite 或其他）仍是未決。這些不計入下面的洞。
 
 ---
 
 ## 兩邊都能逐字符合
 
-### 1. 確認前的呼叫清單沒有主人
+### 1. 已發布檢視的工具引數沒有同一層
 
 - **lens:** adversarial
-- **location:** AD-7；AD-5；AD-2；Design Paradigm「核心：確認清單、預覽快照」
-- **units:** 史詩「交談確認」對 史詩「活資料預覽確認」
-- **trigger_condition:** 就緒後要有一份可憑識別取回的呼叫清單，但 Rules 只規定快照放在宿主記憶體。
+- **location:** AD-3；繼承表 parent AD-3、parent AD-12；父 AD-12「參數是該定義自己宣告的篩選，加上既有的 `connectionId` 規則」；父 AD-3 首句「本決策只描述營運除錯路徑」
+- **units:** 史詩「檢視呼叫配接器」對 史詩「公開工具調度」
+- **trigger_condition:** 就緒且恰有一筆組態完整連線時要送出一次檢視呼叫。子脊只規定送 `connectionId` 與純量篩選，沒有規定篩選鍵放在哪一層。
 - **兩套都符合的讀法:**
-  - 交談確認引用 AD-7「由核心產生呼叫清單並給予識別」與 Design Paradigm 的核心擁有確認清單。清單放在 `Workbench.Core` 的靜態字典，鍵只有清單識別。AD-7 把「操作者」寫在快照鍵上，沒有寫在清單鍵上。AD-5 的檔案封閉清單沒有這張表，所以不進 SQLite。AD-7 的離開、下一次確認、閒置 30 分鐘只刪快照，不刪這份清單。項目形狀沿 AD-3 的 MCP：`filters` 物件。
-  - 活資料預覽引用同一句「確認請求帶回該識別」，把識別做成簽過名的清單本體，內含操作者 id。不另佔字典，重啟後仍能核對。Web 那一筆不放 `filters`，改放 `resourceName`、`Key`、`Value`，因為 AD-3 規定 Web 的送出形狀就是這兩個查詢參數，而且「實際送出的填數呼叫與清單相同」。
-- **clash:** 同一個確認端點無法交換兩種識別。字典那套在重啟後全部失效，簽名那套仍可執行。字典鍵不含操作者，甲可以拿乙的識別完成確認；簽名那套會拒絕。MCP 項目與 Web 項目不是同一種紀錄，執行器無法共用。AD-2 只說宿主持有預覽快照，沒有把未確認清單交給同一處。
-- **guard_snippet:** 收緊 AD-7：未確認清單只放宿主記憶體，鍵是操作者加清單識別，程序重啟即失。不進 SQLite、cookie、bearer，也不把呼叫本體簽進識別。項目欄位寫死為 `surface`、`name`、`connectionId`、`table`（Web 為 `resourceName`）、`filters`（純量巢狀；Web 單鍵仍是一個純量，送出時才拆成 `Key` 與 `Value`）、可空的 `componentId`。執行前用當下範本重算清單，與保存的那份逐欄相等；不等就整次拒絕。
-- **potential_consequence:** 兩個殼或兩條確認入口各自保存清單，實際送出的呼叫與畫面上列明的那份對不上，或一個操作者執行了另一人的填數呼叫。
+  - 配接器引用父 AD-12：宣告過的參數就是篩選，和 `connectionId` 放在同一層。`GET /connections` 恰好一筆時，頂層是 `connectionId` 加上每個參數 `field`。不包 `filters`，因為父 AD-3 的 `filters` 物件只舉 `query`、`count`、`exists`。未宣告的頂層鍵拒絕、不執行。
+  - 調度器引用子脊「篩選維持純量」與除錯路徑既有的物件：純量放進恰好一層的 `filters`，`connectionId` 留在外面。`filters` 這個名字是宿主參數，不是檢視欄位。宣告過的 `field` 若出現在頂層，視為未宣告欄位，拒絕、不執行。
+- **clash:** 同一句就緒語句，一邊送出 `{ "connectionId", "yearMonth": "2026-10" }`，另一邊送出 `{ "connectionId", "filters": { "yearMonth": "2026-10" } }`。對方的調度都把它當成未宣告引數而拒絕。AD-7 的「恰好呼叫一次」在一邊已執行，在另一邊是 `invalid_arguments` 且不執行。成功形狀 `columns`／`rows` 到不了同一份動態報表。
+- **guard_snippet:** 收緊 AD-3，並寫明這是父 AD-12 的呼叫形狀，不是父 AD-3 的除錯路徑：已發布檢視的工具引數頂層恰好是 `connectionId` 與該檢視已宣告的參數 `field`。值是純量。不使用 `filters` 物件，不送 `table`。`filters`、未宣告的 `field`、以及與 `connectionId` 不區分大小寫相同的參數名，都是父 AD-7 的 `invalid_arguments`，不執行。除錯路徑的 `filters` 維持父 AD-3，不套用到 Discovery 裡的檢視。
+- **potential_consequence:** 工作台與 `McpService` 各寫一套引數，就緒之後不是零列成功，就是被當成非法引數。稽核裡的 `arguments` 也無法對上畫面所說的參數。
 
-### 2. 登入工作階段沒有紀錄本體
+### 2. `viewId` 沒有指到同一個鍵
 
 - **lens:** adversarial
-- **location:** AD-6；AD-5；AD-1；Design Paradigm「登入」在核心，且核心不參考 ASP.NET
-- **units:** 故事「Blazor cookie 登入」對 故事「Avalonia bearer 登入」
-- **trigger_condition:** 兩邊都要指向宿主上的同一筆工作階段，但這筆紀錄的存放處、欄位與壽命都沒寫。SQLite 封閉清單裡沒有它。
+- **location:** AD-14；AD-15；AD-3；父 AD-2「名稱比對不區分大小寫」；父 AD-12「一個已發布模組視圖是一個公開工具」
+- **units:** 故事「樣式綁定」對 故事「目錄主鍵」
+- **trigger_condition:** 樣式的 `viewId` 恰好指向一筆已發布檢視，呼叫與「仍被引用」都用這個值。Rules 沒有寫它是工具名稱、穩定識別，或比對是否沿用父脊的不區分大小寫。
 - **兩套都符合的讀法:**
-  - Blazor 引用 AD-6 的 cookie，以及 AD-1「核心不參考 ASP.NET」。`PasswordHasher` 因此放在宿主。工作階段是加密 cookie 裡的自包含票證，欄位是操作者 id 與簽發時間。AD-5 不允許工作階段表。Avalonia 的 bearer 複製同一段票證，「同一筆」指內容相同。登出把票證識別放進宿主記憶體的作廢清單。Cookie 沿用 ASP.NET 預設的滑動續期，只更新 cookie。
-  - Avalonia 引用 AD-6「同一筆工作階段」與「登出使該工作階段失效」。宿主記憶體只有一筆 `{sessionId, operatorId}`，由核心的登入端口建立。Cookie 與 bearer 都只帶 `sessionId`。登出刪除該筆。重啟後全部失效。`PasswordHasher` 是宿主對該端口的實作，相容模式與迭代次數用套件預設。
-- **clash:** 滑動續期之後，cookie 與 bearer 不再是同一筆票證；記憶體那套仍是一筆。程序重啟後，自包含票證的作廢清單一起消失，bearer 又變有效；記憶體那套必須重新登入。兩套寫出的 `passwordVerifier` 不能互換，因為迭代次數沒有寫死。登入狀態的主人一個是 ASP.NET cookie 處理器，一個是核心端口。
-- **guard_snippet:** 收緊 AD-6：工作階段只有宿主記憶體一筆，欄位僅 `sessionId` 與操作者 id。Cookie 與 bearer 都只帶 `sessionId`。登出刪除該筆。重啟全部失效。不使用自包含票證，也不做滑動續期。`PasswordHasher` 只在宿主實作核心端口，寫明 `PasswordHasherCompatibilityMode.IdentityV3` 與迭代次數。核心不參考 ASP.NET，也不自己寫第二份工作階段。
-- **potential_consequence:** 登出只讓其中一個殼失效；重啟之後已登出的 bearer 恢復；兩次安裝的密碼驗證材料不能互相讀。
+  - 樣式綁定引用 AD-14 與父 AD-12：已發布檢視就是公開工具，`viewId` 儲存 Discovery 名稱。呼叫時 `tools/call` 的名稱就是 `viewId`。引用檢查用序數、區分大小寫的字串相等。AD-15 禁止在仍被引用時改名稱，所以這個字串不會漂。
+  - 目錄主鍵引用 AD-15「不能改名稱、輸出欄或參數」與 AD-14「指向一筆檢視」：目錄另有不變的 `id`，`name` 才是工具名稱。樣式的 `viewId` 儲存 `id`。配接器先把 `id` 換成 `name` 再呼叫。引用檢查沿父 AD-2，不區分大小寫。
+- **clash:** 同一筆樣式的 `viewId` 一邊是「銷貨月檢視」，一邊是「view-sales-month」。直接拿 `viewId` 當工具名稱會得到 `unknown_tool`；先查 `id` 的那套又認不得名稱。大小寫不同的兩筆記錄，一邊算引用、拒絕取消發布，另一邊視為未引用而刪除。父 AD-12 的工具名稱與子脊的綁定鍵不是同一個欄位。
+- **guard_snippet:** 收緊 AD-14 與 AD-15：檢視的 `id` 是目錄內不變的非空字串，`name` 是 Discovery 工具名稱。樣式與生成紀錄的 `viewId` 只存 `id`，不存 `name`。呼叫時由目錄把 `id` 換成 `name`，名稱比對沿父 AD-2，序數、不區分大小寫，只做一次。引用檢查只比較 `viewId` 與 `id`，序數、區分大小寫。仍被引用時不能改 `name`、輸出欄或參數；`id` 建立後不能改。
+- **potential_consequence:** 樣式庫與目錄對不齊。取消發布在一個故事裡被擋住，在另一個故事裡已發布工具從 Discovery 消失，就緒呼叫變成 `unknown_tool`。
 
-### 3. Blazor 與 `DbServices.Mcp` 沒有專案邊界
+### 3. 檢視文件的欄位與關聯段
 
 - **lens:** adversarial
-- **location:** AD-1；AD-4；Structural Seed「`Workbench` 參考 `DbServices.Mcp`」與「Blazor 在 `Workbench`」；流程圖 `blazor --> host --> mcpLib`
-- **units:** 故事「Blazor 連線清單」對 故事「核心目錄端口」
-- **trigger_condition:** 殼不得參考 `DbServices.Mcp`，但 Blazor 沒有自己的專案，編譯進已參考該套件的 `Workbench`。
+- **location:** AD-15；父 AD-2「每一筆有名稱、短述與長解說」；父 AD-12「解說為空或仍是草稿時不得發布」「路徑的每一段是目錄外鍵，或定義裡已寫明並由人接受的關聯」
+- **units:** 史詩「目錄 HTTP」對 史詩「工作台檢視編輯」
+- **trigger_condition:** 兩邊都要保存目的、來源表、關聯、輸出欄與參數，一張來源表時關聯為空。Rules 沒有共同的 JSON 鍵，也沒有把「目的」對上 Discovery 的短述與長解說。
 - **兩套都符合的讀法:**
-  - Blazor 連線清單引用 Structural Seed：參考屬於 `Workbench`，Blazor 沒有第二個 `ProjectReference`。AD-1「不參考」因此只約束 `Workbench.Avalonia` 的專案參考。AD-1「只經過核心端口」的封閉清單是填數、結構呼叫、範本讀寫、角色判斷、解析與快照，不含 AD-4 的連線中繼資料。Razor 直接呼叫 `DbServices.Mcp` 的新讀取方法，回傳型別用該套件上沒有連線字串的那個型別。填數仍走核心端口。元件不讀 `ConnectionSnapshot.ConnectionString`。
-  - 核心目錄端口引用 AD-1「兩個殼都不參考 `DbServices.Mcp`」，把 Blazor 算成殼，Razor 與 code-behind 都不出現該命名空間。AD-4 的讀取包成 `Workbench.Core` 的端口，回傳 `Workbench.Contracts` 的 `{ name, serverType, available }`。只有宿主的配接器參考 `DbServices.Mcp`。Avalonia 的 HTTP 使用同一個契約。
-- **clash:** 連線清單這一個實體有兩個主人、兩種 CLR 形狀。Blazor 綁套件型別，Avalonia 綁契約型別。`Workbench` 的專案參考讓 Razor 能編譯 `DbServices.Mcp`（以及它傳遞而來的 `DbServices.Core`）上的其他公開成員；第一套認為這不算殼的參考，第二套認為這已經違反邊界。AD-4 只說「回傳型別沒有連線字串屬性」，沒有說型別放在哪一個專案。
-- **guard_snippet:** 收緊 AD-1 與 AD-4：Blazor 畫面放在不參考 `DbServices.Mcp` 的專案，或明文禁止 `Workbench` 的 Razor、code-behind 使用 `DbServices.Mcp`、`DbServices.Core`、Provider 命名空間。連線中繼資料的唯一回傳型別放在 `Workbench.Contracts`，欄位僅 `name`、`serverType`、`available`。只有宿主配接器參考 `DbServices.Mcp`，而且只呼叫 AD-4 那個讀取方法與 AD-3 的四個工具。`Workbench.Core` 不參考 `DbServices.Mcp`。
-- **potential_consequence:** 瀏覽器殼直接持有 MCP 型別與基底網址，桌面殼走另一種 JSON。之後任一方都能繞過核心端口呼叫填數。
+  - 目錄 HTTP 的本體是 `name`、`purpose`、`sources[]`、`joins[]`、`outputs[]`、`parameters[]`。`purpose` 同時寫進 Discovery 的短述與長解說。`joins` 的每一段含 `fromTable`、`fromColumn`、`toTable`、`toColumn`。沒有別的旗標時，有欄位對的段就視為分析師已接受。一張表時 `joins` 為空。
+  - 檢視編輯的本體是 `viewId`、`intent`、`tables[]`、`relations[]`、`columns[]`、`filters[]`。`intent` 是目的，可在被引用後修改。Discovery 的解說是另一個 `description`，發布時非空，之後不跟著 `intent` 改。`relations[].accepted === true` 才算已接受；沒有這個旗標就拒絕保存。
+- **clash:** 同一筆檢視，HTTP 雙方都認為自己帶了目的、來源、關聯、輸出欄與參數，文件卻無法互讀。一邊發布後 Discovery 的解說等於目的，改目的會改解說；另一邊改目的不改解說。關聯段一邊無旗標即保存，另一邊因缺少 `accepted` 而整筆拒絕。父 AD-12 的「解說」與子脊的「目的」沒有被說成同一份文字。
+- **guard_snippet:** 收緊 AD-15：目錄 JSON 鍵只有 `id`、`name`、`purpose`、`published`、`sources`（字串陣列）、`links`、`parameters`（`field` 與 `label`）、`columns`（字串陣列）。`purpose` 就是父 AD-2 的短述與長解說，不另存第二份；空白或草稿不能發布；被引用後仍只許改 `purpose`。`links` 的一段是 `from`、`to`、`by`、`kind`。`kind` 只許 `fk` 或 `accepted`。一張來源表時 `links` 為空陣列。兩張以上時每一段都要有 `kind`，否則拒絕保存，既有定義不變。這個文件形狀與媒介選擇無關；媒介仍依父 AD-12 未決，兩套實作不得各選一種媒介。
+- **potential_consequence:** `McpService` 與工作台配接器各持有一份檢視。發布在一邊成功、另一邊拒絕；Discovery 上的解說與分析師剛改的目的不一致。
 
-### 4. 同一句片語可以同時進詞庫與常用項目
+### 4. 被樣式引用的檢視有兩個主人
 
 - **lens:** adversarial
-- **location:** AD-12；AD-5；AD-8；Consistency Conventions「參數值留在該次語句或個人常用項目」
-- **units:** 故事「加入關鍵字」對 故事「保存常用項目」
-- **trigger_condition:** 關鍵字規則的 `phrase` 與常用項目的「個人叫法」都可以保存同一段文字，沒有跨表唯一性，也沒有誰供解析使用。
+- **location:** AD-15；AD-2；AD-5
+- **units:** 故事「刪除前回呼」對 故事「目錄自備引用集合」
+- **trigger_condition:** 仍被樣式 `viewId` 引用時，目錄上的刪除、取消發布，以及名稱、輸出欄、參數的修改都要失敗。樣式在工作台 SQLite，目錄在 `McpService`。AD-2 只許 `Workbench` 開啟那份 SQLite。
 - **兩套都符合的讀法:**
-  - 加入關鍵字引用 AD-12：`phrase` 寫進共用詞庫，可帶連線名稱、範本識別與參數欄名，沒有參數值。常用項目不寫進這份詞庫。AD-8 的兩層只有看得到的名稱與仍有效的規則，所以語句只命中規則。缺值就停留在未就緒，填數次數是 0。
-  - 保存常用項目引用 AD-5「常用項目有 `surface`、連線名稱與參數值」——這句是「有」，不是「僅有」；明文禁止的是版面複本、資料列、密碼與連線字串，沒有禁止 `phrase`。AD-12 稱常用項目為個人叫法，且可含參數值。Consistency Conventions 把參數值放在語句或個人常用項目。這套因此在常用項目另存同一個 `phrase` 與參數值。再次叫用時直接套用該列的連線與參數值，不把值寫進詞庫。
-- **clash:** 同一段文字有兩筆記錄、兩條狀態路徑。語句解析得到沒有參數值的規則意圖；從常用清單開啟得到有參數值的意圖。AD-8 不讀常用項目，所以沒有合併規則。若常用項目故事為了讓叫法可被說出來，把 `phrase` 放進 AD-8 的第一層，就和「兩層」的列舉對撞；若關鍵字故事不在常用項目放 `phrase`，兩筆又失去可對齊的鍵。AD-5 也沒有寫常用項目的範本識別，兩套會各自決定有沒有這個欄。
-- **guard_snippet:** 收緊 AD-5、AD-8、AD-12：常用項目的欄位寫死為擁有者、名稱、`phrase` 可與名稱相同、範本識別、`surface`、連線名稱、參數值。`phrase` 允許與某條規則的 `phrase` 相同，不做跨表唯一。語句比對只讀 AD-8 的兩層，不讀常用項目，也不套用它的參數值。再次叫用只讀該筆常用項目與範本目前的版面，不把名稱送回解析器。規則仍然沒有參數值。
-- **potential_consequence:** 操作者說出剛存好的叫法時，有的入口套用上次的參數值，有的入口停在缺少參數。兩邊都會認為自己符合規則。
+  - 回呼：`McpService` 的寫入路由在變更前呼叫工作台的查詢，問這個 `viewId` 是否出現在樣式裡。工作台在線且有引用就拒絕。列出已發布檢視不呼叫工作台。`McpService` 不開啟 `Workbench:StorePath`。
+  - 引用集合：工作台在樣式保存成功後，把該 `viewId` 的引用計數寫進目錄。`McpService` 只查自己的計數。計數為 0 就允許刪除。工作台停機時，目錄仍可依手邊的計數決定。
+- **clash:** 引用這一個事實有兩個主人。樣式已寫入、計數尚未寫入時，回呼那套拒絕刪除，計數那套允許刪除。回呼在工作台停機時整次拒絕，計數那套仍可能刪掉已被樣式指向的檢視。兩條都滿足「路由上有檢查」這句話，失敗順序不同，目錄裡留下的定義就不同。
+- **guard_snippet:** 收緊 AD-15：引用集合只有工作台 SQLite 的樣式 `viewId`。`McpService` 不保存第二份計數，也不開啟工作台 SQLite。刪除、取消發布，或修改 `name`、`columns`、`parameters` 之前，`McpService` 向工作台查一次；工作台不可達，或任一樣式的 `viewId` 相等，就拒絕且目錄不變。列出已發布檢視不依賴工作台。
+- **potential_consequence:** 樣式仍指向一個已經從 Discovery 消失的檢視，或工作台一停，分析師就刪不了任何檢視。兩個故事會把不同的結果當成 AD-15。
 
-### 5. 測到的金鑰與解析時使用的金鑰可以不同
+### 5. 動態報表的本體
 
 - **lens:** adversarial
-- **location:** AD-9；AD-10；AD-11
-- **units:** 故事「測試連線」對 故事「解析呼叫側車」
-- **trigger_condition:** 有效設定的覆寫順序包含 `model.json`、user secrets、環境變數；探測提交的是草稿；側車的金鑰卻「只從環境變數讀入」。沒有寫子程序要注入哪一把、變數叫什麼、空白草稿代表清除還是沿用。
+- **location:** AD-5；AD-7；AD-14；parent AD-9 與 parent AD-12 的成功形狀
+- **units:** 故事「保存當時版面」對 故事「再開讀樣式」
+- **trigger_condition:** 生成紀錄要能在不呼叫 MCP 的情況下顯示該次動態報表。AD-5 列出樣式識別、檢視識別、純量參數與該次動態報表；AD-14 禁止樣式本身帶資料列。沒有寫「該次動態報表」是否含當時的區塊。
 - **兩套都符合的讀法:**
-  - 測試連線引用 AD-10：草稿先做 AD-9 的檢查，不通過則 `model_invalid_settings` 且不啟動側車。AD-9 禁止金鑰進入解析 JSON、程序引數、日誌與測試結果，沒有禁止金鑰進入探測 JSON。AD-10 的探測排除清單是語句、範本、連線名稱、資料列與資料庫連線字串，不含 `apiKey`。這套把草稿的 `apiKey`、`endpoint`、`modelId` 放進探測的標準輸入。子程序環境變數保持宿主原樣，不改 `model.json`。雲端草稿的 `apiKey` 空白就判無效，即使 `model.json` 或環境變數裡已有金鑰。
-  - 解析呼叫側車引用 AD-9「有效設定只有一份」與覆寫順序：檔案，然後 user secrets，然後環境變數。AD-9 禁止金鑰進入解析 JSON。AD-11 規定金鑰只從環境變數讀入，因此標準輸入裡的金鑰一律忽略。這套在啟動解析前，把合併後的 `apiKey` 寫進子程序環境。變數名稱自定。探測若由同一套側車執行，讀到的是繼承來的環境變數，不是草稿 JSON 裡那一把。`model.json` 的金鑰只有在某一步把它拷進環境時才會被用到；這套只在解析時拷貝合併結果。
-- **clash:** 管理員以 `model.json` 的金鑰當草稿送測時，測試故事認為測的是草稿；側車故事只讀環境變數，測到的是另一把，或是空白。解析使用的是覆寫後的合併金鑰。三處可以同時各有一把：檔案、環境變數、未儲存草稿。讀取 API 只回傳金鑰是否已設定，畫面無法知道測的是哪一層。本地草稿把金鑰留白時，第一套當成「沒有金鑰」並允許啟動，第二套仍沿用環境變數裡的雲端金鑰去打 `localhost`。
-- **guard_snippet:** 收緊 AD-9、AD-10、AD-11：金鑰不進入探測 JSON，也不進入解析 JSON。宿主為每一次側車程序設定同一個已命名的環境變數，寫明名稱。探測拷貝的是這份草稿的整份設定，空白 `apiKey` 就是空白，不回填檔案或環境變數。解析拷貝的是合併結果，逐欄覆寫：`model.json`，然後 user secrets，然後環境變數。測試結果不得暗示這把金鑰已是解析會用的那把，除非草稿與合併結果的非秘密欄位以及「金鑰是否相同」一致。側車不讀第二個變數名稱。
-- **potential_consequence:** 測試成功的是草稿或繼承環境，解析打出去的是另一把金鑰。金鑰只存在檔案裡時，側車可能永遠看不到它。
+  - 保存當時版面：`report` 含當時區塊複本（`type`、`order`、`text`、`field`、`label`、資料表欄名）以及原樣的 `columns` 與 `rows`。再開只讀這筆紀錄。樣式後來被改，這筆報表不變。
+  - 再開讀樣式：`report` 只有 `columns` 與 `rows`。版面從 `templateId` 指向的樣式現況讀出。AD-5 已另存樣式識別，區塊不必複製。儲存格編碼沿父 AD-9，不做第二次彙總。
+- **clash:** 同一筆 SQLite 紀錄，一邊的讀取器要有區塊陣列，另一邊只接合樣式表。擁有者改了標題或參數標籤之後，再開看到的版面不同。樣式是私有、紀錄是共享時，第二套還要去讀一份第一套根本不需要的樣式。列本身可以都是 `columns`／`rows`，報表這一個實體仍然是兩種文件。
+- **guard_snippet:** 收緊 AD-5 與 AD-7：生成紀錄的 `report` 在寫入時複製當時區塊與該次 `columns`、`rows`。參數值只放在紀錄的純量參數，不回寫樣式區塊。再開與匯出只讀這筆 `report`，不讀樣式表，不呼叫 MCP。樣式之後的修改不改變已寫入的 `report`。
+- **potential_consequence:** 共享出去的報表在一個故事裡保持保存當時的版面，在另一個故事裡變成樣式的現況。匯出的 PDF 也跟著分叉。
 
-### 6. 預覽快照的列形狀
+### 6. 共享範圍的讀者與寫者
 
 - **lens:** adversarial
-- **location:** AD-3；AD-4；AD-7
-- **units:** 故事「MCP 預覽」對 故事「Web 預覽」
-- **trigger_condition:** 結果要原樣進入預覽，快照的值只被寫成「該次畫面的數字與列」。Web 既有 `GET /{resourceName}` 的 JSON 物件含 `ConnectString` 與 `RecordData`；帶 `Key` 與 `Value` 時本體是 JSON 字串。MCP `query` 的成功形狀是 `columns` 與 `rows`。
+- **location:** AD-5；AD-8「此人可讀樣式」；Consistency Conventions「入口加共享範圍」
+- **units:** 故事「共享即可改」對 故事「擁有者獨寫」
+- **trigger_condition:** 私有只有擁有者可讀已經寫明。共享對誰可讀、誰可以改內容或改共享範圍，Rules 沒有寫。AD-8 的候選又依賴「可讀」。
 - **兩套都符合的讀法:**
-  - MCP 預覽引用 parent AD-7／AD-9 的成功形狀與 AD-3「不做第二次彙總」。快照的表是 `columns` 與 `rows`。它把 Web 的 `RecordData` 轉成同一形狀，並在進入快照前去掉 `ConnectString`，引用 AD-4 不得寫入 HTTP 或匯出。轉換不算第二次彙總。
-  - Web 預覽引用 AD-3「結果列與計數原樣進入預覽」。零鍵回應的物件原樣成為快照，單鍵回應的 JSON 字串也原樣成為快照。`ConnectString` 留在宿主記憶體的快照裡，因為 AD-7 的快照不是 SQLite，AD-4 的禁止清單寫的是日誌、SQLite、HTTP、側車與匯出。匯出前才刪掉該屬性。Blazor 在程序內綁到這份快照，不經過他們所認定的 HTTP API。
-- **clash:** 同一份快照識別，表的 JSON 一個是 `columns`／`rows`，一個是 `RecordData` 或一整段字串。匯出與列印無法共用一個讀取器。第二套的記憶體快照含連線字串，程序內的 Blazor 看得到；第一套沒有這個欄。
-- **guard_snippet:** 收緊 AD-3 與 AD-7：進入快照之前，MCP 與 Web 都正規化成 `columns` 與 `rows`，儲存格編碼沿用父脊椎的成功列。Web 的 `ConnectString` 在正規化時丟棄，不進快照、不進 Blazor 電路、不進 HTTP。單鍵回應若是 JSON 字串，先還原成物件再正規化。這一步不是計數，也不是第二次彙總。
-- **potential_consequence:** CSV 與 PDF 在 Web 表面匯出的不是畫面上的列，或連線字串進入瀏覽器電路。
+  - 共享即可改：`shared` 表示任何已登入操作者可讀、可改樣式與生成紀錄。`private` 仍只有擁有者可讀。管理員的產品介面不讀他人的私有生成紀錄。語句候選包含這位操作者讀得到的全部樣式。
+  - 擁有者獨寫：`shared` 的樣式只對另持 `designer` 或 `enduser` 的人可讀；`shared` 的生成紀錄只對另持 `enduser` 的人可讀。內容、刪除與共享範圍只有 `ownerId` 可改。其他人讀得到也不能寫。
+- **clash:** 同一筆 `shared` 樣式，一邊的更新會成功，另一邊拒絕。同一句話的候選集合因此不同：一邊可以就緒並依 AD-7 呼叫檢視，另一邊停在 `incomplete`，讀列次數是 0。生成紀錄的共享讀者也是兩群人。
+- **guard_snippet:** 收緊 AD-5：`private` 只有 `ownerId` 可讀可寫。`shared` 樣式對其他持有 `designer` 或 `enduser` 的操作者可讀；`shared` 生成紀錄對其他持有 `enduser` 的操作者可讀。這兩種共享都只有 `ownerId` 可修改、刪除或變更共享範圍。AD-8 的輸入只含這條讀取規則之下的樣式。管理員的產品介面不讀他人的私有樣式與私有生成紀錄。
+- **potential_consequence:** 設計師改得到別人的共享樣式，或終端使用者的語句在兩個故事裡一個會打 MCP、一個不會。UJ-4 的「看得到但不能改」沒有落在規則上。
 
-### 7. 兩層關鍵字如何合併
+### 7. 入口的儲存值與變更權
 
 - **lens:** adversarial
-- **location:** AD-8；AD-12
-- **units:** 故事「目錄比對」對 故事「詞庫比對」
-- **trigger_condition:** 語句同時含一個連線名稱，以及一條仍有效、但指向另一個連線的 `phrase`。AD-8 只說兩層合併成一個意圖。
+- **location:** AD-1；AD-5；AD-6；Consistency Conventions「三個入口」「一人多個入口時整頁切換」
+- **units:** 故事「入口是伺服器謂詞」對 故事「入口只決定頁面」
+- **trigger_condition:** 只有管理員能建立操作者與變更入口，未登入不能讀資料。三個站的名稱、存進 SQLite 的字串、以及沒有該入口時 Core 是否拒絕寫入，都沒寫。
 - **兩套都符合的讀法:**
-  - 目錄比對引用第一層「當時這位操作者看得到的連線名稱、範本名稱、參數 `field` 與 `label`」。名稱命中即進入候選。規則若指向別的連線，兩層都保留，狀態由宿主重算成 `ambiguous`。
-  - 詞庫比對引用 AD-12 的規則與 AD-8「合併成一個意圖」。`phrase` 命中的規則覆蓋第一層的名稱，意圖只留規則上的連線與範本。沒有第二個候選，所以可以是 `ready`。
-- **clash:** 同一句話，一套停在多個候選、填數次數 0；另一套直接就緒並產生呼叫清單。兩層都沒有被丟掉，只是「合併」沒有優先序。比對是包含還是整句相等，AD-8 也沒寫，兩套還會再裂一次。
-- **guard_snippet:** 收緊 AD-8：第一層用序數、區分大小寫的包含比對；規則的 `phrase` 用同一種包含比對。兩層的候選取聯集，不互相覆蓋。聯集後多於一個連線或範本就是 `ambiguous`。參數值只從語句在欄名或標籤之後的第一個詞取得，不從規則取得。
-- **potential_consequence:** 同一句話在兩個故事裡一個不能確認、一個會送出不同的連線。
+  - 伺服器謂詞：入口值是 `analyst`、`designer`、`enduser`。`analyst` 才能寫目錄，`designer` 才能寫樣式，`enduser` 才能比對語句、產生動態報表與寫生成紀錄。沒有該入口時 Core 拒絕，讀列次數是 0。判斷在 Core 端口，控制器不另寫。
+  - 頁面切換：入口值是「系統分析師」「報表設計師」「終端使用者」。Core 的入口判斷只決定整頁顯示哪一站。已登入即可呼叫保存樣式、目錄寫入與產生報表的端口。Avalonia 走同一組端口，不因為畫面沒畫出該站而被拒絕。
+- **clash:** 指派表的字串彼此認不得。同一位只有終端使用者入口的操作者，一邊的目錄寫入與樣式修改被拒絕，另一邊會落進 SQLite 或目錄。兩個殼都經過 Core，所以都符合 AD-1 的「只經過端口」。
+- **guard_snippet:** 收緊 AD-5 與 AD-6：操作者欄位是 `id`（非空字串）、`displayName`、`passwordVerifier`、`admin` 布林、`entries`。`entries` 的元素只許 `analyst`、`designer`、`enduser`，可同時多個。`id` 就是 `X-DBServices-Caller`。目錄寫入只許 `analyst`；樣式寫入只許 `designer`，終端使用者把版面存回樣式庫時只許 `enduser` 且擁有者是自己；語句、動態報表與生成紀錄只許 `enduser`。缺少該入口時 Core 拒絕，不寫儲存，不呼叫 MCP。`PasswordHasher` 使用共用框架的預設選項，不傳入自訂 `PasswordHasherOptions`。
+- **potential_consequence:** 入口指派在一個故事裡只是導覽，在另一個故事裡才是授權。非該站的操作者仍能改檢視或樣式。兩次安裝的 `passwordVerifier` 也可能因迭代次數不同而不能互驗。
 
-### 8. `design` 是否包含 `view`，以及誰可以確認範本
+### 8. 「語句含樣式名稱」沒有邊界
 
 - **lens:** adversarial
-- **location:** AD-5；AD-7；Consistency Conventions「群組角色只約束範本」
-- **units:** 故事「角色指派」對 故事「範本確認」
-- **trigger_condition:** 一個操作者對一個群組至多一筆 `design` 或 `view`。沒有寫 `design` 是否具備檢視能力，也沒有寫哪一種角色可以確認範本填數。
+- **location:** AD-8
+- **units:** 故事「連續字元」對 故事「整段詞」
+- **trigger_condition:** 樣式 `name` 被語句含有時進入候選。沒有寫大小寫、連續字元或必須自成一段。
 - **兩套都符合的讀法:**
-  - 角色指派引用 AD-5 的兩個儲存值。`design` 只允許改範本，`view` 只允許列出與確認。確認路徑引用 AD-7「核對角色」，`design` 沒有檢視能力，所以不能產生呼叫清單。
-  - 範本確認引用同一組儲存值，把 `design` 讀成包含 `view` 的檢查：`design` 或 `view` 都可以確認，只有 `design` 可以改畫布。活資料預覽仍對已登入操作者開放，這句兩套都遵守。
-- **clash:** 同一個 `design` 列，一套拒絕範本預覽且填數次數是 0，另一套產生清單並在確認後送出。儲存的列沒有違反「至多一筆」。
-- **guard_snippet:** 收緊 AD-5：儲存值仍是 `design` 或 `view`。能力上 `design` 包含 `view`。列出範本、產生呼叫清單與確認填數，兩種角色都可以。寫入範本只有 `design`。沒有該群組角色則整次拒絕。
-- **potential_consequence:** 設計者在一個故事裡看不到自己的範本，在另一個故事裡可以確認填數。
+  - 連續字元：序數、區分大小寫。語句裡出現名稱的連續字元即入候選。「請看銷貨月報表」含有「銷貨月報」。
+  - 整段詞：名稱必須是一段不被空白或標點切開的詞，且與 `name` 完全相同。「銷貨月報表」是一個詞，不等於「銷貨月報」，不入候選。「銷貨月報，年月」在逗號處切開，名稱入候選。
+- **clash:** 同一句話一邊得到恰好一個樣式並在參數齊全時呼叫 MCP，另一邊是 `incomplete`，讀列次數是 0。兩套都使用 AD-8 的三個狀態，沒有多造第四個。
+- **guard_snippet:** 收緊 AD-8：樣式 `name`、參數 `field` 與 `label` 都用序數、區分大小寫的連續字元包含。名稱較長的區間先占用；等長時取較左。被占用的字元不再參與下一次包含。沒有命中就不補猜。
+- **potential_consequence:** 同一個操作者、同一句話，一個故事送出檢視呼叫，另一個故事停在未就緒。
 
-### 9. 只綁參數欄名的規則誰能新增
+### 9. 重疊的參數名稱，以及數字要不要變成 JSON 數字
 
 - **lens:** adversarial
-- **location:** AD-12
-- **units:** 故事「人為新增規則」對 故事「管理員停用規則」
-- **trigger_condition:** 連線、範本、參數欄名至少有一項。可見範本的限制寫在「為範本加規則」；「只綁連線名稱」則任何已登入操作者可新增。只填參數欄名陣列時，兩句都不涵蓋。
+- **location:** AD-8「含參數 `field` 或 `label` 時，其後第一個不以空白拆開的詞為值，全由數字組成可作數字」
+- **units:** 故事「最長標籤」對 故事「每個子字串都取值」
+- **trigger_condition:** 同一句「年月 2026-10」同時含有標籤「年月」與「年」。全數字的詞「可」作數字，沒有規定必須或禁止。
 - **兩套都符合的讀法:**
-  - 人為新增規則引用「至少有一項」與「人為新增立即有效」。只含欄名的規則沒有落到範本限制，也不是「只綁連線」，因此任何已登入操作者可寫入，立即有效。
-  - 管理員停用規則引用另外兩句，把它們讀成僅有的兩條新增路徑。只含欄名的規則不接受操作者新增；若列上已有這種規則，只有建立者或管理員能改為無效。
-- **clash:** 同一張詞庫，一套會多出立即有效的欄名規則，另一套根本不寫入。比對時第一套會用這些欄名從語句取參數值，第二套的意圖少那些參數。
-- **guard_snippet:** 收緊 AD-12：只含參數欄名、且沒有連線也沒有範本的規則，任何已登入操作者可新增，立即有效。有範本識別時，仍限該操作者看得到的範本。只綁連線名稱的句子維持不變。
-- **potential_consequence:** 欄名規則在一個故事裡會改變解析，在另一個故事裡不存在。
+  - 最長標籤：重疊時只保留較長的「年月」，值是其後的 `2026-10`（字串，因為含連字號）。「年」沒有自己的值，狀態是 `incomplete`，不呼叫。全數字的詞維持字串，把「可」讀成允許但這套不轉換。
+  - 每個子字串：兩個標籤都命中。「年」的下一個詞取到「月」或同一段裡的 `2026-10`。兩個參數都有值就會 `ready` 並呼叫。全數字的詞改成 JSON 數字再送進純量參數與工具引數。
+- **clash:** 一邊不呼叫，另一邊呼叫，而且純量的 JSON 型別一個是字串、一個是數字。生成紀錄裡的參數物件不能互換。父 AD-12 的篩選值因此不是同一組純量。
+- **guard_snippet:** 收緊 AD-8：參數命中沿用上一則的最長、不重疊、由左而右。值一律保持 JSON 字串，不因全由數字組成而改成數字。下一個詞以空白切開，標點不另切。這個詞若已被較左的參數用掉，該參數保持缺少。
+- **potential_consequence:** 同一個年月參數，一個故事停在缺少參數，另一個故事用錯誤的詞或另一種 JSON 型別打到檢視，列結果不同，寫進生成紀錄的參數也不能互讀。
 
-### 10. 快照的「閒置 30 分鐘」從何時起算
+### 10. 未保存報表與已開啟紀錄共用哪一塊記憶體
 
 - **lens:** adversarial
-- **location:** AD-7
-- **units:** 故事「匯出 PDF」對 故事「預覽畫面」
-- **trigger_condition:** 離開預覽、同一操作者的下一次確認，或閒置 30 分鐘，快照刪除。沒有寫閒置是自產生起算，還是自最後一次讀取起算。
+- **location:** AD-2；AD-7
+- **units:** 故事「開啟即占同一槽」對 故事「紀錄另讀 SQLite」
+- **trigger_condition:** 未寫入生成紀錄的動態報表在宿主記憶體，鍵是操作者 `id`。匯出接受這塊記憶體或一筆已開啟的生成紀錄。沒有寫「離開」與「開啟紀錄」是否動到同一塊。
 - **兩套都符合的讀法:**
-  - 匯出 PDF 引用「閒置 30 分鐘」。時限自快照寫入記憶體起算，中間的匯出與列印不算活動。滿 30 分鐘識別失效。
-  - 預覽畫面引用同一個「閒置」。操作者仍開著預覽、或又請求了一次匯出，就重新起算 30 分鐘。離開預覽與下一次確認仍立即刪除。
-- **clash:** 產生後第 31 分鐘、操作者剛剛匯出過一次時，一套拒絕舊識別，另一套仍從同一份快照產生 PDF。AD-7 要求連續匯出的業務數字相同，但沒有說第二次是否還在期限內。
-- **guard_snippet:** 收緊 AD-7：30 分鐘自快照建立起算，不因匯出、列印或畫面仍開著而延長。離開預覽與同一操作者的下一次確認仍立即刪除。
-- **potential_consequence:** 同一識別有時能匯出、有時不能，測試無法判定哪一種才是規則。
+  - 同一槽：開啟生成紀錄會把該筆載入這個操作者的記憶體，尚未保存的報表被換掉。離開報表頁、換入口、或這次產生失敗，都刪除這塊記憶體，避免舊列還能被匯出。
+  - 另讀：記憶體只放尚未寫入的那一份。開啟紀錄不寫入這塊記憶體，匯出時按紀錄識別讀 SQLite。離開只包含登出、明示關閉與程序重啟；換頁不刪。產生失敗時記憶體保持原樣，回應是錯誤，不用舊列冒充這一次的成功。
+- **clash:** 尚未保存的報表在「開啟另一筆紀錄」或「產生失敗」之後，一邊已經消失，另一邊仍可匯出。AD-7 的刪除條件兩邊都引用了，刪除的時點與對象不同。匯出端點無法用同一個識別取回同一份數字。
+- **guard_snippet:** 收緊 AD-7：每個操作者至多一塊未保存報表，鍵只有操作者 `id`。開啟生成紀錄不寫入這塊記憶體，也不刪除它；匯出與列印要帶來源：`unsaved` 或紀錄 `id`。離開是登出、明示關閉未保存報表、換成另一個入口，或程序重啟，只刪未保存那塊。呼叫失敗不刪、不替換這塊記憶體，回應是錯誤而不是報表。下一次成功產生才替換它。
+- **potential_consequence:** 操作者打開舊紀錄之後，未保存的報表在一個故事裡被清掉，匯出卻在另一個故事裡仍印出舊列。失敗後連續匯出的數字也不一致。
 
----
-
-## 同一條規則裡兩句不能同時成立
-
-這兩項不是「兩邊都滿足每一句」。每一邊都能引用其中一句，但沒有任何一套能同時滿足兩句。洞一樣要收緊規則。
-
-### 11. 側車既要看到合併後的金鑰，又只能讀環境變數
+### 11. Avalonia 的 HTTP 與意圖文件
 
 - **lens:** adversarial
-- **location:** AD-9、AD-11
-- **units:** 故事「合併 model.json」對 故事「側車讀環境」
-- **trigger_condition:** 金鑰只寫在 `model.json` 或 user secrets，程序環境裡沒有同名變數。
-- **兩套引用:**
-  - 合併那套引用 AD-9：有效金鑰來自檔案，然後 user secrets，然後環境變數。檔案裡的非空白金鑰就是有效金鑰。
-  - 側車那套引用 AD-11：金鑰只從環境變數讀入。標準輸入不能帶金鑰（AD-9 禁止進入解析 JSON；探測 JSON 即使能帶，側車這一句也不讀）。環境裡沒有變數，金鑰就是空白。
-- **clash:** 不增加一句「宿主把有效金鑰拷進子程序環境」，檔案與 user secrets 永遠到不了側車；拷貝則表示金鑰的讀取來源不只是原本的環境變數。兩句不能同時成立。這和洞 5 是同一條縫：測到的那把與解析使用的那把會分開。
-- **guard_snippet:** 收緊 AD-11：側車只讀宿主為該子程序設定的那一個變數。宿主在 `ProcessStartInfo` 裡寫入 AD-9 的有效金鑰（解析）或 AD-10 的草稿金鑰（探測），不繼承宿主程序裡同名的其他金鑰。變數名稱寫死。
-- **potential_consequence:** 只把金鑰放在 `model.json` 的部署，檢查通過，側車卻以空白金鑰呼叫，或誤用機器上另一個環境變數。
+- **location:** AD-1；AD-6；AD-8；Structural Seed「契約在 `Workbench.Contracts`：樣式、意圖、動態報表」
+- **units:** 故事「桌面殼」對 故事「宿主控制器」
+- **trigger_condition:** Avalonia 的 JSON 型別必須是 `Workbench.Contracts`，bearer 只帶 `sessionId`，控制器不另寫業務判斷。路徑、動詞，以及意圖的欄位沒有表。
+- **兩套都符合的讀法:**
+  - 桌面殼：`POST /api/sessions` 以 `displayName`、`password` 換 `sessionId`；其後 `Authorization: Bearer`。比對是 `POST /api/match`，回應 `{ "status", "templateIds", "parameters": { "field": "value" } }`。
+  - 宿主控制器：`POST /login` 換同一個 `sessionId`，bearer 規則相同。比對是 `POST /intent`，回應 `{ "status", "templates": [{ "id", "name" }], "values": [{ "field", "label", "value" }] }`。兩者都轉進 Core 的同一組端口，狀態只有 `ready`、`ambiguous`、`incomplete`。
+- **clash:** 工作階段的攜帶方式相同，資源路徑與意圖 JSON 不同。桌面殼無法取得宿主的樣式與報表，或把參數物件讀成陣列。種子點名的契約沒有涵蓋操作者、檢視、生成紀錄與意圖欄位，所以兩套都算「型別放在 Contracts」。
+- **guard_snippet:** 收緊 AD-1，並把路徑寫進 Consistency Conventions 的 HTTP 列：`POST /sessions`、`DELETE /sessions/current`、操作者與入口、檢視代理、樣式、`POST /match`、`POST /reports/current`、生成紀錄、匯出。意圖 JSON 是 `status`、`templateIds`、`parameters`（`field` 與字串 `value`）。上述型別全部放在 `Workbench.Contracts`。控制器只轉送，不改狀態。
+- **potential_consequence:** Blazor 在程序內呼叫端口，Avalonia 走另一組 URL 與另一種意圖。兩個殼的就緒結果不能互換。
 
-### 12. 核心擁有登入，又不得參考做出工作階段的框架
+### 12. 樣式區塊的文件
 
 - **lens:** adversarial
-- **location:** Design Paradigm、AD-1、AD-6
-- **units:** 故事「核心登入端口」對 故事「宿主 cookie 登入」
-- **trigger_condition:** 第一個管理員與之後的登入都要使用 ASP.NET Core 的 `PasswordHasher`，工作階段要讓 cookie 與 bearer 指向同一筆。
-- **兩套引用:**
-  - 核心登入引用 Design Paradigm：登入在 `Workbench.Core`。端口要能驗證密碼並建立 AD-6 的那一筆工作階段。
-  - 宿主 cookie 引用 AD-1：核心不參考 ASP.NET。`PasswordHasher` 與 cookie 處理器都在宿主。工作階段由宿主建立，核心沒有這筆紀錄。
-- **clash:** 登入與工作階段的主人只能有一個。放在核心就參考了 ASP.NET，或自己再做一份驗證；放在宿主就不是「核心的登入」。洞 2 的兩種紀錄就是這兩句各自落地的結果。
-- **guard_snippet:** 收緊 AD-1 與 AD-6：核心擁有登入端口與工作階段的記憶體紀錄。`PasswordHasher` 與 cookie／bearer 的寫入格式只在宿主，經端口注入。核心的紀錄格式以洞 2 的 `sessionId` 為準。
-- **potential_consequence:** 兩個故事各寫一套登入，cookie 與 bearer 指向不同的紀錄，登出無法同時失效。
+- **location:** AD-14；AD-8 的建議句
+- **units:** 故事「欄名全集」對 故事「欄名子集」
+- **trigger_condition:** 資料表區塊的欄「是」該檢視的輸出欄。建議的欄屬於該檢視。沒有寫 JSON 鍵名、欄是字串還是物件、可否多個資料表、保存時是否必須等於輸出欄全集。
+- **兩套都符合的讀法:**
+  - 欄名全集：鍵名 `blocks`。資料表至多一個。`columns` 是 `{ "name", "type" }` 陣列，且必須與檢視輸出欄全集同序。不符合就不能保存。
+  - 欄名子集：鍵名 `components`。資料表可以多個。`columns` 是字串陣列，每個名稱都屬於輸出欄，順序由設計師決定，允許少於全集。建議裡的那一個資料表才使用全集。AD-14 的四種 `type` 與從 0 連續的 `order` 兩邊都遵守。
+- **clash:** 已保存的樣式一邊無法被另一邊讀入。建議接受之後，一邊得到帶型別的物件陣列，另一邊得到字串陣列。多出來的第二個資料表在一邊是非法文件。
+- **guard_snippet:** 收緊 AD-14：樣式區塊的鍵是 `components`。`columns` 是字串陣列，不得重複，每個元素都是所綁檢視的輸出欄名，允許子集與設計師指定的順序。資料表區塊可以有零個以上。建議裡至少一個資料表，其 `columns` 等於檢視輸出欄且同序；接受時把該區塊加到末尾。不使用 `{ name, type }` 物件。
+- **potential_consequence:** 報表設計師儲存的版面，Chat 那一側無法還原欄序，或直接拒絕開啟。建議按接受之後兩邊的樣式列不同。
+
+### 13. 多個候選時沒有第二個輸入
+
+- **lens:** adversarial
+- **location:** AD-8；AD-7
+- **units:** 故事「再講一次名稱」對 故事「點選候選」
+- **trigger_condition:** 樣式多於一個是 `ambiguous`，未就緒不呼叫 MCP。比對的輸入只有語句與可讀樣式。沒有寫操作者能否指定其中一筆。
+- **兩套都符合的讀法:**
+  - 再講一次：只有新的語句能縮小候選。Core 不提供選取端口。操作者沒有把名稱放進下一句之前維持 `ambiguous`，讀列次數是 0。
+  - 點選候選：另有一個 Core 端口，只接受上一輪候選裡的樣式 `id`。選中後候選改為這一筆，狀態重算。這個端口的輸入不是語句，所以不違反「比對輸入只有語句」。它自己不呼叫 MCP；若因此變成 `ready`，下一次產生才依 AD-7 呼叫。
+- **clash:** 同一個「選第二筆」的動作，一邊狀態不變，另一邊變成 `ready` 並在產生時送出不同的檢視。兩套都沒有確認清單，也都沒有在選取當下讀列。
+- **guard_snippet:** 收緊 AD-8：`ambiguous` 時，Core 提供選取端口，引數是上一輪候選中的一個樣式 `id`。成功後候選只留該筆並重算狀態。不在候選內則拒絕，狀態不變。選取與改選都不呼叫 MCP。
+- **potential_consequence:** 桌面殼有選取、網站殼只能重講，或相反。同一位操作者在兩個殼上會呼叫到不同的檢視，或一邊永遠停在多個候選。
 
 ---
 
 ## 不算洞
 
-- PDF、CSV 的具體套件，以及稽核保留天數：Deferred 已禁止把其中一種當成已採用。產生位置仍是宿主快照。
-- 資料表級授權、SSO、公開註冊、GraphQL、自由 SQL、區間與跨表：Deferred 已排除。
-- 沒有 OpenAI 相容 HTTP 的本地執行庫：Deferred 要求先改 AD-11，不在殼或核心另引 SDK。
-- 快照不寫入 SQLite、Avalonia 不開啟該檔、不另寫第二份 MCP 稽核：AD-2、AD-7、parent AD-10 已釘死。
-- 工作台不呼叫 `get`、`exists`、`insert`、`update`、`delete`、`sql`，也不把篩選拼進 SQL：parent AD-2、parent AD-3 與 AD-3 已釘死。
-- `enabled` 為 false 時只走關鍵字、側車不寫 SQLite、解析失敗不改範本與規則：AD-8、AD-10、AD-11 已釘死。
-- 模型金鑰不進 SQLite、範本沒有連線名稱與資料列、常用清單只回擁有者：AD-5 與 AD-9 已釘死。這些句子沒有解決洞 4 的雙份片語，也沒有解決洞 5 的哪一把金鑰被送進側車。
+- 目錄媒介是檔案、SQLite 或其他：父 AD-12 寫明未決。現在選定其中一種的單元不能引用這份子脊的 Rules。AD-15 的「目錄的檔案」只表示工作台不開啟目錄儲存，不是把媒介定成檔案。上面第 3 則要釘的是文件形狀，不是媒介。
+- `X-DBServices-Caller` 的身分證明：Deferred 寫明 `McpService` 不加第二套帳號，目錄寫入只拒絕空白。父 AD-6 的 MCP 工具呼叫仍把空白當成 `anonymous` 並執行。不能一邊加驗證中介軟體、一邊聲稱符合。
+- 規劃期表結構通道、轉置是否落地、詞庫介面、模型設定、測試連線、側車啟動：Deferred 已排除。三個入口不讀寫模型、不啟動側車，AD-9 至 AD-12 已釘死。
+- PDF 與 CSV 的套件、稽核保留天數：Deferred。產生位置仍是 AD-7 的未保存報表或已開啟紀錄，選定套件時不得再呼叫 MCP。
+- 確認清單、30 分鐘閒置、預覽快照：AD-7 寫明沒有確認清單，慣例寫明動態報表記憶體沒有閒置逾時。這兩種選法不能再各做一套。
+- 工作階段本體：AD-6 已是宿主記憶體的 `sessionId` 與操作者 `id`，cookie 與 bearer 只帶 `sessionId`，登出刪除，重啟清空。這不再讓兩個殼各持有一筆自包含票證。第 7 則留下的是入口字串、變更權，以及 `PasswordHasherOptions`。
+- Blazor 與 `DbServices.Mcp`：AD-1 與種子把 Blazor 放在只參考 Core 與 Contracts 的 `Workbench.Web`。`Workbench.Adapters` 不參考 `DbServices.Mcp`。頁面直接持有 MCP 型別的那一套不再符合 Rules。
+- `GET /connections`：AD-4 的回應只有組態完整連線的 `name` 與 `serverType`。在這條路由上呼叫 `Create` 會改到父 AD-4 的建立時機，不能算符合父脊的那一套。
+- 單一 `Workbench` 進程、不寫第二份 MCP 稽核、不呼叫 `tables`／`fields`／`get`／`query`／`count`／`exists`、不在來源庫執行 `CREATE VIEW`：AD-2、AD-3、AD-13 與父 AD-12 已釘死。

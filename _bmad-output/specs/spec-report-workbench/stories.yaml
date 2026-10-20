@@ -1,0 +1,61 @@
+- id: "1"
+  title: 登入與入口
+  description: >-
+    涵蓋 SPEC 的 CAP-9：已登入且持有該入口才能打開該站，管理員建立操作者並指派入口。
+    同時落實單一宿主與工作階段，未登入不回傳資料，也不呼叫 MCP。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    這一則只做 Blazor 與單一宿主。Avalonia 專案可以建立，三站畫面留到第 8 則。
+    殼與 Workbench.Web 不參考 Workbench.Adapters 與 DbServices.Mcp。
+- id: "2"
+  title: 檢視目錄與發布
+  description: >-
+    涵蓋 SPEC 的 CAP-10 裡已定的檢視目錄、發布與 Discovery：目錄名稱集合等於已發布檢視，且不在來源庫建立檢視。
+    規劃期的表結構通道仍是開放問題，這則不實作表結構瀏覽。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    檢視只寫進 DbServices.Mcp 的目錄路由。不要讀待轉資料庫的 GET /meta，也不要在這一則做表結構瀏覽。
+- id: "3"
+  title: 樣式範本
+  description: >-
+    涵蓋 SPEC 的 CAP-11：報表設計師把恰好一筆已發布檢視排成四種區塊的樣式範本，並標私有或共享。
+    被樣式引用的檢視，由核心先拒絕結構變更、取消發布與刪除。
+  invoke_dev_with: >-
+    終端使用者存回樣式庫不在這一則。
+- id: "4"
+  title: 未就緒不讀列
+  description: >-
+    涵蓋 SPEC 的 CAP-12 裡語句尚未就緒的部分：候選只來自可讀樣式，未就緒時讀列次數為 0。
+    比對在核心完成，不啟動側車，也沒有確認清單。
+  invoke_dev_with: >-
+    比對只在 Workbench.Core。不要啟動 DbServices.ModelSidecar。
+- id: "5"
+  title: 就緒後呼叫一次檢視
+  description: >-
+    涵蓋 SPEC 的 CAP-12 裡就緒之後的部分：恰好呼叫所綁的已發布檢視一次，列來自該次呼叫。
+    空列是成功；呼叫失敗不產生動態報表，也不改樣式與生成紀錄。
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    工具引數使用頂層 connectionId，不要使用 filters。零筆或多筆連線時不要自造錯誤碼名稱。
+- id: "6"
+  title: 生成紀錄與存回樣式
+  description: >-
+    涵蓋 SPEC 的 CAP-13：把這次動態報表存成生成紀錄，再開顯示保存的那一份，不重新呼叫 MCP。
+    同時涵蓋 CAP-11 裡終端使用者把版面存回樣式庫，且該次不呼叫 MCP。
+  invoke_dev_with: >-
+    再開只讀紀錄裡的區塊與列。
+- id: "7"
+  title: 匯出 PDF 與列印
+  description: >-
+    涵蓋 SPEC 的 CAP-13 裡匯出 PDF 與列印：數字和文字等於所開啟的那一份，且不發出新的 MCP 呼叫。
+    PDF 預設 A4，換頁以區塊為界。
+  invoke_dev_with: >-
+    CSV 不在這一則。PDF 使用 QuestPDF，預設 A4。
+- id: "8"
+  title: Avalonia 對齊
+  description: >-
+    涵蓋 SPEC 的約束：Avalonia 只經工作台 HTTP 進入與 Blazor 相同的端口，cookie 與 bearer 共用同一筆工作階段。
+    桌面殼不嵌入 Blazor，也不開啟工作台 SQLite。
+  invoke_dev_with: >-
+    Avalonia 只呼叫工作台 HTTP，使用與 Blazor 同一筆 sessionId。

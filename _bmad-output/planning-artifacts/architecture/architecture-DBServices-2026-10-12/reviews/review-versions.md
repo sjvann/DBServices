@@ -1,63 +1,73 @@
 # 版本與技術現況審查
 
-- 對象：`ARCHITECTURE-SPINE.md`（DBServices 報表工作台，2026-10-12）
-- 審查日：2026-10-12
+- 對象：`ARCHITECTURE-SPINE.md`（DBServices 檢視與報表，2026-10-12，文件 `updated: 2026-10-20`）
+- 審查日：2026-10-20
 - 鏡頭：已承諾的技術是否對過網頁、現有專案或現行 starter，而不是只靠訓練資料斷言
+- 範圍：棕地更新。點名版本對 `E:\sjvann\DBServices` 的 csproj。不要求新 starter
 - 判定：**revise**
 - 未改骨幹
 
-Stack 表上的版本號、發布日，以及「`Microsoft.Extensions.AI.OpenAI` 支援 OpenAI 相容端點」這句，這次都對得上 NuGet 與套件說明。要改的是兩件套件契約與綠色場域 starter 預設：本地金鑰可以空白，以及 `model.json` 的覆寫順序。這兩條寫成了規則，memlog 的版本核對沒有覆蓋它們。
+2026-10-20 的版本句只核對了 csproj 裡的 `PackageReference`。Avalonia、`ModelContextProtocol`、`Microsoft.Data.Sqlite`、`Microsoft.Extensions.AI*` 與專案檔一致，那些套件今天仍在 NuGet 上。要改的是三件沒有被這次專案檔核對蓋到的主張：共用框架修補號、登入雜湊的型別，以及已經寫進專案的 PDF 套件。
 
 ## 發現
 
-### 1. 穩定的 OpenAI 用戶端拒絕空白金鑰，而且不設端點時會打到 api.openai.com
+### 1. 共用框架寫成 10.0.12；專案檔沒有這個版本，NuGet 穩定版已是 10.0.13
 
-- 位置：AD-9、AD-11
-- 條件：側車用套件說明裡的穩定建構式組出 `IChatClient`，本地設定的 `apiKey` 為空白，或沒有另外指定端點
-- 骨幹寫法：雲端與本地都用 `Microsoft.Extensions.AI.OpenAI`，差別只在 AD-9 的端點。本地金鑰可空白，金鑰只從環境變數讀入。
-- 現況：`Microsoft.Extensions.AI.OpenAI` 10.10.1 的說明是「OpenAI 套件與 OpenAI 相容端點的 `IChatClient` 實作」，並依賴 `OpenAI` >= 2.14.0。NuGet 上 `OpenAI` 的最新穩定版就是 2.14.0（2026-09-15），其 net10.0 依賴 `System.ClientModel` 1.15.0。該版 `ApiKeyCredential` 的建構式呼叫 `Update`，而 `Update` 對金鑰做 `Argument.AssertNotNullOrEmpty`：null 丟 `ArgumentNullException`，空字串丟 `ArgumentException`。`ChatClient(string model, string apiKey)` 會把該字串直接送進 `ApiKeyCredential`。`OpenAIClient.GetEndpoint` 在選項沒有 `Endpoint` 時回傳 `https://api.openai.com/v1`。套件 README 的第一個範例就是這個金鑰建構式，沒有設定端點；自訂基底網址的範例才設定 `OpenAIClientOptions.Endpoint`，而且仍然傳入非空白的 `ApiKeyCredential`。不帶金鑰的 `AuthenticationPolicy` 建構式標成 `OPENAI001`。
-- 後果：本地端點可連、金鑰留白時，用戶端在送出探測前就建立失敗，回不到 `model_ok`。照 README 第一個範例實作時，AD-9 的端點不會被用到，雲端與本地都會打到 `https://api.openai.com/v1`。相容端點這件事本身成立，但空白金鑰與「不設端點」都不是這個用戶端的活預設。
-- 修正：在 AD-11 寫明兩種 placement 都要把 AD-9 的端點放進 `OpenAIClientOptions.Endpoint`，並註明 SDK 預設是 `https://api.openai.com/v1`。儲存的本地金鑰可以空白，但不得把 null 或空字串傳進 `ApiKeyCredential`。本地忽略金鑰時，使用不寫入設定檔的非空白佔位憑證，或明確採用實驗性的 `AuthenticationPolicy` 建構式。
+- 位置：Stack 的「ASP.NET Core Blazor 10.0.12（共用框架）」與「ASP.NET Core Identity PasswordHasher 10.0.12（共用框架）」；Stack 結尾「版本對過 2026-10-20 的專案檔」
+- 條件：實作者把 10.0.12 當成工作台共用框架的修補版
+- 骨幹寫法：Blazor 與 `PasswordHasher` 都是 ASP.NET Core 10.0.12 共用框架
+- 現況：`Workbench.Web.csproj` 只有未帶版本的 `FrameworkReference Include="Microsoft.AspNetCore.App"`。`Workbench.csproj` 使用 `Microsoft.NET.Sdk.Web`，同樣沒有修補號。2026-10-20 的 memlog 只列了 Avalonia、`ModelContextProtocol`、`Microsoft.Data.Sqlite`、`Microsoft.Extensions.AI*`，沒有重查共用框架。NuGet `Microsoft.AspNetCore.App.Ref` 與 `Microsoft.Extensions.Identity.Core` 的最新穩定版都是 10.0.13，發布日 2026-10-13。這台機器的 SDK 10.0.302 帶著 targeting pack 10.0.10，已安裝的 `Microsoft.AspNetCore.App` 也是 10.0.10。10.0.12 是 2026-10-12 那次網頁核對留下的數字。
+- 後果：依骨幹安裝 10.0.12 會落後 2026-10-13 的穩定修補。本機建置實際用的是 10.0.10。這兩個 10.0.12 都不在「對過專案檔」的範圍裡。
+- 修正：Blazor 列改寫成目標框架 `net10.0`，共用框架修補號跟隨已安裝的 `Microsoft.AspNetCore.App`。若要釘修補版，釘 10.0.13，並寫明本機仍是 10.0.10。`PasswordHasher` 那一列見發現 2，不要再掛 10.0.12。
 
-### 2. `model.json` 的覆寫順序不是 Blazor starter 的活預設
+### 2. 登入雜湊是專案裡的 PBKDF2，不是共用框架的 `PasswordHasher`
 
-- 位置：AD-9
-- 條件：實作者用現行 `dotnet new blazor`，再靠 `WebApplication.CreateBuilder` 的預設組態鏈讀取模型設定
-- 骨幹寫法：覆寫順序是內容根的 `model.json`，然後 user secrets，然後環境變數。
-- 現況：2026-10-12 在本機 SDK 10.0.302 執行 `dotnet new blazor --framework net10.0`，產生的 `appsettings.json` 只有 Logging 與 `"AllowedHosts": "*"`，沒有 `model.json`，csproj 也沒有 `UserSecretsId`。ASP.NET Core 10 組態文件對 `WebApplicationBuilder` 的應用程式組態，由高到低是：命令列、未加 `ASPNETCORE_` 或 `DOTNET_` 前綴的環境變數、僅在 `Development` 載入的 user secrets、`appsettings.{Environment}.json`、`appsettings.json`。沒有 `UserSecretsId` 時，user secrets 不會成為來源。命令列比環境變數優先。memlog 只核對套件版本，沒有核對這條組態鏈。
-- 後果：照 starter 會讀 `appsettings.json`、環境變數與命令列，不會讀 `model.json`，user secrets 也不會蓋過檔案。命令列上的金鑰會贏過環境變數，和 AD-11「金鑰不進程序引數」疊在一起時，預設組態提供者仍會把該引數收進組態。
-- 修正：在 AD-9 寫明必須自行把內容根的 `model.json` 加進組態，而且要加在 user secrets 之前；starter 不會載入這個檔。user secrets 要有 `UserSecretsId`，預設宿主只在 `Development` 載入。模型金鑰不得取自命令列提供者，因為該提供者的優先順序高於環境變數。
+- 位置：AD-6；Stack 的「ASP.NET Core Identity PasswordHasher」
+- 條件：實作者用 `Microsoft.AspNetCore.Identity.PasswordHasher<TUser>` 產生 `passwordVerifier`
+- 骨幹寫法：宿主以 ASP.NET Core 10.0.12 共用框架的 `PasswordHasher` 寫入驗證材料
+- 現況：`Workbench.Core` 定義自己的 `IPasswordHasher`。`Workbench/Program.cs` 註冊的是 `Workbench.Adapters.Pbkdf2PasswordHasher`。它呼叫 `Rfc2898DeriveBytes.Pbkdf2`，SHA-256、100000 次，驗證字串形狀是 `pbkdf2$100000$` 加鹽與雜湊的 Base64。全庫沒有 `Microsoft.AspNetCore.Identity.PasswordHasher`。該型別今天仍在：ASP.NET Core 10 文件的組件是 `Microsoft.Extensions.Identity.Core.dll`，NuGet 上 `Microsoft.Extensions.Identity.Core` 10.0.13 於 2026-10-13 發布。2026-10-12 memlog 把共用框架雜湊寫成假設；2026-10-20 的專案檔核對沒有打開這個型別。
+- 後果：照骨幹會寫入 Identity 的驗證字串，既有 `pbkdf2$...` 紀錄會驗不過。共用框架裡的型別還在，只是這個工作台沒有用它。
+- 修正：AD-6 與 Stack 改寫成 `Pbkdf2PasswordHasher`：SHA-256、100000 次、驗證字串 `pbkdf2$100000$<salt>$<hash>`。若日後要改用 Identity 的 `PasswordHasher<TUser>`，另立決定，並使用當時的共用框架修補版。
+
+### 3. PDF 套件已經是 QuestPDF 2026.9.1，Deferred 仍寫尚未選定
+
+- 位置：Deferred「PDF 與 CSV 的具體套件」；AD-7 的「PDF 預設 A4，換頁以區塊為界」；Stack「這一輪不新增套件」
+- 條件：實作者把 PDF 套件當成還沒選定，或 2026-10-20 的 csproj 掃描當成套件清單已完整
+- 骨幹寫法：PDF 與 CSV 的具體套件尚未選定；選定時不得再查資料
+- 現況：`Workbench.Adapters.csproj` 已參考 `QuestPDF` 2026.9.1。`SnapshotPdfWriter` 使用 `PageSizes.A4`，區塊之間呼叫 `PageBreak()`。NuGet `questpdf` 索引的最後一版就是 2026.9.1，發布日 2026-09-25。倉儲裡沒有 CSV 套件。2026-10-20 的版本句沒有提到 QuestPDF。
+- 後果：PDF 套件、A4 與依區塊換頁都已經在專案裡。Deferred 把 PDF 與 CSV 綁在一起，會讓人再選一次 PDF 套件，或漏記這個已釘的版本。
+- 修正：Stack 加入 `QuestPDF` 2026.9.1。Deferred 只留 CSV。AD-7 的 A4 與換頁已經和 `SnapshotPdfWriter` 一致，套件名補上即可。
 
 ## 已核對且成立
 
 | 主張 | 核對結果 |
 | --- | --- |
-| `net10.0` | 方案內現有 csproj 的 `TargetFramework` 都是 `net10.0`，含 `WebService`、`McpService`、`DbServices.Provider.Sqlite`。2026-10-12 產生的 Blazor starter 也是 `net10.0`，Nullable 與 ImplicitUsings 開啟。 |
-| ASP.NET Core / Blazor 10.0.12 | NuGet `Microsoft.AspNetCore.OpenApi` 與 `Microsoft.AspNetCore.App.Ref` 的最新穩定版都是 10.0.12，發布日 2026-09-08。`WebService.csproj` 已釘 `Microsoft.AspNetCore.OpenApi` 10.0.12。 |
-| `PasswordHasher` 在共用框架 | `Microsoft.Extensions.Identity.Core` 10.0.12 存在（2026-09-08）。ASP.NET Core 10 文件中的 `PasswordHasher<TUser>` 組件是 `Microsoft.Extensions.Identity.Core.dll`。本機 `Microsoft.AspNetCore.App` 10.0.10 目錄內有這個 DLL，型別屬於共用框架，不是 NuGet 上那個停在 2.3.x 的舊 `Microsoft.AspNetCore.Identity` 套件。 |
-| Avalonia 12.1.4、Avalonia.Desktop 12.1.4 | 兩者皆為 NuGet 最新穩定版，發布日 2026-10-09T13:28Z。nuspec 含 `net10.0` 與 `net8.0`。本機沒有安裝 Avalonia 專案範本，這次是對套件本身，不是對 `dotnet new avalonia`。 |
-| `Microsoft.Data.Sqlite` 10.0.12 | NuGet 最新穩定版，發布日 2026-09-08。`DbServices.Provider.Sqlite.csproj` 已釘同一版。沒有採用 .NET 11 的預覽套件。 |
-| `Microsoft.Extensions.AI` 10.10.0 | NuGet 最新穩定版，發布日 2026-09-09。nuspec 含 `net10.0`，並依賴 `Microsoft.Extensions.AI.Abstractions` 10.10.0（最低版本）。10.10.1 沒有再發這個套件。 |
-| `Microsoft.Extensions.AI.Abstractions` 10.10.1、`Microsoft.Extensions.AI.OpenAI` 10.10.1 | 兩者皆為 NuGet 最新穩定版，發布日 2026-09-25。OpenAI 套件含 `net10.0`，依賴 Abstractions >= 10.10.1 與 `OpenAI` >= 2.14.0。和 10.10.0 的主套件並存時，直接參考 10.10.1 符合目前穩定線。 |
-| OpenAI 相容端點，雲端與本地同一用戶端 | 成立。套件說明寫明 OpenAI 相容端點。`OpenAI` 2.14.0 README 的自訂基底網址範例用於 proxy 或自架的相容 LLM，透過 `OpenAIClientOptions.Endpoint`。預設端點才是 `https://api.openai.com/v1`。見發現 1：端點必須顯式設定，空白金鑰不能進穩定憑證。 |
-| `ModelContextProtocol` 2.2.0 | NuGet 最新穩定版，發布日 2026-08-13。nuspec 含 `net10.0`，依賴 `ModelContextProtocol.Core` 2.2.0。AD-3 的用戶端套件名稱與此相符。 |
-| `ModelContextProtocol.AspNetCore` 2.2.0 | NuGet 最新穩定版，同日發布。`McpService.csproj` 已釘 2.2.0。net10.0 依賴 `ModelContextProtocol` 2.2.0。父脊椎的宿主套件與此相符。 |
-| `AllowedHosts` 出貨值 `*` | 本次產生的 Blazor Web App `appsettings.json` 就是 `"AllowedHosts": "*"`。`WebService\appsettings.json` 也是這個值。AD-2 與現行 starter、現有專案一致。 |
-| 側車不另釘 PDF 套件 | Deferred 未指名套件。沒有未核對的 PDF 版本。 |
+| `net10.0` | 工作台各 csproj、`DbServices.ModelSidecar.csproj`、`McpService.csproj` 的 `TargetFramework` 都是 `net10.0`。本機 SDK 10.0.302。 |
+| Avalonia 12.1.4、Avalonia.Desktop 12.1.4 | `Workbench.Avalonia.csproj` 與此相同。NuGet 索引最後一版都是 12.1.4，Avalonia 發布日 2026-10-09。12.1.4 nuspec 含 `net10.0` 與 `net8.0`。同一 csproj 還有 `Avalonia.Themes.Fluent` 12.1.4；Stack 沒點名，版本與 Avalonia 相同。 |
+| `Microsoft.Data.Sqlite` 10.0.12 | `Workbench.Storage.Sqlite.csproj`、`Workbench.Tests.csproj`、`DbServices.Provider.Sqlite.csproj` 都是 10.0.12。與「對過專案檔」相符。NuGet 另有較新穩定版，見下一節。 |
+| `Microsoft.Extensions.AI` 10.10.0、Abstractions 10.10.1、OpenAI 10.10.1 | `DbServices.ModelSidecar.csproj` 與此三版相同。三個套件都仍列在 NuGet。側車目標框架是 `net10.0`，輸出為 `Exe`。 |
+| `ModelContextProtocol` 2.2.0 | `Workbench.Adapters.csproj` 是 2.2.0。NuGet 索引最後一版仍是 2.2.0，發布日 2026-08-13。`McpService.csproj` 的 `ModelContextProtocol.AspNetCore` 也是 2.2.0，該套件索引同樣停在 2.2.0。父脊椎的套件號仍然對得上。 |
+| `AllowedHosts` 出貨值 `*` | `Workbench\appsettings.json` 是 `"AllowedHosts": "*"`。AD-2 與現有專案一致。這次不另要求 Blazor starter。 |
+| `GET /connections` | `McpService\Program.cs` 有 `MapGet("/connections", ...)`。路由仍在。 |
+| CSV 套件未選定 | 倉儲 csproj 沒有 CSV 套件。Deferred 的 CSV 半邊仍然成立。PDF 半邊見發現 3。 |
 
-## 已核對的環境差（不列為缺陷）
+## 已核對的落差（不列為缺陷）
 
-骨幹把 Blazor 寫成共用框架 10.0.12，與 OpenApi 套件同一修補帶。NuGet 上 `Microsoft.AspNetCore.App.Ref` 10.0.12 確實是目前最新穩定版。這台機器的 SDK 10.0.302 仍帶著 targeting pack 10.0.10，已安裝的 `Microsoft.AspNetCore.App` 也是 10.0.10。OpenApi 的 PackageReference 不會把共用框架執行階段升到 10.0.12。這是工作站落後已發布的修補版，骨幹釘的版本本身沒有過期。
+骨幹把 `Microsoft.Data.Sqlite` 與 `Microsoft.Extensions.AI*` 寫成 2026-10-20 的專案檔版本。這句對 csproj 成立，沒有把它們寫成 NuGet 最新版。
+
+- `Microsoft.Data.Sqlite` 最新穩定版是 10.0.13，發布日 2026-10-13。專案與骨幹維持 10.0.12。索引裡的 11.0.0 各版都是預覽，專案留在 `net10.0`。
+- `Microsoft.Extensions.AI`、`Microsoft.Extensions.AI.Abstractions`、`Microsoft.Extensions.AI.OpenAI` 的最新穩定版都是 10.11.0，發布日 2026-10-14。側車與骨幹維持 10.10.0 / 10.10.1 / 10.10.1。
+- `Directory.Build.props` 在 `Workbench.Storage.Sqlite` 額外釘 `SQLitePCLRaw.lib.e_sqlite3` 3.53.3。骨幹沒有為這個傳遞依賴另寫版本；`Microsoft.Data.Sqlite` 本身的 10.0.12 仍然對得上 csproj。
+
+這一輪寫明不新增套件。上述較新的 NuGet 穩定版是後續可升級的修補，不是這份骨幹對專案檔的錯釘。
 
 ## 證據
 
-- 查詢日：2026-10-12
-- NuGet 註冊葉：`https://api.nuget.org/v3/registration5-semver1/avalonia/12.1.4.json`、`avalonia.desktop/12.1.4.json`、`microsoft.data.sqlite/10.0.12.json`、`microsoft.extensions.ai/10.10.0.json`、`microsoft.extensions.ai.abstractions/10.10.1.json`、`microsoft.extensions.ai.openai/10.10.1.json`、`modelcontextprotocol/2.2.0.json`、`modelcontextprotocol.aspnetcore/2.2.0.json`、`microsoft.aspnetcore.openapi/10.0.12.json`、`microsoft.aspnetcore.app.ref/10.0.12.json`、`microsoft.extensions.identity.core/10.0.12.json`、`openai/2.14.0.json`
-- 套件說明與 TFM：上述套件的 flat-container nuspec；`Microsoft.Extensions.AI.OpenAI` 10.10.1 頁面寫明 OpenAI 相容端點
-- OpenAI 2.14.0：`https://www.nuget.org/packages/openai` 的自訂基底網址範例；`OpenAIClient.GetEndpoint` 預設 `https://api.openai.com/v1`（openai-dotnet `25152ff0` 的 `src/Custom/OpenAIClient.cs`）；`ChatClient(string, string)` 轉入 `ApiKeyCredential`（同提交的 `src/Custom/Chat/ChatClient.cs`）
-- 空白金鑰：`https://github.com/Azure/azure-sdk-for-net/blob/System.ClientModel_1.15.0/sdk/core/System.ClientModel/src/Convenience/ApiKeyCredential.cs` 的 `Update` 呼叫 `Argument.AssertNotNullOrEmpty`
-- 組態順序：`https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/?view=aspnetcore-10.0`
-- `PasswordHasher<TUser>`：`https://learn.microsoft.com/en-us/dotnet/api/microsoft.aspnetcore.identity.passwordhasher-1?view=aspnetcore-10.0`
-- 本機 starter：SDK 10.0.302 的 `dotnet new blazor --framework net10.0`，`appsettings.json` 含 `"AllowedHosts": "*"`，csproj 無 `UserSecretsId`
-- 本機執行階段：`Microsoft.AspNetCore.App` 10.0.10，其目錄含 `Microsoft.Extensions.Identity.Core.dll`；targeting pack 目錄只有 10.0.10
-- 專案：`WebService\WebService.csproj`、`WebService\appsettings.json`、`McpService\McpService.csproj`、`DbServices.Provider.Sqlite\DbServices.Provider.Sqlite.csproj`
+- 查詢日：2026-10-20
+- 專案：`Workbench.Avalonia\Workbench.Avalonia.csproj`、`Workbench.Adapters\Workbench.Adapters.csproj`、`Workbench.Storage.Sqlite\Workbench.Storage.Sqlite.csproj`、`Workbench.Tests\Workbench.Tests.csproj`、`DbServices.Provider.Sqlite\DbServices.Provider.Sqlite.csproj`、`DbServices.ModelSidecar\DbServices.ModelSidecar.csproj`、`McpService\McpService.csproj`、`Workbench.Web\Workbench.Web.csproj`、`Workbench\Workbench.csproj`、`Workbench\Program.cs`、`Workbench\appsettings.json`、`Workbench.Adapters\Pbkdf2PasswordHasher.cs`、`Workbench.Adapters\SnapshotPdfWriter.cs`、`Workbench.Core\Ports\Ports.cs`、`McpService\Program.cs`、`Directory.Build.props`
+- memlog：2026-10-12 的 NuGet 核對；2026-10-20 只寫「Stack pins match the csproj files」，列出的是 Avalonia 12.1.4、`ModelContextProtocol` 2.2.0、`Microsoft.Data.Sqlite` 10.0.12、`Microsoft.Extensions.AI` 10.10.0、Abstractions 10.10.1、OpenAI 10.10.1
+- NuGet 版本索引：`https://api.nuget.org/v3-flatcontainer/avalonia/index.json`、`avalonia.desktop/index.json`、`microsoft.data.sqlite/index.json`、`microsoft.extensions.ai/index.json`、`microsoft.extensions.ai.abstractions/index.json`、`microsoft.extensions.ai.openai/index.json`、`modelcontextprotocol/index.json`、`modelcontextprotocol.aspnetcore/index.json`、`microsoft.aspnetcore.app.ref/index.json`、`microsoft.extensions.identity.core/index.json`、`questpdf/index.json`
+- 發布日：`microsoft.aspnetcore.app.ref/10.0.13` 與 `microsoft.extensions.identity.core/10.0.13` 為 2026-10-13；`microsoft.data.sqlite/10.0.13` 為 2026-10-13；三個 `microsoft.extensions.ai*` 的 10.11.0 為 2026-10-14；`avalonia/12.1.4` 為 2026-10-09；`modelcontextprotocol/2.2.0` 為 2026-08-13；`questpdf/2026.9.1` 為 2026-09-25
+- Avalonia 12.1.4 nuspec：`https://api.nuget.org/v3-flatcontainer/avalonia/12.1.4/avalonia.nuspec`，依賴群組含 `net10.0`
+- `PasswordHasher<TUser>`：`https://learn.microsoft.com/en-us/dotnet/api/microsoft.aspnetcore.identity.passwordhasher-1?view=aspnetcore-10.0`，組件 `Microsoft.Extensions.Identity.Core.dll`
+- 本機：`dotnet --list-runtimes` 的 `Microsoft.AspNetCore.App` 為 10.0.10；targeting pack `Microsoft.AspNetCore.App.Ref` 與 `Microsoft.NETCore.App.Ref` 皆為 10.0.10
