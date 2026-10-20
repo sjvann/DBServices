@@ -7,6 +7,8 @@ mode: incremental
 scope: moderate
 ---
 
+> **2026-10-20。** 這份提案的資料平面 Discovery 決定仍以資料平面規格為準。其中把工作台寫成確認清單、五種元件、Web API 填數與活資料預覽的句子，已由 PRD、架構脊椎、SPEC 與 `epics.md` 的三個入口契約取代，不要再照那些句子實作。
+
 # Sprint Change Proposal：模組視圖 Discovery
 
 日期：2026-10-15。編輯方式：逐項批准。十項修改提案皆已批准，並已於同日寫入來源文件。`DbServices.Mcp/ToolCatalog.cs` 與測試尚未修改。

@@ -46,6 +46,10 @@ development_status:
   epic-1-retrospective: optional
   # 2026-10-15：Story 1.1 至 1.7 不得依「公開清單恰好六個表級工具」的舊驗收進入 done。
   # Epic 2 的故事尚在史詩檔，未建立實作規格。
+  # 2026-10-20：報表工作台的八則故事在
+  # _bmad-output/specs/spec-report-workbench/stories.yaml
+  # 與 planning-artifacts/epics/epics-DBServices-2026-10-13/epics.md。
+  # 它們不是下面的 epic-1／epic-2。epic-2 仍是資料平面的視圖故事。
   epic-2: backlog
   2-1-發布一條人手寫視圖後-discovery-只有它: backlog
   2-2-解說未確認不得發布: backlog
