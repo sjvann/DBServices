@@ -29,11 +29,14 @@ builder.Services.AddSingleton<IReportMemory, MemoryReportStore>();
 builder.Services.AddSingleton<IReportPdf, SnapshotPdfWriter>();
 builder.Services.AddSingleton<IViewCatalog>(new ViewCatalogClient(new HttpClient(), mcpBase, catalogKey));
 builder.Services.AddSingleton<IConnectionCount>(new McpConnectionCounter(new HttpClient(), mcpBase));
+builder.Services.AddSingleton<IConnectionAdmin>(new McpConnectionAdmin(new HttpClient(), mcpBase, catalogKey));
+builder.Services.AddSingleton<IModelProfile>(new FileModelProfile(Path.Combine(contentRoot, "model.json")));
 builder.Services.AddSingleton<IViewCaller>(new McpViewCaller(new HttpClient(), mcpBase));
 builder.Services.AddSingleton<Profiles>();
 builder.Services.AddSingleton<SeedAdminService>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<OperatorService>();
+builder.Services.AddSingleton<EnvironmentService>();
 builder.Services.AddSingleton<ViewService>();
 builder.Services.AddSingleton<StyleService>();
 builder.Services.AddSingleton<UtteranceService>();
@@ -59,6 +62,9 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.Use(async (context, next) =>
 {
+    if (context.Request.Path.StartsWithSegments("/api"))
+        await context.RequestServices.GetRequiredService<EnvironmentService>().RefreshAsync(context.RequestAborted);
+
     if (seed.Unavailable && context.Request.Path.StartsWithSegments("/api"))
     {
         context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;

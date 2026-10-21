@@ -90,6 +90,8 @@ public sealed class CatalogWriteResult
 
     public static CatalogWriteResult Success(ViewDocumentDto? document) => new() { Ok = true, Document = document };
 
+    public static CatalogWriteResult Noted(string message) => new() { Ok = true, Message = message };
+
     public static CatalogWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
@@ -167,4 +169,80 @@ public sealed class PrintReport
 public interface IReportPdf
 {
     byte[] Write(PrintReport report);
+}
+
+public sealed class NamedConnection
+{
+    public string Name { get; init; } = "";
+    public string ServerType { get; init; } = "";
+}
+
+public interface IConnectionAdmin
+{
+    Task<IReadOnlyList<NamedConnection>> ListAsync(CancellationToken cancellationToken);
+    Task<CatalogWriteResult> SaveAsync(string name, string serverType, string connectionString, string callerId, CancellationToken cancellationToken);
+    Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken);
+    Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken);
+}
+
+public sealed class ModelDraft
+{
+    public bool Enabled { get; set; }
+    public string? Placement { get; set; }
+    public string? Endpoint { get; set; }
+    public string? ModelId { get; set; }
+    public string? ApiKey { get; set; }
+}
+
+public sealed class ModelStatus
+{
+    public bool Enabled { get; init; }
+    public string Placement { get; init; } = "";
+    public string Endpoint { get; init; } = "";
+    public string ModelId { get; init; } = "";
+    public bool KeyPresent { get; init; }
+    public bool Ready { get; init; }
+}
+
+public sealed class ModelWriteResult
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public ModelStatus? Status { get; init; }
+
+    public static ModelWriteResult Success(ModelStatus status) => new() { Ok = true, Status = status };
+    public static ModelWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public interface IModelProfile
+{
+    ModelStatus Read();
+    ModelWriteResult Save(ModelDraft draft);
+}
+
+public sealed class EnvironmentSnapshot
+{
+    public int ConnectionCount { get; init; }
+    public bool DatabaseReady { get; init; }
+    public string DatabaseDetail { get; init; } = "尚未設定。";
+    public bool ModelReady { get; init; }
+    public string ModelDetail { get; init; } = "尚未設定。";
+    public bool Ready => DatabaseReady && ModelReady;
+
+    public static EnvironmentSnapshot NotReady { get; } = new();
+
+    public static EnvironmentSnapshot From(int connectionCount, bool modelReady) => new()
+    {
+        ConnectionCount = connectionCount,
+        DatabaseReady = connectionCount > 0,
+        DatabaseDetail = connectionCount switch
+        {
+            0 => "尚未設定。",
+            1 => "已有一筆可用連線。",
+            _ => "已設定多筆。產生報表時只能有一筆可用連線。",
+        },
+        ModelReady = modelReady,
+        ModelDetail = modelReady ? "已設定並啟用。" : "尚未設定。",
+    };
 }

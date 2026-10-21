@@ -58,6 +58,42 @@ public class ConnectionListTests
             Assert.IsFalse(advertised.Contains(name, StringComparer.OrdinalIgnoreCase));
     }
 
+    [TestMethod]
+    public async Task Saving_a_connection_does_not_echo_the_secret()
+    {
+        const string hidden = "SecretMarkerDoNotLeak";
+        await using var factory = CreateFactory(
+        [
+            new KeyValuePair<string, string?>("Workbench:CatalogKey", "unit-catalog-key"),
+        ]);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/connections")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { name = "warehouse", serverType = "Sqlite", connectionString = "Data Source=:memory:;Password=" + hidden }),
+                Encoding.UTF8,
+                "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("X-DBServices-Workbench", "unit-catalog-key");
+        request.Headers.TryAddWithoutValidation("X-DBServices-Caller", "admin");
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, body);
+        Assert.IsFalse(body.Contains(hidden, StringComparison.Ordinal));
+        Assert.IsFalse(body.Contains("ConnectionString", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(body.Contains("Data Source", StringComparison.OrdinalIgnoreCase));
+
+        using var listed = await client.GetAsync("/connections");
+        var listBody = await listed.Content.ReadAsStringAsync();
+        Assert.AreEqual(HttpStatusCode.OK, listed.StatusCode, listBody);
+        Assert.IsFalse(listBody.Contains(hidden, StringComparison.Ordinal));
+        using var document = JsonDocument.Parse(listBody);
+        var rows = document.RootElement.EnumerateArray().ToArray();
+        Assert.AreEqual(1, rows.Length);
+        Assert.AreEqual("warehouse", rows[0].GetProperty("name").GetString());
+        Assert.AreEqual("Sqlite", rows[0].GetProperty("serverType").GetString());
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(IEnumerable<KeyValuePair<string, string?>> settings)
     {
         var root = Path.Combine(Path.GetTempPath(), "mcp-connections-" + Guid.NewGuid().ToString("N"));

@@ -28,6 +28,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         Catalog = options.Catalog ?? new RecordingCatalog();
         Caller = options.Caller ?? new RecordingCaller();
         Connections = options.Connections ?? new RecordingConnections();
+        ModelReady = options.ModelReady;
         SqlitePath = Path.Combine(_root, "workbench.db");
         PreserveRoot = options.PreserveRoot;
         AdminName = options.AdminName;
@@ -40,6 +41,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
     public RecordingCatalog Catalog { get; }
     public RecordingCaller Caller { get; }
     public RecordingConnections Connections { get; }
+    public bool ModelReady { get; }
     public string SqlitePath { get; }
     public bool PreserveRoot { get; }
     public string AdminName { get; }
@@ -87,6 +89,8 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
             services.AddSingleton<IViewCatalog>(Catalog);
             services.AddSingleton<IViewCaller>(Caller);
             services.AddSingleton<IConnectionCount>(Connections);
+            services.AddSingleton<IConnectionAdmin>(new RecordingConnectionAdmin());
+            services.AddSingleton<IModelProfile>(new RecordingModel(ModelReady));
         });
     }
 
@@ -136,6 +140,7 @@ internal sealed class HostOptions
     public RecordingCatalog? Catalog { get; set; }
     public RecordingCaller? Caller { get; set; }
     public RecordingConnections? Connections { get; set; }
+    public bool ModelReady { get; set; } = true;
     public Dictionary<string, string?> Extra { get; } = new(StringComparer.Ordinal);
 }
 
@@ -245,6 +250,39 @@ internal sealed class RecordingCaller : IViewCaller
             Rows = Rows.Select(row => row.ToList()).ToList(),
         });
     }
+}
+
+internal sealed class RecordingModel : IModelProfile
+{
+    private readonly bool _ready;
+
+    public RecordingModel(bool ready) => _ready = ready;
+
+    public ModelStatus Read() => new()
+    {
+        Enabled = _ready,
+        Placement = _ready ? "local" : "",
+        Endpoint = _ready ? "http://127.0.0.1:9/v1" : "",
+        ModelId = _ready ? "test" : "",
+        Ready = _ready,
+    };
+
+    public ModelWriteResult Save(ModelDraft draft) => ModelWriteResult.Success(Read());
+}
+
+internal sealed class RecordingConnectionAdmin : IConnectionAdmin
+{
+    public Task<IReadOnlyList<NamedConnection>> ListAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<NamedConnection>>([]);
+
+    public Task<CatalogWriteResult> SaveAsync(string name, string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(CatalogWriteResult.Fail("connection_failed", "無法建立連線。"));
+
+    public Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(CatalogWriteResult.Fail("connection_failed", "無法建立連線。"));
+
+    public Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(CatalogWriteResult.Fail("not_found", "找不到連線。"));
 }
 
 internal sealed class RecordingConnections : IConnectionCount

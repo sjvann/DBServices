@@ -4,6 +4,7 @@
 @inject RecordService Records
 @inject StyleService Styles
 @inject ExportService Export
+@inject EnvironmentService Environments
 @inject CircuitSession Session
 @inject IJSRuntime Js
 @layout WorkbenchLayout
@@ -12,6 +13,10 @@
 @if (_denied)
 {
     <p role="alert">沒有權限。</p>
+}
+else if (_closed)
+{
+    <SetupRequired Snapshot="_snapshot" Admin="Gate.Current?.IsAdmin == true" />
 }
 else
 {
@@ -61,15 +66,25 @@ else
 
 @code {
     private bool _denied;
+    private bool _closed;
+    private EnvironmentSnapshot _snapshot = EnvironmentSnapshot.NotReady;
     private string _text = "";
     private string _notice = "";
     private List<string> _columns = [];
     private List<List<string>> _rows = [];
     private List<StyleBlockDto> _blocks = [];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _denied = Gate.Current is not { } profile || !profile.Has(EntryNames.Terminal);
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Terminal))
+        {
+            _denied = true;
+            return;
+        }
+
+        await Environments.RefreshAsync(CancellationToken.None);
+        _snapshot = Environments.Current;
+        _closed = !_snapshot.Ready;
     }
 
     private async Task Submit()

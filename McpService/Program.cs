@@ -13,7 +13,8 @@ builder.Services.AddSingleton(sp =>
         .GetSection("Connections")
         .Get<Dictionary<string, ConnectionSetting>>()
         ?? new Dictionary<string, ConnectionSetting>();
-    return new ToolCatalog(connections);
+    var environment = sp.GetRequiredService<IWebHostEnvironment>();
+    return new ConnectionDirectory(connections, Path.Combine(environment.ContentRootPath, "catalog", "connections.json"));
 });
 builder.Services.AddSingleton(sp =>
 {
@@ -59,8 +60,9 @@ builder.Services
             return ValueTask.FromResult(ToolResult(TableDispatchResult.InvalidArguments()));
 
         var parameters = ReadParameters(arguments);
+        var directory = services.GetRequiredService<ConnectionDirectory>();
         var outcome = ViewDispatch.Execute(
-            services.GetRequiredService<ToolCatalog>(),
+            directory.Catalog,
             connectionId,
             view,
             parameters);
@@ -71,7 +73,7 @@ builder.Services
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<IConfiguration>(),
             services.GetRequiredService<IHttpContextAccessor>(),
-            services.GetRequiredService<ToolCatalog>(),
+            directory.Catalog,
             connectionId,
             view.Name,
             auditArguments,
@@ -79,22 +81,53 @@ builder.Services
     });
 
 var app = builder.Build();
-app.MapGet("/connections", (ToolCatalog catalog) =>
+app.MapGet("/connections", (ConnectionDirectory directory) => Results.Json(ConnectionPayload(directory.Catalog)));
+app.MapPost("/connections", async (HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
 {
-    var payload = new List<Dictionary<string, string>>();
-    foreach (var pair in catalog.Connections)
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    ConnectionInput? input;
+    try
     {
-        if (!pair.Value.Available)
-            continue;
-
-        payload.Add(new Dictionary<string, string>
-        {
-            ["name"] = pair.Key,
-            ["serverType"] = pair.Value.ServerType,
-        });
+        input = await http.Request.ReadFromJsonAsync<ConnectionInput>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "invalid_arguments", message = "連線內容不完整。" }, statusCode: 400);
     }
 
-    return Results.Json(payload);
+    var result = directory.Save(input?.Name, input?.ServerType, input?.ConnectionString);
+    if (!result.Ok)
+        return Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    return Results.Json(new Dictionary<string, string> { ["name"] = result.Name, ["serverType"] = result.ServerType });
+});
+app.MapPost("/connections/probe", async (HttpContext http, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    ConnectionInput? input;
+    try
+    {
+        input = await http.Request.ReadFromJsonAsync<ConnectionInput>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "invalid_arguments", message = "連線內容不完整。" }, statusCode: 400);
+    }
+
+    var probed = await Task.Run(() => DbServices.Api.Shared.ConnectionProbe.Try(input?.ServerType, input?.ConnectionString), http.RequestAborted);
+    if (!probed.Ok)
+        return Results.Json(new { code = probed.Code, message = probed.Message }, statusCode: 400);
+    return Results.Json(new { message = probed.Message });
+});
+app.MapDelete("/connections/{name}", (string name, HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    var result = directory.Remove(name);
+    if (!result.Ok)
+        return Results.Json(new { code = result.Code, message = result.Message }, statusCode: result.Code == "not_found" ? 404 : 400);
+    return Results.Json(new Dictionary<string, string> { ["name"] = result.Name });
 });
 
 app.MapGet("/views", (HttpContext http, ViewCatalog views, IConfiguration configuration) =>
@@ -140,6 +173,23 @@ static IResult SetPublished(string id, bool published, HttpContext http, ViewCat
         return rejected;
     var result = views.SetPublished(id, published);
     return result.Ok ? Results.Json(result.Document) : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+}
+
+static List<Dictionary<string, string>> ConnectionPayload(ToolCatalog catalog)
+{
+    var payload = new List<Dictionary<string, string>>();
+    foreach (var pair in catalog.Connections)
+    {
+        if (!pair.Value.Available)
+            continue;
+        payload.Add(new Dictionary<string, string>
+        {
+            ["name"] = pair.Key,
+            ["serverType"] = pair.Value.ServerType,
+        });
+    }
+
+    return payload;
 }
 
 static IResult? RejectWrite(HttpContext http, IConfiguration configuration)

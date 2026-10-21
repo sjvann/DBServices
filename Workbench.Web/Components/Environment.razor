@@ -1,0 +1,423 @@
+@page "/environment"
+@inject OperatorGate Gate
+@inject EnvironmentService Environments
+@layout WorkbenchLayout
+
+<h1>環境設定</h1>
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    <p class="lead">先接上資料庫，再設定 AI。這兩項都完成之前，不能定義檢視、排樣式或產生報表。</p>
+    @if (_error is not null)
+    {
+        <div class="error" role="alert">
+            @if (!string.IsNullOrEmpty(_error.Code))
+            {
+                <span class="code">@_error.Code</span>
+            }
+            <span>@_error.Message</span>
+        </div>
+    }
+    <div role="status" aria-live="polite">
+        @if (!string.IsNullOrEmpty(_status))
+        {
+            <p>@_status</p>
+        }
+    </div>
+
+    <h2>資料庫連線</h2>
+    <p class="hint">@_snapshot.DatabaseDetail 依資料庫種類填欄位。預設值可以直接改。送出後連線只留在資料服務，這個畫面不會再顯示。</p>
+    @if (_connections.Count == 0)
+    {
+        <p class="empty">還沒有資料庫連線。</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var item in _connections)
+            {
+                <li>
+                    <span><span class="code">@item.Name</span> <span class="meta">@item.ServerType</span></span>
+                    <button class="secondary" type="button" @onclick="() => Remove(item.Name)">移除</button>
+                </li>
+            }
+        </ul>
+    }
+    <form class="panel connection" @onsubmit="SaveConnection" @onsubmit:preventDefault="true">
+        <label for="connection-name">名稱 <span class="req">必填</span>
+            <input id="connection-name" autocomplete="off" placeholder="例如：warehouse" @bind="_connectionName" @bind:event="oninput" />
+        </label>
+        <label for="connection-engine">資料庫種類 <span class="req">必填</span>
+            <select id="connection-engine" @bind="_serverType" @bind:after="UseEngine">
+                <option value="Sqlite">SQLite</option>
+                <option value="SqlServer">SQL Server</option>
+                <option value="MySQL">MySQL</option>
+                <option value="Oracle">Oracle</option>
+                <option value="PostgreSQL">PostgreSQL</option>
+            </select>
+        </label>
+        <fieldset>
+            <legend>連線參數</legend>
+            @switch (_serverType)
+            {
+                case "Sqlite":
+                    <label for="connection-place">位置
+                        <select id="connection-place" @bind="_fields.Place">
+                            <option value="file">檔案</option>
+                            <option value="memory">記憶體</option>
+                        </select>
+                    </label>
+                    @if (_fields.Place == "memory")
+                    {
+                        <p class="hint">使用預設的行程內資料庫，不用填路徑。程序結束後資料消失。</p>
+                    }
+                    else
+                    {
+                        <label for="connection-path">檔案路徑 <span class="req">必填</span>
+                            <input id="connection-path" autocomplete="off" spellcheck="false" placeholder="例如：D:\data\warehouse.db" @bind="_fields.FilePath" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-mode">開啟模式
+                            <select id="connection-mode" @bind="_fields.OpenMode">
+                                <option value="ReadWriteCreate">讀寫，沒有檔案就建立</option>
+                                <option value="ReadWrite">讀寫</option>
+                                <option value="ReadOnly">唯讀</option>
+                            </select>
+                        </label>
+                        <p class="hint">路徑是資料服務看得到的檔案。</p>
+                    }
+                    break;
+                case "SqlServer":
+                    <div class="field-row">
+                        <label for="connection-host">主機
+                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-port">連接埠
+                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-database">資料庫 <span class="req">必填</span>
+                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-auth">驗證
+                        <select id="connection-auth" @bind="_fields.Auth">
+                            <option value="sql">SQL 帳號</option>
+                            <option value="windows">Windows 整合驗證</option>
+                        </select>
+                    </label>
+                    @if (_fields.Auth == "windows")
+                    {
+                        <p class="hint">使用資料服務的 Windows 身分，不送帳號與密碼。</p>
+                    }
+                    else
+                    {
+                        <div class="field-row">
+                            <label for="connection-user">帳號 <span class="req">必填</span>
+                                <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" />
+                            </label>
+                            <label for="connection-password">密碼 <span class="req">必填</span>
+                                <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                            </label>
+                        </div>
+                    }
+                    <div class="field-row">
+                        <label for="connection-encrypt">加密
+                            <select id="connection-encrypt" @bind="_fields.Encrypt">
+                                <option value="Mandatory">強制加密</option>
+                                <option value="Optional">選擇性加密</option>
+                                <option value="Strict">嚴格加密</option>
+                                <option value="False">不加密</option>
+                            </select>
+                        </label>
+                        <label for="connection-trust">憑證
+                            <select id="connection-trust" @bind="_fields.TrustCertificate">
+                                <option value="False">驗證憑證</option>
+                                <option value="True">信任伺服器憑證</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p class="hint">本機或自簽憑證請改為信任伺服器憑證。</p>
+                    break;
+                case "MySQL":
+                    <div class="field-row">
+                        <label for="connection-host">主機
+                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-port">連接埠
+                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-database">資料庫 <span class="req">必填</span>
+                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
+                    </label>
+                    <div class="field-row">
+                        <label for="connection-user">帳號 <span class="req">必填</span>
+                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：root" @bind="_fields.User" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-password">密碼 <span class="req">必填</span>
+                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-ssl">加密連線
+                        <select id="connection-ssl" @bind="_fields.SslMode">
+                            <option value="Preferred">優先</option>
+                            <option value="Required">必須</option>
+                            <option value="None">不使用</option>
+                            <option value="VerifyCA">驗證憑證機構</option>
+                            <option value="VerifyFull">驗證伺服器名稱</option>
+                        </select>
+                    </label>
+                    <p class="hint">連接埠預設 3306。</p>
+                    break;
+                case "Oracle":
+                    <div class="field-row">
+                        <label for="connection-host">主機
+                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-port">連接埠
+                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-oracle-kind">目標
+                        <select id="connection-oracle-kind" @bind="_fields.OracleKind">
+                            <option value="service">服務名稱</option>
+                            <option value="sid">SID</option>
+                        </select>
+                    </label>
+                    <label for="connection-oracle-name">@(_fields.OracleKind == "sid" ? "SID" : "服務名稱") <span class="req">必填</span>
+                        <input id="connection-oracle-name" autocomplete="off" spellcheck="false" placeholder="例如：ORCL" @bind="_fields.OracleName" @bind:event="oninput" />
+                    </label>
+                    <div class="field-row">
+                        <label for="connection-user">帳號 <span class="req">必填</span>
+                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：system" @bind="_fields.User" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-password">密碼 <span class="req">必填</span>
+                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <p class="hint">連接埠預設 1521。服務名稱與 SID 擇一。</p>
+                    break;
+                default:
+                    <div class="field-row">
+                        <label for="connection-host">主機
+                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-port">連接埠
+                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-database">資料庫 <span class="req">必填</span>
+                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
+                    </label>
+                    <div class="field-row">
+                        <label for="connection-user">帳號 <span class="req">必填</span>
+                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：postgres" @bind="_fields.User" @bind:event="oninput" />
+                        </label>
+                        <label for="connection-password">密碼 <span class="req">必填</span>
+                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <label for="connection-ssl">加密連線
+                        <select id="connection-ssl" @bind="_fields.SslMode">
+                            <option value="Prefer">優先</option>
+                            <option value="Require">必須</option>
+                            <option value="Disable">不使用</option>
+                            <option value="Allow">允許</option>
+                            <option value="VerifyCA">驗證憑證機構</option>
+                            <option value="VerifyFull">驗證伺服器名稱</option>
+                        </select>
+                    </label>
+                    <p class="hint">連接埠預設 5432。</p>
+                    break;
+            }
+        </fieldset>
+        <p class="hint">先測試再儲存。測試不會寫入連線，也會指出缺少的驅動程式。</p>
+        <div class="actions">
+            <button class="secondary" type="button" disabled="@_probing" @onclick="ProbeConnection">@(_probing ? "正在測試…" : "測試連線")</button>
+            <button class="secondary" type="submit" disabled="@_probing">儲存連線</button>
+        </div>
+    </form>
+
+    <h2>AI 設定</h2>
+    <p class="hint">@_snapshot.ModelDetail 必須啟用，工作台才會開放。</p>
+    <form class="panel" @onsubmit="SaveModel" @onsubmit:preventDefault="true">
+        <label><input type="checkbox" @bind="_enabled" /> 啟用</label>
+        <label for="model-placement">放置
+            <select id="model-placement" @bind="_placement">
+                <option value="cloud">雲端</option>
+                <option value="local">本機</option>
+            </select>
+        </label>
+        <label for="model-endpoint">位址 <span class="req">必填</span>
+            <input id="model-endpoint" autocomplete="off" placeholder="雲端用 https，本機用 127.0.0.1" @bind="_endpoint" @bind:event="oninput" />
+        </label>
+        <label for="model-id">模型名稱 <span class="req">必填</span>
+            <input id="model-id" autocomplete="off" @bind="_modelId" @bind:event="oninput" />
+        </label>
+        <label for="model-key">金鑰
+            <input id="model-key" type="password" autocomplete="new-password" @bind="_apiKey" @bind:event="oninput" />
+        </label>
+        <p class="hint">@(_keyPresent ? "已儲存金鑰。留白表示沿用，不會再顯示。" : "雲端必須填金鑰。本機可以留白。金鑰不會再顯示。")</p>
+        <div class="actions">
+            <button class="confirm" type="submit">儲存 AI 設定</button>
+        </div>
+    </form>
+}
+
+@code {
+    private bool _denied;
+    private ErrorDto? _error;
+    private string _status = "";
+    private EnvironmentSnapshot _snapshot = EnvironmentSnapshot.NotReady;
+    private IReadOnlyList<NamedConnection> _connections = [];
+    private string _connectionName = "";
+    private string _serverType = "Sqlite";
+    private ConnectionFields _fields = ConnectionFields.For("Sqlite");
+    private bool _probing;
+    private bool _enabled;
+    private string _placement = "local";
+    private string _endpoint = "";
+    private string _modelId = "";
+    private string _apiKey = "";
+    private bool _keyPresent;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Gate.Current is not { IsAdmin: true } profile)
+        {
+            _denied = Gate.Current is not null;
+            return;
+        }
+
+        await Reload(profile.Id);
+    }
+
+    private async Task Reload(string operatorId)
+    {
+        await Environments.RefreshAsync(CancellationToken.None);
+        _snapshot = Environments.Current;
+        var connections = await Environments.ConnectionsAsync(operatorId, CancellationToken.None);
+        _connections = connections.Ok ? connections.Value! : [];
+        if (!connections.Ok)
+            _error = connections.Error;
+        var model = Environments.Model(operatorId);
+        if (!model.Ok || model.Value is null)
+        {
+            _error ??= model.Error;
+            return;
+        }
+
+        _enabled = model.Value.Enabled;
+        _placement = string.IsNullOrEmpty(model.Value.Placement) ? "local" : model.Value.Placement;
+        _endpoint = model.Value.Endpoint;
+        _modelId = model.Value.ModelId;
+        _keyPresent = model.Value.KeyPresent;
+        _apiKey = "";
+    }
+
+    private async Task SaveConnection()
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        var composed = _fields.Compose(_serverType);
+        if (!composed.Ok)
+        {
+            _error = composed.Error;
+            return;
+        }
+
+        var saved = await Environments.SaveConnectionAsync(profile.Id, _connectionName, _serverType, composed.Value, CancellationToken.None);
+        if (!saved.Ok)
+        {
+            _error = saved.Error;
+            await Reload(profile.Id);
+            return;
+        }
+
+        _connectionName = "";
+        _fields = ConnectionFields.For(_serverType);
+        _status = "已儲存資料庫連線。";
+        await Reload(profile.Id);
+    }
+
+    private async Task ProbeConnection()
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        var composed = _fields.Compose(_serverType);
+        if (!composed.Ok)
+        {
+            _error = composed.Error;
+            return;
+        }
+
+        _probing = true;
+        try
+        {
+            var probed = await Environments.ProbeConnectionAsync(profile.Id, _serverType, composed.Value, CancellationToken.None);
+            if (!probed.Ok)
+            {
+                _error = probed.Error;
+                return;
+            }
+
+            _status = probed.Value ?? "已連上資料庫。";
+        }
+        finally
+        {
+            _probing = false;
+        }
+    }
+
+    private void UseEngine() => _fields = ConnectionFields.For(_serverType);
+
+    private async Task Remove(string name)
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        var removed = await Environments.RemoveConnectionAsync(profile.Id, name, CancellationToken.None);
+        if (!removed.Ok)
+        {
+            _error = removed.Error;
+            return;
+        }
+
+        _status = "已移除資料庫連線。";
+        await Reload(profile.Id);
+    }
+
+    private async Task SaveModel()
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        var saved = await Environments.SaveModelAsync(profile.Id, new ModelDraft
+        {
+            Enabled = _enabled,
+            Placement = _placement,
+            Endpoint = _endpoint,
+            ModelId = _modelId,
+            ApiKey = _apiKey,
+        }, CancellationToken.None);
+        _apiKey = "";
+        if (!saved.Ok)
+        {
+            _error = saved.Error;
+            return;
+        }
+
+        _status = _snapshot.Ready && saved.Value!.Ready ? "AI 已設定，環境可以使用。" : "已儲存 AI 設定。";
+        await Reload(profile.Id);
+        if (_snapshot.Ready)
+            _status = "環境已可使用。可以定義檢視、排樣式與產生報表。";
+        else if (saved.Value!.Ready && !_snapshot.DatabaseReady)
+            _status = "AI 已設定。還差資料庫連線。";
+        else if (!saved.Value.Ready)
+            _status = "已儲存。啟用且內容完整之後，AI 才算設定完成。";
+    }
+}

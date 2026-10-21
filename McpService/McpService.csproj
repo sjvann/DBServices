@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DbServices.Mcp\DbServices.Mcp.csproj" />
+    <ProjectReference Include="..\DbServices.Api.Shared\DbServices.Api.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -18,37 +18,50 @@
         else
         {
             <p class="who">@_me.DisplayName</p>
-            @if (_station is null && _me.Entries.Count > 1)
+            @if (_station == EntryNames.Analyst)
             {
-                <p class="meta">換站</p>
-            }
-            else if (_station == EntryNames.Analyst)
-            {
+                <p class="workplace">定義檢視</p>
                 <p class="meta">系統分析師</p>
-                <NavLink href="/views">檢視定義</NavLink>
+                <NavLink href="/views">檢視</NavLink>
             }
             else if (_station == EntryNames.Designer)
             {
-                <p class="meta">設計師</p>
+                <p class="workplace">排樣式</p>
+                <p class="meta">報表設計師</p>
                 <NavLink href="/styles">樣式</NavLink>
             }
             else if (_station == EntryNames.Terminal)
             {
+                <p class="workplace">產生報表</p>
                 <p class="meta">終端使用者</p>
                 <NavLink href="/talk">交談</NavLink>
                 <NavLink href="/records">生成紀錄</NavLink>
             }
-            @if (_me.Entries.Count > 1)
+            else if (_page == "stations")
             {
-                <NavLink href="/stations">換站</NavLink>
+                <p class="workplace">選擇工作</p>
+                <p class="meta">換成另一個已指派的工作</p>
+            }
+            else if (_page == "environment")
+            {
+                <p class="workplace">環境設定</p>
+                <p class="meta">資料庫連線與 AI</p>
             }
             @if (_me.IsAdmin)
             {
                 <p class="meta">管理</p>
+                <NavLink href="/environment">環境設定</NavLink>
                 <NavLink href="/operators">帳號</NavLink>
                 <NavLink href="/entries">入口指派</NavLink>
             }
-            <button class="secondary" type="button" @onclick="Logout">登出</button>
+            <div class="rail-foot">
+                @if (_me.Entries.Count > 1)
+                {
+                    <NavLink href="/stations">換工作</NavLink>
+                    <p class="meta">你有多個工作身份，這裡整頁換過去。</p>
+                }
+                <button class="secondary" type="button" @onclick="Logout">登出</button>
+            </div>
         }
     </nav>
     <div class="main">
@@ -61,6 +74,7 @@
 @code {
     private MeResponse? _me;
     private string? _station;
+    private string? _page;
 
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
@@ -94,6 +108,7 @@
         var profile = Gate.Current;
         _me = profile is null ? null : OperatorService.ToMe(profile);
         var relative = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
+        _page = relative;
         _station = relative switch
         {
             "views" => EntryNames.Analyst,

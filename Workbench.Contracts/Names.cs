@@ -34,3 +34,11 @@ public static class BlockKinds
 
     public static bool Known(string? type) => type is Title or Text or Parameter or Table;
 }
+
+public static class ModelCodes
+{
+    public const string Ok = "model_ok";
+    public const string InvalidSettings = "model_invalid_settings";
+    public const string Unreachable = "model_unreachable";
+    public const string Timeout = "model_timeout";
+}

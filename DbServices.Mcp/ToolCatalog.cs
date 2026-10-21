@@ -14,6 +14,8 @@ public sealed class ToolCatalog
         "PostgreSQL",
     };
 
+    public static bool KnownServerType(string? serverType) => KnownServerTypes.Contains(serverType ?? "");
+
     public static readonly IReadOnlyList<ToolDefinition> Definitions =
     [
         new("tables", "列出資料表"),

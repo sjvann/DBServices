@@ -372,5 +372,8 @@ docs/log.txt
 # Runtime process ids written by local services
 .ai_project/pids/
 
+# Local build status reports
+.ai_project/build-reports/
+
 # BMAD render staging directories
 _bmad/render/**/.staging-*/

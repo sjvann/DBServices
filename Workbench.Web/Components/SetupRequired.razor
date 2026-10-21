@@ -1,0 +1,30 @@
+<section aria-labelledby="setup-title">
+    <h1 id="setup-title">環境還沒設定好</h1>
+    <p class="lead">資料庫連線與 AI 都設定完成之前，不能定義檢視、排樣式或產生報表。</p>
+    <ul>
+        <li>
+            <span>資料庫連線</span>
+            <span class="meta">@Snapshot.DatabaseDetail</span>
+        </li>
+        <li>
+            <span>AI 設定</span>
+            <span class="meta">@Snapshot.ModelDetail</span>
+        </li>
+    </ul>
+    @if (Admin)
+    {
+        <p><a href="/environment">前往環境設定</a></p>
+    }
+    else
+    {
+        <p>請管理者先完成環境設定。</p>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public EnvironmentSnapshot Snapshot { get; set; } = EnvironmentSnapshot.NotReady;
+
+    [Parameter]
+    public bool Admin { get; set; }
+}

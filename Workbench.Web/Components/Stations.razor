@@ -1,28 +1,42 @@
 @page "/stations"
 @inject OperatorGate Gate
+@inject EnvironmentService Environments
 @layout WorkbenchLayout
 
-<h1>換站</h1>
+<h1>選擇工作</h1>
 @if (_denied)
 {
     <p role="alert">沒有權限。</p>
 }
+else if (_closed)
+{
+    <SetupRequired Snapshot="_snapshot" Admin="Gate.Current?.IsAdmin == true" />
+}
 else
 {
-    <p class="meta">選擇一個入口。三個站不會同時出現在同一條軌。</p>
-    <div class="actions">
+    <p class="lead">帳號上有多個工作身份時，在這裡換成另一個。換過去之後，整個畫面只留下那一項工作。</p>
+    <ul class="choice-list">
         @foreach (var entry in _entries)
         {
-            <a class="secondary" href="@EntryNames.Home(entry)">@EntryNames.Label(entry)</a>
+            var copy = Describe(entry);
+            <li>
+                <a href="@EntryNames.Home(entry)">
+                    <strong>@copy.Title</strong>
+                    <span>@copy.Detail</span>
+                    <span class="meta">@copy.Role</span>
+                </a>
+            </li>
         }
-    </div>
+    </ul>
 }
 
 @code {
     private bool _denied;
+    private bool _closed;
+    private EnvironmentSnapshot _snapshot = EnvironmentSnapshot.NotReady;
     private List<string> _entries = [];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         var profile = Gate.Current;
         if (profile is null || profile.Entries.Count < 2)
@@ -33,6 +47,20 @@ else
             return;
         }
 
+        await Environments.RefreshAsync(CancellationToken.None);
+        _snapshot = Environments.Current;
+        _closed = !_snapshot.Ready;
+        if (_closed)
+            return;
+
         _entries = profile.Entries.ToList();
     }
+
+    private static (string Title, string Detail, string Role) Describe(string entry) => entry switch
+    {
+        EntryNames.Analyst => ("定義檢視", "決定報表要讀哪張表、顯示哪些欄。資料庫位址與帳號由系統保管。", "系統分析師"),
+        EntryNames.Designer => ("排樣式", "引用已發布的檢視，排成報表的標題、說明與表格。", "報表設計師"),
+        EntryNames.Terminal => ("產生報表", "用一句話取出這一次的報表，並留下生成紀錄。", "終端使用者"),
+        _ => (EntryNames.Label(entry), "", EntryNames.Label(entry)),
+    };
 }

@@ -1,4 +1,5 @@
 using Workbench.Contracts;
+using Workbench.Core.Ports;
 
 namespace Workbench.Core;
 
@@ -24,6 +25,18 @@ public static class WorkbenchMessages
     public const string Disconnected = "來源連不起來。";
     public const string SecondAdmin = "不能建立另一個管理者。";
     public const string LeftUnsaved = "未保存就離開後不能匯出。";
+
+    public static ErrorDto EnvironmentIncomplete(EnvironmentSnapshot snapshot)
+    {
+        var parts = new List<string>();
+        if (!snapshot.DatabaseReady)
+            parts.Add("資料庫連線尚未設定");
+        if (!snapshot.ModelReady)
+            parts.Add("AI 尚未設定");
+        if (parts.Count == 0)
+            parts.Add("環境設定尚未完成");
+        return new ErrorDto { Code = "environment_incomplete", Message = "環境設定未完成：" + string.Join("，", parts) + "。" };
+    }
 }
 
 public sealed class OpResult<T>

@@ -301,17 +301,19 @@ public sealed class ViewService
     private readonly Profiles _profiles;
     private readonly IViewCatalog _catalog;
     private readonly IStyleStore _styles;
+    private readonly EnvironmentService _environment;
 
-    public ViewService(Profiles profiles, IViewCatalog catalog, IStyleStore styles)
+    public ViewService(Profiles profiles, IViewCatalog catalog, IStyleStore styles, EnvironmentService environment)
     {
         _profiles = profiles;
         _catalog = catalog;
         _styles = styles;
+        _environment = environment;
     }
 
     public async Task<OpResult<IReadOnlyList<ViewSummaryDto>>> ListAsync(string operatorId, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId) is { } error)
+        if (await Closed(operatorId, cancellationToken) is { } error)
             return OpResult<IReadOnlyList<ViewSummaryDto>>.Fail(error);
         var documents = await _catalog.ListAsync(operatorId, cancellationToken);
         IReadOnlyList<ViewSummaryDto> rows = documents.Select(Summary).ToList();
@@ -320,7 +322,7 @@ public sealed class ViewService
 
     public async Task<OpResult<ViewDocumentDto>> ReadAsync(string operatorId, string id, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId) is { } error)
+        if (await Closed(operatorId, cancellationToken) is { } error)
             return OpResult<ViewDocumentDto>.Fail(error);
         var document = await _catalog.FindAsync(id, operatorId, cancellationToken);
         return document is null
@@ -330,7 +332,7 @@ public sealed class ViewService
 
     public async Task<OpResult<ViewDocumentDto>> SaveAsync(string operatorId, ViewDocumentDto document, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId) is { } error)
+        if (await Closed(operatorId, cancellationToken) is { } error)
             return OpResult<ViewDocumentDto>.Fail(error);
 
         var existing = await _catalog.ListAsync(operatorId, cancellationToken);
@@ -359,7 +361,7 @@ public sealed class ViewService
 
     public async Task<OpResult<bool>> DeleteAsync(string operatorId, string id, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId) is { } error)
+        if (await Closed(operatorId, cancellationToken) is { } error)
             return OpResult<bool>.Fail(error);
         if (_styles.References(id))
             return OpResult<bool>.Fail(WorkbenchMessages.Text("forbidden", WorkbenchMessages.FrozenDelete));
@@ -374,19 +376,28 @@ public sealed class ViewService
 
     public async Task<OpResult<ViewDocumentDto>> UnpublishAsync(string operatorId, string id, CancellationToken cancellationToken)
     {
-        if (_styles.References(id) && Deny(operatorId) is null)
+        if (await Closed(operatorId, cancellationToken) is { } error)
+            return OpResult<ViewDocumentDto>.Fail(error);
+        if (_styles.References(id))
             return OpResult<ViewDocumentDto>.Fail(WorkbenchMessages.Text("forbidden", WorkbenchMessages.FrozenUnpublish));
         return await SetPublishedAsync(operatorId, id, false, cancellationToken);
     }
 
     private async Task<OpResult<ViewDocumentDto>> SetPublishedAsync(string operatorId, string id, bool published, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId) is { } error)
+        if (await Closed(operatorId, cancellationToken) is { } error)
             return OpResult<ViewDocumentDto>.Fail(error);
         var result = await _catalog.SetPublishedAsync(id, published, operatorId, cancellationToken);
         return result.Ok
             ? OpResult<ViewDocumentDto>.Success(result.Document!)
             : OpResult<ViewDocumentDto>.Fail(WorkbenchMessages.Text(result.Code, result.Message));
+    }
+
+    private async Task<ErrorDto?> Closed(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Deny(operatorId) is { } error)
+            return error;
+        return await _environment.BlockAsync(cancellationToken);
     }
 
     private ErrorDto? Deny(string operatorId)
@@ -412,25 +423,27 @@ public sealed class StyleService
     private readonly IStyleStore _styles;
     private readonly IViewCatalog _catalog;
     private readonly IReportMemory _reports;
+    private readonly EnvironmentService _environment;
 
-    public StyleService(Profiles profiles, IStyleStore styles, IViewCatalog catalog, IReportMemory reports)
+    public StyleService(Profiles profiles, IStyleStore styles, IViewCatalog catalog, IReportMemory reports, EnvironmentService environment)
     {
         _profiles = profiles;
         _styles = styles;
         _catalog = catalog;
         _reports = reports;
+        _environment = environment;
     }
 
     public OpResult<IReadOnlyList<StyleDto>> List(string operatorId)
     {
-        if (Deny(operatorId, EntryNames.Designer) is { } error)
+        if (Closed(operatorId, EntryNames.Designer) is { } error)
             return OpResult<IReadOnlyList<StyleDto>>.Fail(error);
         return OpResult<IReadOnlyList<StyleDto>>.Success(_styles.ReadableBy(operatorId).Select(ToDto).ToList());
     }
 
     public async Task<OpResult<IReadOnlyList<StyleBlockDto>>> SuggestAsync(string operatorId, string? viewId, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId, EntryNames.Designer) is { } error)
+        if (await ClosedAsync(operatorId, EntryNames.Designer, cancellationToken) is { } error)
             return OpResult<IReadOnlyList<StyleBlockDto>>.Fail(error);
         var view = await _catalog.FindAsync(viewId ?? "", operatorId, cancellationToken);
         if (view is null)
@@ -455,7 +468,7 @@ public sealed class StyleService
 
     public async Task<OpResult<StyleDto>> AcceptAsync(string operatorId, StyleWriteRequest request, CancellationToken cancellationToken)
     {
-        if (Deny(operatorId, EntryNames.Designer) is { } error)
+        if (await ClosedAsync(operatorId, EntryNames.Designer, cancellationToken) is { } error)
             return OpResult<StyleDto>.Fail(error);
         var name = request.Name?.Trim() ?? "";
         if (name.Length == 0)
@@ -495,7 +508,7 @@ public sealed class StyleService
 
     public OpResult<StyleDto?> Ignore(string operatorId, string? styleId)
     {
-        if (Deny(operatorId, EntryNames.Designer) is { } error)
+        if (Closed(operatorId, EntryNames.Designer) is { } error)
             return OpResult<StyleDto?>.Fail(error);
         if (string.IsNullOrWhiteSpace(styleId))
             return OpResult<StyleDto?>.Success(null);
@@ -507,7 +520,7 @@ public sealed class StyleService
 
     public OpResult<StyleDto> Move(string operatorId, string styleId, int index, int direction)
     {
-        if (Deny(operatorId, EntryNames.Designer) is { } error)
+        if (Closed(operatorId, EntryNames.Designer) is { } error)
             return OpResult<StyleDto>.Fail(error);
         var current = _styles.Find(styleId);
         if (current is null || current.OwnerId != operatorId)
@@ -529,6 +542,8 @@ public sealed class StyleService
             return OpResult<StyleDto>.Fail(WorkbenchMessages.Unauthenticated());
         if (!profile.Has(EntryNames.Terminal))
             return OpResult<StyleDto>.Fail(WorkbenchMessages.Forbidden());
+        if (_environment.Block() is { } blocked)
+            return OpResult<StyleDto>.Fail(blocked);
         var report = _reports.Current(sessionId);
         if (report is null)
             return OpResult<StyleDto>.Fail(WorkbenchMessages.Text("forbidden", "沒有可以存回的版面。"));
@@ -594,6 +609,20 @@ public sealed class StyleService
         Blocks = record.Blocks.OrderBy(block => block.Order).Select(CopyTemplate).ToList(),
     };
 
+    private ErrorDto? Closed(string operatorId, string entry)
+    {
+        if (Deny(operatorId, entry) is { } error)
+            return error;
+        return _environment.Block();
+    }
+
+    private async Task<ErrorDto?> ClosedAsync(string operatorId, string entry, CancellationToken cancellationToken)
+    {
+        if (Deny(operatorId, entry) is { } error)
+            return error;
+        return await _environment.BlockAsync(cancellationToken);
+    }
+
     private ErrorDto? Deny(string operatorId, string entry)
     {
         var profile = _profiles.Find(operatorId);
@@ -611,6 +640,7 @@ public sealed class UtteranceService
     private readonly IConnectionCount _connections;
     private readonly IViewCaller _caller;
     private readonly IReportMemory _reports;
+    private readonly EnvironmentService _environment;
 
     public UtteranceService(
         Profiles profiles,
@@ -618,7 +648,8 @@ public sealed class UtteranceService
         IViewCatalog catalog,
         IConnectionCount connections,
         IViewCaller caller,
-        IReportMemory reports)
+        IReportMemory reports,
+        EnvironmentService environment)
     {
         _profiles = profiles;
         _styles = styles;
@@ -626,6 +657,7 @@ public sealed class UtteranceService
         _connections = connections;
         _caller = caller;
         _reports = reports;
+        _environment = environment;
     }
 
     public async Task<OpResult<UtteranceResponse>> SubmitAsync(
@@ -640,6 +672,8 @@ public sealed class UtteranceService
             return OpResult<UtteranceResponse>.Fail(WorkbenchMessages.Unauthenticated());
         if (!profile.Has(EntryNames.Terminal))
             return OpResult<UtteranceResponse>.Fail(WorkbenchMessages.Forbidden());
+        if (await _environment.BlockAsync(cancellationToken) is { } blocked)
+            return OpResult<UtteranceResponse>.Fail(blocked);
 
         var utterance = text?.Trim() ?? "";
         var readable = _styles.ReadableBy(operatorId);
@@ -795,25 +829,27 @@ public sealed class RecordService
     private readonly IRecordStore _records;
     private readonly IReportMemory _reports;
     private readonly IClock _clock;
+    private readonly EnvironmentService _environment;
 
-    public RecordService(Profiles profiles, IRecordStore records, IReportMemory reports, IClock clock)
+    public RecordService(Profiles profiles, IRecordStore records, IReportMemory reports, IClock clock, EnvironmentService environment)
     {
         _profiles = profiles;
         _records = records;
         _reports = reports;
         _clock = clock;
+        _environment = environment;
     }
 
     public OpResult<IReadOnlyList<RecordDto>> List(string operatorId)
     {
-        if (Deny(operatorId) is { } error)
+        if (Closed(operatorId) is { } error)
             return OpResult<IReadOnlyList<RecordDto>>.Fail(error);
         return OpResult<IReadOnlyList<RecordDto>>.Success(_records.ReadableBy(operatorId).Select(ToDto).ToList());
     }
 
     public OpResult<RecordDto> Open(string operatorId, string id)
     {
-        if (Deny(operatorId) is { } error)
+        if (Closed(operatorId) is { } error)
             return OpResult<RecordDto>.Fail(error);
         var record = _records.Find(id);
         if (record is null || !CanRead(record, operatorId))
@@ -823,7 +859,7 @@ public sealed class RecordService
 
     public OpResult<RecordDto> Save(string operatorId, string sessionId, bool shared)
     {
-        if (Deny(operatorId) is { } error)
+        if (Closed(operatorId) is { } error)
             return OpResult<RecordDto>.Fail(error);
         var report = _reports.Current(sessionId);
         if (report is null)
@@ -845,7 +881,7 @@ public sealed class RecordService
 
     public OpResult<RecordDto> SetShared(string operatorId, string id, bool shared)
     {
-        if (Deny(operatorId) is { } error)
+        if (Closed(operatorId) is { } error)
             return OpResult<RecordDto>.Fail(error);
         if (!_records.TryUpdateShared(id, operatorId, shared))
             return OpResult<RecordDto>.Fail(WorkbenchMessages.Forbidden());
@@ -854,7 +890,7 @@ public sealed class RecordService
 
     public OpResult<bool> Delete(string operatorId, string id)
     {
-        if (Deny(operatorId) is { } error)
+        if (Closed(operatorId) is { } error)
             return OpResult<bool>.Fail(error);
         return _records.Delete(id, operatorId)
             ? OpResult<bool>.Success(true)
@@ -863,6 +899,13 @@ public sealed class RecordService
 
     private static bool CanRead(GenerationRecord record, string operatorId)
         => record.OwnerId == operatorId || record.Shared;
+
+    private ErrorDto? Closed(string operatorId)
+    {
+        if (Deny(operatorId) is { } error)
+            return error;
+        return _environment.Block();
+    }
 
     private ErrorDto? Deny(string operatorId)
     {
@@ -891,13 +934,15 @@ public sealed class ExportService
     private readonly IReportMemory _reports;
     private readonly IRecordStore _records;
     private readonly IReportPdf _pdf;
+    private readonly EnvironmentService _environment;
 
-    public ExportService(Profiles profiles, IReportMemory reports, IRecordStore records, IReportPdf pdf)
+    public ExportService(Profiles profiles, IReportMemory reports, IRecordStore records, IReportPdf pdf, EnvironmentService environment)
     {
         _profiles = profiles;
         _reports = reports;
         _records = records;
         _pdf = pdf;
+        _environment = environment;
     }
 
     public OpResult<byte[]> Pdf(string operatorId, string sessionId, string? recordId)
@@ -907,6 +952,8 @@ public sealed class ExportService
             return OpResult<byte[]>.Fail(WorkbenchMessages.Unauthenticated());
         if (!profile.Has(EntryNames.Terminal))
             return OpResult<byte[]>.Fail(WorkbenchMessages.Forbidden());
+        if (_environment.Block() is { } blocked)
+            return OpResult<byte[]>.Fail(blocked);
 
         PrintReport print;
         if (!string.IsNullOrWhiteSpace(recordId))

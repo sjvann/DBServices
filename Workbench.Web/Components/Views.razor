@@ -1,49 +1,264 @@
 @page "/views"
 @inject OperatorGate Gate
 @inject ViewService ViewEditor
+@inject EnvironmentService Environments
 @layout WorkbenchLayout
 
-<h1>檢視定義</h1>
 @if (_denied)
 {
+    <h1>檢視</h1>
     <p role="alert">沒有權限。</p>
+}
+else if (_closed)
+{
+    <SetupRequired Snapshot="_snapshot" Admin="Gate.Current?.IsAdmin == true" />
 }
 else
 {
-    @if (_error is not null)
-    {
-        <div class="error" role="alert"><span>@_error.Message</span></div>
-    }
-    <form class="panel" @onsubmit="Save" @onsubmit:preventDefault="true">
-        <label>識別<input @bind="_id" @bind:event="oninput" /></label>
-        <label>名稱<input @bind="_name" @bind:event="oninput" /></label>
-        <label>目的<input @bind="_purpose" @bind:event="oninput" /></label>
-        <label>來源表<input @bind="_source" @bind:event="oninput" /></label>
-        <label>參數名<input @bind="_parameter" @bind:event="oninput" /></label>
-        <label>參數欄<input @bind="_parameterColumn" @bind:event="oninput" /></label>
-        <label>輸出欄<input @bind="_column" @bind:event="oninput" /></label>
-        <div class="actions">
-            <button class="secondary" type="submit">保存檢視</button>
-            <button class="secondary" type="button" @onclick="Publish">發布</button>
-        </div>
-    </form>
-    @foreach (var view in _views)
-    {
-        <p>@view.Name<span class="meta"> @(view.Published ? "已發布" : "未發布")</span></p>
-    }
+    <div class="workspace">
+        <aside class="index" aria-label="檢視清單">
+            <div class="index-head">
+                <h1>檢視</h1>
+                <button class="secondary" type="button" @onclick="StartNew">新增</button>
+            </div>
+            @if (_documents.Count == 0)
+            {
+                <p class="empty">還沒有檢視。</p>
+            }
+            else
+            {
+                <ul class="index-list">
+                    @foreach (var view in _documents)
+                    {
+                        <li>
+                            <button type="button" class="secondary index-item" aria-current="@(MarkCurrent(view))" @onclick="() => Open(view)">
+                                <span>@view.Name</span>
+                                <span class="meta">@(view.Published ? "已發布" : "尚未發布")</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </aside>
+        <section class="editor" aria-labelledby="view-editor-title">
+            @if (_error is not null)
+            {
+                <div class="error" role="alert">
+                    @if (!string.IsNullOrEmpty(_error.Code))
+                    {
+                        <span class="code">@_error.Code</span>
+                    }
+                    <span>@_error.Message</span>
+                </div>
+            }
+            else if (_local is not null)
+            {
+                <div class="error" role="alert"><span>@_local</span></div>
+            }
+            <div role="status" aria-live="polite">
+                @if (_busy)
+                {
+                    <p>處理中。</p>
+                }
+                else if (!string.IsNullOrEmpty(_status))
+                {
+                    <p>@_status</p>
+                }
+            </div>
+            @if (!_editing)
+            {
+                <h2 id="view-editor-title">定義報表要讀的資料</h2>
+                <p class="lead">一筆檢視決定報表可以問的範圍：資料表、要顯示的欄，以及是否依條件篩選。資料庫位址與帳號由系統保管。發布之後，報表才叫得到這份檢視。</p>
+                <button class="secondary" type="button" @onclick="StartNew">新增檢視</button>
+            }
+            else
+            {
+                <div class="editor-head">
+                    <div>
+                        <h2 id="view-editor-title">@(string.IsNullOrWhiteSpace(_name) ? "新檢視" : _name)</h2>
+                        <p class="meta">@(_published ? "已發布。產生報表時會用到它。" : "尚未發布。發布之後，報表才叫得到。")</p>
+                        <p class="meta">系統編號 <span class="code">@_id</span></p>
+                    </div>
+                </div>
+                <label for="view-name">名稱 <span class="req">必填</span>
+                    <input id="view-name" autocomplete="off" placeholder="例如：銷貨月檢視" @bind="_name" @bind:event="oninput" />
+                </label>
+                <p class="hint" id="view-name-hint">給人看的名字。編號由系統產生。</p>
+                <label for="view-purpose">要回答的問題
+                    <input id="view-purpose" autocomplete="off" placeholder="例如：依年月看銷貨數量" @bind="_purpose" @bind:event="oninput" />
+                </label>
+                <p class="hint">可以空白。空白時會沿用名稱。</p>
+                @if (_sources.Count > 1)
+                {
+                    <h3>資料表</h3>
+                    <p class="hint">這筆檢視已連好多張表，表與相連方式保持不變。</p>
+                    <div class="chip-row">
+                        @foreach (var source in _sources)
+                        {
+                            <span class="badge code">@source</span>
+                        }
+                    </div>
+                    @if (_links.Count > 0)
+                    {
+                        <h3>表怎麼相連</h3>
+                        @foreach (var link in _links)
+                        {
+                            <p class="code">@link.From.@link.FromColumn → @link.To.@link.ToColumn</p>
+                        }
+                    }
+                }
+                else
+                {
+                    <label for="view-table">資料表 <span class="req">必填</span>
+                        <input id="view-table" class="code" autocomplete="off" placeholder="例如：orders" @bind="_table" @bind:event="oninput" />
+                    </label>
+                    <p class="hint">@(KnownTables.Count > 0 ? "填表名即可。用過的表可以直接點。" : "填表名即可。這次用過之後，下次會出現在這裡。")</p>
+                    @if (KnownTables.Count > 0)
+                    {
+                        <div class="chip-row" role="group" aria-label="用過的資料表">
+                            @foreach (var table in KnownTables)
+                            {
+                                <button type="button" class="chip" aria-pressed="@TableSelected(table)" @onclick="() => UseTable(table)">@table</button>
+                            }
+                        </div>
+                    }
+                }
+                <fieldset>
+                    <legend>要顯示的欄</legend>
+                    <p class="hint">@(SuggestedColumns.Count > 0 ? "點選用過的欄，或填名稱後加入。沒有指定時，這份檢視不限定輸出欄。" : "填欄位名稱後加入。沒有指定時，這份檢視不限定輸出欄。")</p>
+                    @if (_columns.Count == 0)
+                    {
+                        <p class="empty">尚未指定欄位。</p>
+                    }
+                    else
+                    {
+                        @foreach (var column in _columns)
+                        {
+                            var current = column;
+                            <div class="block">
+                                <span class="code">@ColumnLabel(current)</span>
+                                <button type="button" aria-label="移除 @current.Name" @onclick="() => _columns.Remove(current)">移除</button>
+                            </div>
+                        }
+                    }
+                    @if (SuggestedColumns.Count > 0)
+                    {
+                        <div class="chip-row" role="group" aria-label="用過的欄">
+                            @foreach (var column in SuggestedColumns)
+                            {
+                                var current = column;
+                                <button type="button" class="chip" @onclick="() => UseColumn(current)">@current</button>
+                            }
+                        </div>
+                    }
+                    <div class="add-row">
+                        <label for="column-name">欄位名稱
+                            <input id="column-name" class="code" autocomplete="off" placeholder="例如：qty" @bind="_columnDraft" @bind:event="oninput" @onkeydown="OnColumnKey" />
+                        </label>
+                        @if (_sources.Count > 1)
+                        {
+                            <label for="column-source">這欄屬於
+                                <select id="column-source" @bind="_columnSource">
+                                    @foreach (var source in _sources)
+                                    {
+                                        <option value="@source">@source</option>
+                                    }
+                                </select>
+                            </label>
+                        }
+                        <button class="secondary" type="button" @onclick="AddColumn">加入</button>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>篩選</legend>
+                    <label>
+                        <input type="radio" name="view-filter" checked="@(!_filter)" @onchange="() => SetFilter(false)" />
+                        不篩選
+                    </label>
+                    <label>
+                        <input type="radio" name="view-filter" checked="@_filter" @onchange="() => SetFilter(true)" />
+                        依條件篩選
+                    </label>
+                    @if (_filter)
+                    {
+                        <p class="hint">條件名稱是問報表的人會說的詞，例如年月。對應欄位是表上的欄名。</p>
+                        @for (var index = 0; index < _parameters.Count; index++)
+                        {
+                            var current = index;
+                            <div class="field-row">
+                                <label>條件名稱
+                                    <input autocomplete="off" placeholder="例如：年月" value="@_parameters[current].Name" @oninput="args => _parameters[current].Name = Text(args)" />
+                                </label>
+                                <label>對應欄位
+                                    <input class="code" autocomplete="off" placeholder="例如：yearMonth" value="@_parameters[current].Column" @oninput="args => _parameters[current].Column = Text(args)" />
+                                </label>
+                            </div>
+                            @if (_parameters.Count > 1)
+                            {
+                                <button class="secondary" type="button" @onclick="() => _parameters.RemoveAt(current)">移除這個條件</button>
+                            }
+                        }
+                        <button class="secondary" type="button" @onclick="AddParameter">再加一個條件</button>
+                    }
+                </fieldset>
+                <div class="actions">
+                    <button class="secondary" type="button" disabled="@_busy" @onclick="Save">儲存</button>
+                    <button class="confirm" type="button" disabled="@_busy" @onclick="Publish">發布</button>
+                </div>
+            }
+        </section>
+    </div>
 }
 
 @code {
     private bool _denied;
+    private bool _closed;
+    private EnvironmentSnapshot _snapshot = EnvironmentSnapshot.NotReady;
+    private bool _editing;
+    private bool _creating;
+    private bool _busy;
+    private bool _published;
+    private bool _filter;
     private ErrorDto? _error;
+    private string? _local;
+    private string _status = "";
     private string _id = "";
     private string _name = "";
     private string _purpose = "";
-    private string _source = "";
-    private string _parameter = "";
-    private string _parameterColumn = "";
-    private string _column = "";
-    private IReadOnlyList<ViewSummaryDto> _views = [];
+    private string _table = "";
+    private string _columnDraft = "";
+    private string _columnSource = "";
+    private List<ViewDocumentDto> _documents = [];
+    private List<string> _sources = [];
+    private List<ViewLinkDto> _links = [];
+    private List<ViewColumnDto> _columns = [];
+    private List<ViewParameterDto> _parameters = [];
+
+    private IReadOnlyList<string> KnownTables => _documents
+        .SelectMany(item => item.Sources ?? [])
+        .Select(item => item.Trim())
+        .Where(item => item.Length > 0)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<string> SuggestedColumns
+    {
+        get
+        {
+            var table = ActiveTable();
+            if (table.Length == 0)
+                return [];
+            return _documents
+                .SelectMany(item => item.Columns ?? [])
+                .Where(item => string.Equals(item.Source, table, StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.Name.Trim())
+                .Where(item => item.Length > 0 && !_columns.Any(column => string.Equals(column.Name, item, StringComparison.OrdinalIgnoreCase)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -53,76 +268,295 @@ else
             return;
         }
 
-        var listed = await ViewEditor.ListAsync(profile.Id, CancellationToken.None);
-        if (listed.Ok)
-            _views = listed.Value!;
-    }
-
-    private ViewDocumentDto Document() => new()
-    {
-        Id = _id.Trim(),
-        Name = _name.Trim(),
-        Purpose = _purpose,
-        Sources = string.IsNullOrWhiteSpace(_source) ? [] : [_source.Trim()],
-        Parameters = string.IsNullOrWhiteSpace(_parameter) ? [] : [new ViewParameterDto { Name = _parameter.Trim(), Column = _parameterColumn.Trim(), Source = _source.Trim() }],
-        Columns = string.IsNullOrWhiteSpace(_column) ? [] : [new ViewColumnDto { Name = _column.Trim(), Source = _source.Trim() }],
-    };
-
-    private async Task Save()
-    {
-        var profile = Gate.Current!;
-        var document = await KeepStoredAsync(profile.Id);
-        if (document is null)
+        await Environments.RefreshAsync(CancellationToken.None);
+        _snapshot = Environments.Current;
+        _closed = !_snapshot.Ready;
+        if (_closed)
             return;
-        var result = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
-        _error = result.Error;
-        if (result.Ok)
-            await Reload(profile.Id);
-    }
 
-    private async Task Publish()
-    {
-        var profile = Gate.Current!;
-        var document = await KeepStoredAsync(profile.Id);
-        if (document is null)
-            return;
-        var saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
-        if (!saved.Ok)
-        {
-            _error = saved.Error;
-            return;
-        }
-
-        var published = await ViewEditor.PublishAsync(profile.Id, saved.Value!.Id, CancellationToken.None);
-        _error = published.Error;
         await Reload(profile.Id);
     }
 
-    private async Task<ViewDocumentDto?> KeepStoredAsync(string operatorId)
+    private void StartNew()
     {
-        var document = Document();
-        if (string.IsNullOrWhiteSpace(document.Id))
-            return document;
+        _editing = true;
+        _creating = true;
+        _published = false;
+        _filter = false;
+        _id = "v-" + Guid.NewGuid().ToString("N")[..12];
+        _name = "";
+        _purpose = "";
+        _sources = [];
+        _links = [];
+        _columns = [];
+        _parameters = [];
+        _columnDraft = "";
+        _columnSource = "";
+        var known = KnownTables;
+        _table = known.Count == 1 ? known[0] : "";
+        _local = null;
+        _error = null;
+        _status = "";
+    }
 
-        var existing = await ViewEditor.ReadAsync(operatorId, document.Id, CancellationToken.None);
-        if (existing.Ok && existing.Value is not null)
+    private void Open(ViewDocumentDto document)
+    {
+        _editing = true;
+        _creating = false;
+        _id = document.Id;
+        _name = document.Name ?? "";
+        _purpose = document.Purpose ?? "";
+        _published = document.Published;
+        _sources = (document.Sources ?? []).ToList();
+        _links = (document.Links ?? []).Select(link => new ViewLinkDto
         {
-            document.Published = existing.Value.Published;
-            document.Links = existing.Value.Links ?? [];
-            return document;
+            Kind = link.Kind,
+            From = link.From,
+            FromColumn = link.FromColumn,
+            To = link.To,
+            ToColumn = link.ToColumn,
+        }).ToList();
+        _columns = (document.Columns ?? []).Select(item => new ViewColumnDto { Name = item.Name, Source = item.Source }).ToList();
+        _parameters = (document.Parameters ?? []).Select(item => new ViewParameterDto { Name = item.Name, Column = item.Column, Source = item.Source }).ToList();
+        _table = _sources.Count == 1 ? _sources[0] : "";
+        _columnSource = _sources.FirstOrDefault() ?? "";
+        _columnDraft = "";
+        _filter = _parameters.Count > 0;
+        _local = null;
+        _error = null;
+        _status = "";
+    }
+
+    private string? MarkCurrent(ViewDocumentDto view) => _editing && !_creating && _id == view.Id ? "true" : null;
+
+    private void UseTable(string table) => _table = table;
+
+    private bool TableSelected(string table) => string.Equals(_table.Trim(), table, StringComparison.OrdinalIgnoreCase);
+
+    private void UseColumn(string name)
+    {
+        _columnDraft = name;
+        AddColumn();
+    }
+
+    private void OnColumnKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            AddColumn();
+    }
+
+    private void AddColumn()
+    {
+        var name = _columnDraft.Trim();
+        var source = _sources.Count > 1 ? _columnSource.Trim() : _table.Trim();
+        if (name.Length == 0 || source.Length == 0)
+            return;
+        if (_columns.Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase) && string.Equals(item.Source, source, StringComparison.OrdinalIgnoreCase)))
+        {
+            _columnDraft = "";
+            return;
         }
 
-        if (existing.Error?.Code == "not_found")
-            return document;
+        _columns.Add(new ViewColumnDto { Name = name, Source = source });
+        _columnDraft = "";
+    }
 
-        _error = existing.Error;
-        return null;
+    private void SetFilter(bool enabled)
+    {
+        _filter = enabled;
+        if (enabled && _parameters.Count == 0)
+            _parameters.Add(new ViewParameterDto { Source = ActiveTable() });
+    }
+
+    private void AddParameter() => _parameters.Add(new ViewParameterDto { Source = ActiveTable() });
+
+    private string ActiveTable() => _sources.Count > 1 ? _columnSource.Trim() : _table.Trim();
+
+    private static string ColumnLabel(ViewColumnDto column) =>
+        string.IsNullOrWhiteSpace(column.Source) ? column.Name : column.Source + "." + column.Name;
+
+    private static string Text(ChangeEventArgs args) => args.Value?.ToString() ?? "";
+
+    private async Task Save() => await Write(false);
+
+    private async Task Publish() => await Write(true);
+
+    private async Task Write(bool publish)
+    {
+        if (_busy)
+            return;
+        var document = Build(out var problem);
+        if (document is null)
+        {
+            _local = problem;
+            _error = null;
+            _status = "";
+            return;
+        }
+
+        var profile = Gate.Current!;
+        _busy = true;
+        _local = null;
+        _error = null;
+        _status = "";
+        try
+        {
+            if (!_creating)
+            {
+                var existing = await ViewEditor.ReadAsync(profile.Id, document.Id, CancellationToken.None);
+                if (existing.Ok && existing.Value is not null)
+                    document.Published = existing.Value.Published;
+                else if (existing.Error?.Code != "not_found")
+                {
+                    _error = existing.Error;
+                    return;
+                }
+            }
+
+            var saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
+            if (!saved.Ok)
+            {
+                _error = saved.Error;
+                return;
+            }
+
+            _id = saved.Value!.Id;
+            _published = saved.Value.Published;
+            _creating = false;
+            Apply(saved.Value);
+            if (!publish)
+            {
+                _status = _published ? "已儲存。" : "已儲存。發布之後，報表才會用到這份檢視。";
+                await Reload(profile.Id);
+                return;
+            }
+
+            var published = await ViewEditor.PublishAsync(profile.Id, _id, CancellationToken.None);
+            if (!published.Ok)
+            {
+                _error = published.Error;
+                _status = "已儲存。尚未發布。";
+                await Reload(profile.Id);
+                return;
+            }
+
+            _published = published.Value!.Published;
+            Apply(published.Value);
+            _status = "已發布。";
+            await Reload(profile.Id);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private ViewDocumentDto? Build(out string? problem)
+    {
+        problem = null;
+        var name = _name.Trim();
+        if (name.Length == 0)
+        {
+            problem = "請填名稱。";
+            return null;
+        }
+
+        var purpose = string.IsNullOrWhiteSpace(_purpose) ? name : _purpose.Trim();
+        List<string> sources;
+        List<ViewLinkDto> links;
+        if (_sources.Count > 1)
+        {
+            sources = _sources.ToList();
+            links = _links.ToList();
+        }
+        else
+        {
+            var table = _table.Trim();
+            if (table.Length == 0)
+            {
+                problem = "請填資料表名稱。";
+                return null;
+            }
+
+            sources = [table];
+            links = [];
+        }
+
+        var parameters = _filter
+            ? _parameters
+                .Select(item => new ViewParameterDto
+                {
+                    Name = item.Name?.Trim() ?? "",
+                    Column = item.Column?.Trim() ?? "",
+                    Source = _sources.Count > 1 && !string.IsNullOrWhiteSpace(item.Source) ? item.Source : sources[0],
+                })
+                .Where(item => item.Name.Length > 0 || item.Column.Length > 0)
+                .ToList()
+            : [];
+        if (_filter && parameters.Count == 0)
+        {
+            problem = "請填篩選條件的名稱與對應欄位。";
+            return null;
+        }
+
+        if (parameters.Any(item => item.Name.Length == 0 || item.Column.Length == 0))
+        {
+            problem = "每個篩選條件都要有名稱與對應欄位。";
+            return null;
+        }
+
+        var columns = _columns
+            .Select(item => new ViewColumnDto
+            {
+                Name = item.Name?.Trim() ?? "",
+                Source = _sources.Count > 1 ? item.Source : sources[0],
+            })
+            .Where(item => item.Name.Length > 0)
+            .ToList();
+        _purpose = purpose;
+        return new ViewDocumentDto
+        {
+            Id = _id.Trim(),
+            Name = name,
+            Purpose = purpose,
+            Published = _published,
+            Sources = sources,
+            Links = links,
+            Parameters = parameters,
+            Columns = columns,
+        };
+    }
+
+    private void Apply(ViewDocumentDto document)
+    {
+        _name = document.Name ?? "";
+        _purpose = document.Purpose ?? "";
+        _published = document.Published;
+        _sources = (document.Sources ?? []).ToList();
+        _links = (document.Links ?? []).ToList();
+        _columns = (document.Columns ?? []).ToList();
+        _parameters = (document.Parameters ?? []).ToList();
+        _table = _sources.Count == 1 ? _sources[0] : _table;
+        _filter = _parameters.Count > 0;
     }
 
     private async Task Reload(string operatorId)
     {
         var listed = await ViewEditor.ListAsync(operatorId, CancellationToken.None);
-        if (listed.Ok)
-            _views = listed.Value!;
+        if (!listed.Ok)
+        {
+            _error = listed.Error;
+            return;
+        }
+
+        var documents = new List<ViewDocumentDto>();
+        foreach (var summary in listed.Value!)
+        {
+            var read = await ViewEditor.ReadAsync(operatorId, summary.Id, CancellationToken.None);
+            if (read.Ok && read.Value is not null)
+                documents.Add(read.Value);
+        }
+
+        _documents = documents;
     }
 }

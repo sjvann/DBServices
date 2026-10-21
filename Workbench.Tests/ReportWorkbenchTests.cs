@@ -9,6 +9,7 @@ using UglyToad.PdfPig;
 using Workbench.Avalonia;
 using Workbench.Contracts;
 using Workbench.Core;
+using Workbench.Core.Ports;
 using Workbench.Web;
 
 namespace Workbench.Tests;
@@ -360,12 +361,86 @@ public class ReportWorkbenchTests
             host.Connections.Available = count;
             var result = await world.Chen.RawAsync(HttpMethod.Post, "api/utterance", new UtteranceRequest { Text = "出貨 狀態=完成" });
             Assert.AreEqual(400, result.Status, count.ToString());
-            Assert.AreEqual("", result.Body.GetProperty("code").GetString());
-            Assert.AreEqual("無法決定連線，沒有讀取資料。", result.Body.GetProperty("message").GetString());
             AssertNoSecrets(result.Text, "Data Source=", "Password=", "warehouse");
+            if (count == 0)
+            {
+                Assert.AreEqual("environment_incomplete", result.Body.GetProperty("code").GetString());
+                Assert.Contains("資料庫連線尚未設定", result.Text);
+            }
+            else
+            {
+                Assert.AreEqual("", result.Body.GetProperty("code").GetString());
+                Assert.AreEqual("無法決定連線，沒有讀取資料。", result.Body.GetProperty("message").GetString());
+            }
         }
 
         Assert.AreEqual(0, host.Caller.Count);
+    }
+
+    [TestMethod]
+    public async Task View_save_is_refused_until_database_and_model_are_ready()
+    {
+        await using var host = new WorkbenchHost(options =>
+        {
+            options.ModelReady = false;
+            options.Connections = new RecordingConnections { Available = 0 };
+        });
+        var world = await WorldAsync(host);
+        var saved = await SaveViewAsync(world.Lin, View("ship-1", "出貨", "說明"));
+        Assert.AreEqual(400, saved.Status, saved.Text);
+        Assert.AreEqual("environment_incomplete", saved.Body.GetProperty("code").GetString());
+        Assert.Contains("資料庫連線尚未設定", saved.Text);
+        Assert.Contains("AI 尚未設定", saved.Text);
+        Assert.IsNull(host.Catalog.Stored("ship-1"));
+
+        await using var modelOff = new WorkbenchHost(options => options.ModelReady = false);
+        var analyst = await WorldAsync(modelOff);
+        var again = await SaveViewAsync(analyst.Lin, View("ship-1", "出貨", "說明"));
+        Assert.AreEqual(400, again.Status, again.Text);
+        Assert.Contains("AI 尚未設定", again.Text);
+        Assert.IsFalse(again.Text.Contains("資料庫連線尚未設定", StringComparison.Ordinal));
+        Assert.IsNull(modelOff.Catalog.Stored("ship-1"));
+    }
+
+    [TestMethod]
+    public void Model_file_keeps_the_key_out_of_the_status()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "wb-model-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var profile = new Workbench.Adapters.FileModelProfile(path);
+            var saved = profile.Save(new ModelDraft
+            {
+                Enabled = true,
+                Placement = "local",
+                Endpoint = "http://127.0.0.1:11434/v1",
+                ModelId = "qwen",
+                ApiKey = "KeyMarkerDoNotLeak",
+            });
+            Assert.IsTrue(saved.Ok, saved.Message);
+            var status = JsonSerializer.Serialize(saved.Status);
+            Assert.IsFalse(status.Contains("KeyMarkerDoNotLeak", StringComparison.Ordinal));
+            Assert.IsTrue(saved.Status!.KeyPresent);
+            Assert.IsTrue(saved.Status.Ready);
+            Assert.IsTrue(File.ReadAllText(path).Contains("KeyMarkerDoNotLeak", StringComparison.Ordinal));
+
+            var cloud = profile.Save(new ModelDraft
+            {
+                Enabled = true,
+                Placement = "cloud",
+                Endpoint = "http://example.test/v1",
+                ModelId = "gpt",
+                ApiKey = "KeyMarkerDoNotLeak",
+            });
+            Assert.IsFalse(cloud.Ok);
+            Assert.AreEqual("雲端位址必須是 https。", cloud.Message);
+            Assert.IsFalse(cloud.Message.Contains("KeyMarkerDoNotLeak", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 
     [TestMethod]
