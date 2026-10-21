@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Workbench.Core;
 using Workbench.Core.Ports;
 
 namespace Workbench.Adapters;
@@ -8,7 +9,7 @@ namespace Workbench.Adapters;
 public sealed class ModelEndpoint : IModelEndpoint
 {
     public static readonly TimeSpan Limit = TimeSpan.FromSeconds(8);
-    private const string LocalDefault = "http://127.0.0.1:11434/v1";
+    private const string LocalDefault = OllamaCatalog.Address;
     private static readonly string[] Hidden = ["embed", "embedding", "whisper", "tts", "dalle", "moderation", "gpt-image", "text-embedding"];
 
     private readonly IModelProfile _profiles;
@@ -53,6 +54,135 @@ public sealed class ModelEndpoint : IModelEndpoint
         {
             return ModelProbe.Fail("probe_failed", "這個位址沒有正常回應。");
         }
+    }
+
+    public async Task<ModelPull> PullAsync(ModelDraft draft, string modelName, IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        var requested = modelName?.Trim() ?? "";
+        if (!OllamaCatalog.Suggestions.Contains(requested, StringComparer.Ordinal))
+            return ModelPull.Fail("model_invalid_settings", "這個模型不能從這裡下載。");
+        if (!string.Equals(draft.Placement?.Trim(), "local", StringComparison.Ordinal) || !OllamaCatalog.CanDownload(AddressOf(draft)))
+            return ModelPull.Fail("model_invalid_settings", "只有本機 Ollama 可以下載。");
+
+        var key = _profiles.ResolveKey(draft.ApiKey);
+        var payload = "{\"model\":" + JsonSerializer.Serialize(requested) + ",\"name\":" + JsonSerializer.Serialize(requested) + ",\"stream\":true}";
+        try
+        {
+            using var client = OpenPull();
+            using var request = new HttpRequestMessage(HttpMethod.Post, PullUrl(AddressOf(draft)));
+            if (!string.IsNullOrEmpty(key))
+                request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return ModelPull.Fail("probe_failed", "下載沒有完成。");
+
+            var finished = false;
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+            while (true)
+            {
+                var line = await reader.ReadLineAsync(cancellationToken);
+                if (line is null)
+                    break;
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                using var document = JsonDocument.Parse(line);
+                if (document.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
+                    return ModelPull.Fail("probe_failed", "下載沒有完成。");
+                if (!document.RootElement.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String)
+                    continue;
+                var text = status.GetString() ?? "";
+                if (!string.IsNullOrEmpty(key) && text.Contains(key, StringComparison.Ordinal))
+                    text = "";
+                var shown = Shown(text);
+                if (shown.Length > 0)
+                    progress?.Report(shown);
+                if (text.Equals("success", StringComparison.Ordinal))
+                {
+                    finished = true;
+                    break;
+                }
+            }
+
+            if (!finished)
+                return ModelPull.Fail("probe_failed", "下載沒有完成。");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return ModelPull.Fail("cancelled", "已取消下載。");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException)
+        {
+            return ModelPull.Fail("probe_failed", "連不上這個位址。");
+        }
+        catch (JsonException)
+        {
+            return ModelPull.Fail("probe_failed", "這個位址沒有正常回應。");
+        }
+
+        var listed = await ProbeAsync(new ModelDraft
+        {
+            Enabled = draft.Enabled,
+            Placement = draft.Placement,
+            Endpoint = AddressOf(draft),
+            ModelId = "",
+            ApiKey = draft.ApiKey,
+        }, cancellationToken);
+        var names = listed.Ok ? listed.Names : [];
+        return ModelPull.Success(InstalledName(requested, names), names);
+    }
+
+    private static string AddressOf(ModelDraft draft)
+    {
+        var endpoint = draft.Endpoint?.Trim() ?? "";
+        return endpoint.Length == 0 ? LocalDefault : endpoint;
+    }
+
+    private static string InstalledName(string requested, IReadOnlyList<string> names)
+    {
+        if (names.Contains(requested, StringComparer.Ordinal))
+            return requested;
+        var tagged = names.FirstOrDefault(name => name.Equals(requested + ":latest", StringComparison.Ordinal))
+            ?? names.FirstOrDefault(name => name.StartsWith(requested + ":", StringComparison.Ordinal));
+        return tagged ?? requested;
+    }
+
+    private static string Shown(string status) => status switch
+    {
+        "success" => "已下載。",
+        "pulling manifest" => "正在取得模型資訊。",
+        "downloading" => "正在下載。",
+        "verifying digest" => "正在檢查檔案。",
+        "writing manifest" => "正在寫入。",
+        _ => status,
+    };
+
+    private HttpClient OpenPull()
+    {
+        var client = _handler is null ? new HttpClient() : new HttpClient(_handler, disposeHandler: false);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        return client;
+    }
+
+    private static string PullUrl(string endpoint)
+    {
+        var uri = new Uri(endpoint);
+        var path = uri.AbsolutePath;
+        path = Cut(path, "/chat/completions");
+        path = Cut(path, "/models");
+        path = Cut(path, "/v1");
+        path = path.TrimEnd('/');
+        var builder = new UriBuilder(uri.Scheme, uri.Host, uri.Port, path + "/api/pull");
+        return builder.Uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.SafeUnescaped);
+    }
+
+    private static string Cut(string path, string suffix)
+    {
+        var trimmed = path.TrimEnd('/');
+        if (!trimmed.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+        return trimmed[..^suffix.Length];
     }
 
     private async Task<ModelProbe> ChatAsync(HttpClient client, string endpoint, string? modelId, string key, CancellationToken cancellationToken)

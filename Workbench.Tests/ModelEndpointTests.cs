@@ -19,13 +19,15 @@ public class ModelEndpointTests
     private const string DefaultAddress = "http://127.0.0.1:11434/v1";
 
     [TestMethod]
-    public async Task Local_blank_address_is_filled_and_there_is_no_download_button()
+    public async Task Local_blank_address_is_ollama_and_offers_downloads()
     {
         await using var page = new PageSession(new ModelDraft { Enabled = false, Placement = "local" });
         page.Handler.Respond(HttpStatusCode.OK, Models("llama3.2"));
 
         Assert.AreEqual(DefaultAddress, page.Cut.Find("#model-endpoint").GetAttribute("value"));
-        Assert.IsFalse(page.Cut.Markup.Contains("下載", StringComparison.Ordinal));
+        Assert.Contains("本機使用 Ollama", page.Cut.Markup);
+        Assert.Contains("下載 llama3.2", page.Cut.Markup);
+        Assert.Contains("下載 mistral", page.Cut.Markup);
         Assert.IsFalse(page.World.Text.Contains("11434", StringComparison.Ordinal));
 
         await Probe(page.Cut);
@@ -365,7 +367,7 @@ public class ModelEndpointTests
 
         await Probe(page.Cut);
 
-        Assert.AreEqual("Bearer " + TypedKey, page.Handler.Calls[0].Authorization);
+        Assert.AreEqual("Bearer " + TypedKey, page.Handler.Calls[^1].Authorization);
         Assert.IsFalse(page.World.Text.Contains(TypedKey, StringComparison.Ordinal));
         page.World.Unchanged();
     }
@@ -425,6 +427,106 @@ public class ModelEndpointTests
     }
 
     [TestMethod]
+    public async Task Local_page_lists_installed_models_and_a_download_fills_the_installed_name()
+    {
+        await using var page = new PageSession(
+            new ModelDraft { Enabled = false, Placement = "local" },
+            Models("llama3.2:latest", "qwen2.5:32b", "gemma4:26b", "dimavz/whisper-tiny:latest"));
+
+        var labels = page.Cut.FindAll("button").Select(button => button.TextContent.Trim()).ToList();
+        Assert.Contains("llama3.2:latest", labels);
+        Assert.Contains("qwen2.5:32b", labels);
+        Assert.Contains("gemma4:26b", labels);
+        Assert.IsFalse(labels.Any(label => label.Contains("whisper", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains("下載 llama3.1", labels);
+        Assert.Contains("下載 mistral", labels);
+        Assert.DoesNotContain("下載 llama3.2", labels);
+        Assert.DoesNotContain("下載 qwen2.5", labels);
+
+        page.Handler.Respond(HttpStatusCode.OK, "{\"status\":\"pulling manifest\"}\n{\"status\":\"success\"}\n");
+        page.Handler.Respond(HttpStatusCode.OK, Models("llama3.2:latest", "mistral:latest"));
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Trim() == "下載 mistral").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual("mistral:latest", page.Cut.Find("#model-id").GetAttribute("value"));
+        Assert.Contains("還沒有儲存", page.Cut.Find("[role=status]").TextContent);
+        var pull = page.Handler.Calls.Single(call => call.Method == "POST");
+        Assert.AreEqual("http://127.0.0.1:11434/api/pull", pull.Url);
+        Assert.Contains("\"model\":\"mistral\"", pull.Body);
+        Assert.Contains("\"stream\":true", pull.Body);
+        page.World.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task Pull_uses_the_native_ollama_path_and_keeps_the_file()
+    {
+        using var world = new Bench(LocalFile());
+        world.Handler.Respond(HttpStatusCode.OK, "{\"status\":\"pulling manifest\"}\n{\"status\":\"success\"}\n");
+        world.Handler.Respond(HttpStatusCode.OK, Models("llama3.2:latest"));
+        var reported = new Note();
+
+        var result = await world.Service.PullModelAsync("admin", new ModelDraft
+        {
+            Placement = "local",
+            Endpoint = DefaultAddress + "/models",
+            ApiKey = Key,
+        }, "llama3.2", reported, CancellationToken.None);
+
+        Assert.IsTrue(result.Ok, result.Error?.Message);
+        Assert.AreEqual("llama3.2:latest", result.Value!.ModelId);
+        Assert.AreEqual("POST", world.Handler.Calls[0].Method);
+        Assert.AreEqual("http://127.0.0.1:11434/api/pull", world.Handler.Calls[0].Url);
+        Assert.AreEqual("Bearer " + Key, world.Handler.Calls[0].Authorization);
+        Assert.IsFalse(world.Handler.Calls[0].Body.Contains(Key, StringComparison.Ordinal));
+        Assert.Contains("正在取得模型資訊。", reported.Lines);
+        Assert.Contains("已下載。", reported.Lines);
+        Assert.IsFalse(JsonSerializer.Serialize(result).Contains(Key, StringComparison.Ordinal));
+        world.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task Pull_refuses_a_name_outside_the_catalog_and_a_non_ollama_address()
+    {
+        using var world = new Bench(LocalFile());
+        world.Handler.Respond(HttpStatusCode.OK, "{}");
+
+        var stranger = await world.Endpoint.PullAsync(Local(""), "llama3.2:latest", null, CancellationToken.None);
+        var other = await world.Endpoint.PullAsync(new ModelDraft
+        {
+            Placement = "local",
+            Endpoint = "http://127.0.0.1:9/v1",
+        }, "llama3.2", null, CancellationToken.None);
+
+        Assert.AreEqual("這個模型不能從這裡下載。", stranger.Message);
+        Assert.AreEqual("只有本機 Ollama 可以下載。", other.Message);
+        Assert.HasCount(0, world.Handler.Calls);
+        world.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task A_non_admin_cannot_pull()
+    {
+        using var world = new Bench(LocalFile());
+        var result = await world.Service.PullModelAsync("user", Local(""), "mistral", null, CancellationToken.None);
+        Assert.IsFalse(result.Ok);
+        Assert.AreEqual("沒有權限。", result.Error!.Message);
+        Assert.HasCount(0, world.Handler.Calls);
+        world.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task Cancelling_a_pull_stops_without_writing_the_file()
+    {
+        using var world = new Bench(LocalFile());
+        world.Handler.Hold();
+        using var cts = new CancellationTokenSource();
+        var pending = world.Endpoint.PullAsync(Local(""), "mistral", null, cts.Token);
+        cts.Cancel();
+        var result = await pending;
+        Assert.AreEqual("已取消下載。", result.Message);
+        world.Unchanged();
+    }
+
+    [TestMethod]
     public async Task Localhost_counts_as_loopback_and_a_models_suffix_is_not_repeated()
     {
         using var world = new Bench(LocalFile());
@@ -474,6 +576,12 @@ public class ModelEndpointTests
         Assert.IsTrue(response.IsSuccessStatusCode);
     }
 
+    private sealed class Note : IProgress<string>
+    {
+        public List<string> Lines { get; } = [];
+        public void Report(string value) => Lines.Add(value);
+    }
+
     private static ModelDraft Local(string modelId) => new()
     {
         Placement = "local",
@@ -512,9 +620,12 @@ public class ModelEndpointTests
     {
         private readonly BunitContext _context = new();
 
-        public PageSession(ModelDraft stored)
+        public PageSession(ModelDraft stored, string? installed = null)
         {
             World = new Bench(stored);
+            var placement = string.IsNullOrEmpty(stored.Placement) ? "local" : stored.Placement;
+            if (placement == "local")
+                World.Handler.Respond(HttpStatusCode.OK, installed ?? "{\"data\":[]}");
             var store = new MemoryOperators();
             store.Add(new OperatorRecord { Id = "admin", DisplayName = "管理者", IsAdmin = true });
             var sessions = new MemorySessionStore();
@@ -601,6 +712,13 @@ public class ModelEndpointTests
             await Remember(request, token);
             await Task.Yield();
             throw exception;
+        });
+
+        public void Hold() => _steps.Enqueue(async (request, token) =>
+        {
+            await Remember(request, token);
+            await Task.Delay(Timeout.Infinite, token);
+            return new HttpResponseMessage(HttpStatusCode.OK);
         });
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

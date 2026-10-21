@@ -226,9 +226,22 @@ public sealed class ModelProbe
     public static ModelProbe Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class ModelPull
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public string ModelId { get; init; } = "";
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    public static ModelPull Success(string modelId, IReadOnlyList<string> names) => new() { Ok = true, ModelId = modelId, Names = names, Message = "已下載。" };
+    public static ModelPull Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
 public interface IModelEndpoint
 {
     Task<ModelProbe> ProbeAsync(ModelDraft draft, CancellationToken cancellationToken);
+    Task<ModelPull> PullAsync(ModelDraft draft, string modelName, IProgress<string>? progress, CancellationToken cancellationToken);
 }
 
 public interface IModelProfile

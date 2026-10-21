@@ -209,33 +209,62 @@ else
     <form class="panel" @onsubmit="SaveModel" @onsubmit:preventDefault="true">
         <label><input type="checkbox" @bind="_enabled" /> 啟用</label>
         <label for="model-placement">放置
-            <select id="model-placement" @bind="_placement" @bind:after="ApplyLocalAddress">
+            <select id="model-placement" @bind="_placement" @bind:after="OnPlacementChanged">
                 <option value="cloud">雲端</option>
                 <option value="local">本機</option>
             </select>
         </label>
+        @if (_placement == "local")
+        {
+            <p class="hint">本機使用 Ollama。</p>
+        }
         <label for="model-endpoint">位址 <span class="req">必填</span>
             <input id="model-endpoint" autocomplete="off" placeholder="雲端用 https，本機用 127.0.0.1" @bind="_endpoint" @bind:event="oninput" />
         </label>
         <label for="model-id">模型名稱 <span class="req">必填</span>
             <input id="model-id" autocomplete="off" @bind="_modelId" @bind:event="oninput" />
         </label>
-        @if (_names.Count > 0)
+        @if (_placement == "local")
         {
-            <div class="actions">
-                @foreach (var name in _names)
-                {
-                    <button class="secondary" type="button" @onclick="() => UseName(name)">@name</button>
-                }
-            </div>
+            <p class="hint">已安裝</p>
+            @if (_names.Count == 0)
+            {
+                <p class="hint">還沒有讀到已安裝的模型。</p>
+            }
+            else
+            {
+                <div class="actions">
+                    @foreach (var name in _names)
+                    {
+                        <button class="secondary" type="button" disabled="@_pulling" @onclick="() => UseName(name)">@name</button>
+                    }
+                </div>
+            }
+            @if (Offers.Count > 0)
+            {
+                <p class="hint">可下載。檔案可能很大。</p>
+                <div class="actions">
+                    @foreach (var name in Offers)
+                    {
+                        <button class="secondary" type="button" disabled="@_pulling" @onclick="() => Pull(name)">下載 @name</button>
+                    }
+                </div>
+            }
+            @if (_pulling)
+            {
+                <p class="hint">@(_pullStatus.Length == 0 ? "正在下載。" : _pullStatus)</p>
+                <div class="actions">
+                    <button class="secondary" type="button" @onclick="CancelPull">取消下載</button>
+                </div>
+            }
         }
         <label for="model-key">金鑰
             <input id="model-key" type="password" autocomplete="new-password" @bind="_apiKey" @bind:event="oninput" />
         </label>
         <p class="hint">@(_keyPresent ? "已儲存金鑰。留白表示沿用，不會再顯示。" : "雲端必須填金鑰。本機可以留白。金鑰不會再顯示。")</p>
         <div class="actions">
-            <button class="secondary" type="button" @onclick="ProbeModel">測試連線</button>
-            <button class="confirm" type="submit">儲存 AI 設定</button>
+            <button class="secondary" type="button" disabled="@_pulling" @onclick="ProbeModel">測試連線</button>
+            <button class="confirm" type="submit" disabled="@_pulling">儲存 AI 設定</button>
         </div>
     </form>
 }
@@ -256,7 +285,11 @@ else
     private string _modelId = "";
     private string _apiKey = "";
     private bool _keyPresent;
+    private bool _pulling;
+    private string _pullStatus = "";
+    private CancellationTokenSource? _pull;
     private IReadOnlyList<string> _names = [];
+    private IReadOnlyList<string> Offers => OllamaCatalog.Offers(_endpoint, _names);
 
     protected override async Task OnInitializedAsync()
     {
@@ -291,6 +324,10 @@ else
         _keyPresent = model.Value.KeyPresent;
         _apiKey = "";
         ApplyLocalAddress();
+        if (_placement == "local")
+            await RefreshInstalled();
+        else
+            _names = [];
     }
 
     private async Task SaveConnection()
@@ -421,6 +458,22 @@ else
         _names = probed.Value?.Names ?? [];
     }
 
+    private async Task RefreshInstalled()
+    {
+        var profile = Gate.Current;
+        if (profile is null || _placement != "local")
+            return;
+        ApplyLocalAddress();
+        var probed = await Environments.ProbeModelAsync(profile.Id, Draft(), CancellationToken.None);
+        if (!probed.Ok)
+        {
+            _error ??= probed.Error;
+            return;
+        }
+
+        _names = probed.Value?.Names ?? [];
+    }
+
     private void UseName(string name)
     {
         _modelId = name;
@@ -428,9 +481,65 @@ else
             _status = "";
     }
 
+    private async Task Pull(string name)
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        _pullStatus = "正在下載。";
+        _pulling = true;
+        _pull = new CancellationTokenSource();
+        try
+        {
+            var progress = new Progress<string>(text =>
+            {
+                _pullStatus = text;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            var pulled = await Environments.PullModelAsync(profile.Id, Draft(), name, progress, _pull.Token);
+            if (!pulled.Ok)
+            {
+                _error = pulled.Error;
+                _pullStatus = "";
+                return;
+            }
+
+            _modelId = pulled.Value?.ModelId ?? name;
+            _names = pulled.Value?.Names ?? _names;
+            _status = "已下載。還沒有儲存。";
+            _pullStatus = "";
+        }
+        finally
+        {
+            _pulling = false;
+            _pull.Dispose();
+            _pull = null;
+        }
+    }
+
+    private void CancelPull() => _pull?.Cancel();
+
+    private ModelDraft Draft() => new()
+    {
+        Enabled = _enabled,
+        Placement = _placement,
+        Endpoint = _endpoint,
+        ModelId = _modelId,
+        ApiKey = _apiKey,
+    };
+
+    private async Task OnPlacementChanged()
+    {
+        ApplyLocalAddress();
+        if (_placement == "local")
+            await RefreshInstalled();
+        else
+            _names = [];
+    }
+
     private void ApplyLocalAddress()
     {
         if (_placement == "local" && string.IsNullOrWhiteSpace(_endpoint))
-            _endpoint = "http://127.0.0.1:11434/v1";
+            _endpoint = OllamaCatalog.Address;
     }
 }

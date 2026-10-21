@@ -140,6 +140,16 @@ public sealed class EnvironmentService
         return OpResult<ModelProbe>.Success(probed);
     }
 
+    public async Task<OpResult<ModelPull>> PullModelAsync(string operatorId, ModelDraft draft, string modelName, IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        if (Admin(operatorId) is { } error)
+            return OpResult<ModelPull>.Fail(error);
+        var pulled = await _modelEndpoint.PullAsync(draft, modelName, progress, cancellationToken);
+        if (!pulled.Ok)
+            return OpResult<ModelPull>.Fail(WorkbenchMessages.Text(pulled.Code, pulled.Message));
+        return OpResult<ModelPull>.Success(pulled);
+    }
+
     public async Task<OpResult<bool>> RemoveConnectionAsync(string operatorId, string name, CancellationToken cancellationToken)
     {
         if (Admin(operatorId) is { } error)

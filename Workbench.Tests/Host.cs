@@ -277,6 +277,9 @@ internal sealed class RecordingModelEndpoint : IModelEndpoint
 {
     public Task<ModelProbe> ProbeAsync(ModelDraft draft, CancellationToken cancellationToken)
         => Task.FromResult(ModelProbe.Success("已連上。", []));
+
+    public Task<ModelPull> PullAsync(ModelDraft draft, string modelName, IProgress<string>? progress, CancellationToken cancellationToken)
+        => Task.FromResult(ModelPull.Fail("probe_failed", "連不上這個位址。"));
 }
 
 internal sealed class RecordingConnectionAdmin : IConnectionAdmin
