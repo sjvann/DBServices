@@ -17,7 +17,7 @@ namespace DbServices.Core.Extensions
         /// 插入包含 JSON 欄位的記錄（PostgreSQL）
         /// </summary>
         /// <param name="dbService">資料庫服務</param>
-        /// <param name="source">要插入的欄位和值</param>
+        /// <param name="obj">要插入的物件</param>
         /// <param name="tableName">資料表名稱</param>
         /// <returns>插入後的記錄</returns>
         public static TableBaseModel? InsertRecordWithJson<T>(

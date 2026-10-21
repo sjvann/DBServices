@@ -59,25 +59,28 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 刪除某筆特定資料
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="id">紀錄流水號</param>
         /// <returns></returns>
         string? GetSqlForDelete(string tableName, long id);
         /// <summary>
         /// 刪除資料,依據某條件
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="criteria"></param>
         /// <returns></returns>
         string? GetSqlForDeleteByKey(string tableName, KeyValuePair<string, object?> criteria);
         /// <summary>
         /// 新增紀錄
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="source"></param>
         /// <returns></returns>
         string? GetSqlForInsert(string tableName, IEnumerable<KeyValuePair<string, object?>> source);
         /// <summary>
         /// 更新紀錄
         /// </summary>
-        /// <param name="id"></param>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="source"></param>
         /// <returns></returns>
         string? GetSqlForBulkInsert(string tableName, IEnumerable<IEnumerable<KeyValuePair<string, object?>>> source);
@@ -85,6 +88,7 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 更新紀錄,滿足條件者
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="criteria"></param>
         /// <param name="source"></param>
         /// <returns></returns>
@@ -110,7 +114,8 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 依據條件取回紀錄
         /// </summary>
-        /// <param name="values"></param>
+        /// <param name="tableName">資料表名稱</param>
+        /// <param name="whereString">WHERE 子句</param>
         /// <returns></returns>
         string? GetSqlByWhere(string tableName, string whereString);
         string? GetSqlByWhereIn(string tableName, string queryField, object[] queryValue);
@@ -119,18 +124,21 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 依據條件取回紀錄
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="values"></param>
         /// <returns></returns>
         string? GetSqlByKeyValues(string tableName, IEnumerable<KeyValuePair<string, object?>> values);
         /// <summary>
         /// 取回所有欄位,可給予where條件字串
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="whereStr"></param>
         /// <returns></returns>
         string? GetSqlForAll(string tableName, string? whereStr = null);
         /// <summary>
         /// 取回特定欄位,可給予where條件字串
         /// </summary>
+        /// <param name="tableName">資料表名稱</param>
         /// <param name="fieldNames"></param>
         /// <param name="whereStr"></param>
         /// <returns></returns>

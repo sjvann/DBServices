@@ -21,12 +21,6 @@ using System.Threading.Tasks;
 namespace DbServices.Core
 {
     /// <summary>
-    /// 抽象物件。由個別供應商的資料庫來繼承使用。
-    /// 個別供應服務物件,提供DbConnection,SqlProvider,TableNameList等基本資料。
-    /// 本物件可提供整體資料庫的服務。若再已知資料表的下,可以透過DataTableService來提供資料表的服務。
-    /// </summary>
-    /// <param name="connectionString"></param>
-    /// <summary>
     /// 抽象資料庫服務類別
     /// 由個別供應商的資料庫來繼承使用。
     /// 個別供應服務物件,提供DbConnection,SqlProvider,TableNameList等基本資料。

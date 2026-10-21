@@ -8,7 +8,6 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 取回資料表所有欄位名稱
         /// </summary>
-        /// <param name="tableName">資料表名稱</param>
         /// <returns></returns>
         string[] GetFieldsByTableName();
         /// <summary>
@@ -57,7 +56,6 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 取回特定欄位資料，可提供WHERE子句
         /// </summary>
-        /// <param name="tableName">資料表名稱</param>
         /// <param name="fields">欲取回之欄位名稱清單</param>
         /// <param name="whereStr">WHERE子句</param>
         /// <returns></returns>

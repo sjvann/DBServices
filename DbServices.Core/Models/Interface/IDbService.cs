@@ -45,9 +45,9 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 提供單一查詢條件，取回資料表特定欄位資料
         /// </summary>
-        /// <param name="tableName">資料表</param>
         /// <param name="query">查詢條件</param>
-        /// <param name="opertor">條件運算子</param>
+        /// <param name="giveOperator">條件運算子</param>
+        /// <param name="tableName">資料表</param>
         /// <returns></returns>
         TableBaseModel? GetRecordByKeyValue(KeyValuePair<string, object?> query, EnumQueryOperator? giveOperator = null, string? tableName = null);
         /// <summary>
@@ -75,9 +75,10 @@ namespace DbServices.Core.Models.Interface
         /// <summary>
         /// 取回資料表中特定外來鍵之所有欄位資料
         /// </summary>
-        /// <param name="tableName">資料表名稱</param>
-        /// <param name="fieldName">外來鍵之欄位名稱</param>
-        /// <param name="id">外來資料表之ID</param>
+        /// <param name="fkFieldName">外來鍵之欄位名稱</param>
+        /// <param name="manySideId">多對一側的識別碼</param>
+        /// <param name="manySideTableName">多對一側的資料表名稱</param>
+        /// <param name="oneSideTableName">一對多側的資料表名稱</param>
         /// <returns></returns>
         TableBaseModel? GetRecordByForeignKeyForOneSide(string fkFieldName, long manySideId, string manySideTableName, string? oneSideTableName = null);
         TableBaseModel? GetRecordByForeignKeyForManySide(int oneSideId, string fkFieldName, string manySideTableName, string? oneSideTableName = null);
