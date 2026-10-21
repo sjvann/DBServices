@@ -274,16 +274,16 @@ public class ReportWorkbenchTests
 
         var missing = await world.Chen.RawAsync(HttpMethod.Post, "api/utterance", new UtteranceRequest { Text = "沒有這張" });
         Assert.AreEqual(200, missing.Status);
-        Assert.AreEqual("語句對不到樣式。", missing.Body.GetProperty("reason").GetString());
+        Assert.AreEqual("沒有對上的報表。可以用的有：出貨、庫存。", missing.Body.GetProperty("reason").GetString());
         Assert.AreEqual(0, missing.Body.GetProperty("readCount").GetInt32());
 
         var many = await world.Chen.RawAsync(HttpMethod.Post, "api/utterance", new UtteranceRequest { Text = "出貨 庫存" });
-        Assert.AreEqual("語句對到多筆樣式。", many.Body.GetProperty("reason").GetString());
+        Assert.AreEqual("對上不只一份：出貨、庫存。請只留一份。", many.Body.GetProperty("reason").GetString());
         Assert.AreEqual(0, many.Body.GetProperty("readCount").GetInt32());
 
         var incomplete = await world.Chen.RawAsync(HttpMethod.Post, "api/utterance", new UtteranceRequest { Text = "出貨" });
         Assert.AreEqual(0, incomplete.Body.GetProperty("readCount").GetInt32());
-        Assert.Contains("缺少參數", incomplete.Body.GetProperty("reason").GetString() ?? "");
+        Assert.AreEqual("缺少條件。還缺狀態。", incomplete.Body.GetProperty("reason").GetString());
         Assert.AreEqual(0, host.Caller.Count);
 
         var hidden = await AcceptAsync(world.Zhou, "ship-1", "私有出貨", shared: false);

@@ -8,7 +8,7 @@
 
 <form class="panel" @onsubmit="Submit" @onsubmit:preventDefault="true">
     <h1>登入</h1>
-    <p class="meta">以操作者名稱與秘密取得工作階段。</p>
+    <p class="meta">用名稱和密碼進入工作台。</p>
     @if (_error is not null)
     {
         <div class="error" role="alert">
@@ -19,11 +19,11 @@
     <label for="operator-name">名稱
         <input id="operator-name" autocomplete="username" @bind="_name" @bind:event="oninput" />
     </label>
-    <label for="operator-secret">秘密
+    <label for="operator-secret">密碼
         <input id="operator-secret" type="password" autocomplete="current-password" @bind="_secret" @bind:event="oninput" />
     </label>
     <div class="actions">
-        <button class="secondary" type="submit">登入</button>
+        <button class="confirm" type="submit">登入</button>
     </div>
 </form>
 

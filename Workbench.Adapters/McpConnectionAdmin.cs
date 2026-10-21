@@ -42,6 +42,45 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
     public Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
         => SendAsync(HttpMethod.Post, "connections/probe", callerId, new { serverType, connectionString }, cancellationToken);
 
+    public async Task<DatabaseListResult> DatabasesAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
+    {
+        if (_http.BaseAddress is null)
+            return DatabaseListResult.Fail("connection_failed", "尚未設定資料服務位址，無法讀取資料庫清單。");
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "connections/databases");
+            request.Headers.TryAddWithoutValidation("X-DBServices-Workbench", _catalogKey);
+            request.Headers.TryAddWithoutValidation("X-DBServices-Caller", callerId);
+            request.Content = JsonContent.Create(new { serverType, connectionString }, options: Json);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var failed = ReadFailure(text);
+                return DatabaseListResult.Fail(failed.Code, failed.Message);
+            }
+
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+            var names = new List<string>();
+            if (document.RootElement.TryGetProperty("names", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in list.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } name)
+                        names.Add(name);
+                }
+            }
+
+            return DatabaseListResult.Success(names);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException or TaskCanceledException)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                throw;
+            return DatabaseListResult.Fail("connection_failed", "資料服務沒有回應（" + _http.BaseAddress + "），無法讀取資料庫清單。");
+        }
+    }
+
     public Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken)
         => SendAsync(HttpMethod.Delete, "connections/" + Uri.EscapeDataString(name), callerId, null, cancellationToken);
 

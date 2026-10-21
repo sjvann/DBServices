@@ -3,6 +3,7 @@
 @inject EnvironmentService Environments
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>選擇工作</h1>
 @if (_denied)
 {
@@ -29,6 +30,7 @@ else
         }
     </ul>
 }
+</div>
 
 @code {
     private bool _denied;

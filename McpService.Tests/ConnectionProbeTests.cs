@@ -25,6 +25,23 @@ public class ConnectionProbeTests
     }
 
     [TestMethod]
+    public void Database_list_reports_a_missing_driver_without_opening()
+    {
+        var result = ConnectionProbe.ListDatabases("PostgreSQL", "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=secret", _ => null);
+
+        Assert.IsFalse(result.Ok);
+        Assert.AreEqual("driver_missing", result.Code);
+    }
+
+    [TestMethod]
+    public void MySql_list_hides_system_schemas()
+    {
+        var names = ConnectionProbe.Visible("MySQL", ["shop", "information_schema", "mysql", "app", "sys"]);
+
+        CollectionAssert.AreEqual(new[] { "app", "shop" }, names.ToArray());
+    }
+
+    [TestMethod]
     public void Installed_drivers_can_be_loaded()
     {
         foreach (var assembly in new[] { "Microsoft.Data.Sqlite", "Microsoft.Data.SqlClient", "MySql.Data", "Oracle.ManagedDataAccess", "Npgsql" })

@@ -7,6 +7,7 @@
 @inject IJSRuntime Js
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>生成紀錄</h1>
 @if (_denied)
 {
@@ -26,12 +27,14 @@ else
         @foreach (var record in _records)
         {
             <li>
-                <button type="button" @onclick="() => Open(record.Id)">開啟</button>
-                @if (record.OwnerId == _operatorId)
-                {
-                    <button type="button" @onclick="() => Delete(record.Id)">刪除</button>
-                }
-                <span class="meta">@(record.Shared ? "共享" : "私有")</span>
+                <span>@Title(record) <span class="meta">@(record.Shared ? "共享" : "只給自己")</span></span>
+                <span>
+                    <button type="button" @onclick="() => Open(record.Id)">打開</button>
+                    @if (record.OwnerId == _operatorId)
+                    {
+                        <button type="button" @onclick="() => Delete(record.Id)">刪除</button>
+                    }
+                </span>
             </li>
         }
     </ul>
@@ -47,9 +50,10 @@ else
                 }
             </tbody>
         </table>
-        <button type="button" @onclick="ExportOpen">匯出這份紀錄</button>
+        <button class="confirm" type="button" @onclick="ExportOpen">匯出這份紀錄</button>
     }
 }
+</div>
 
 @code {
     private bool _denied;
@@ -77,6 +81,14 @@ else
 
         _operatorId = profile.Id;
         Reload();
+    }
+
+    private static string Title(RecordDto record)
+    {
+        var title = record.Blocks.FirstOrDefault(item => item.Type == "title")?.Text;
+        if (!string.IsNullOrWhiteSpace(title))
+            return title;
+        return record.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     }
 
     private void Reload()

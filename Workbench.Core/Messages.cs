@@ -15,9 +15,7 @@ public static class WorkbenchMessages
     public static ErrorDto Text(string code, string message) => new() { Code = code, Message = message };
 
     public const string UndecidedConnectionText = "無法決定連線，沒有讀取資料。";
-    public const string NoMatch = "語句對不到樣式。";
-    public const string ManyMatches = "語句對到多筆樣式。";
-    public const string MissingParameters = "缺少參數：";
+    public const string ReportUnavailable = "這份報表現在產生不了。";
     public const string UnreadableStyle = "不能讀取這個樣式。";
     public const string FrozenStructure = "這個檢視已被樣式引用，不能變更結構。";
     public const string FrozenDelete = "這個檢視已被樣式引用，不能刪除。";
@@ -25,6 +23,20 @@ public static class WorkbenchMessages
     public const string Disconnected = "來源連不起來。";
     public const string SecondAdmin = "不能建立另一個管理者。";
     public const string LeftUnsaved = "未保存就離開後不能匯出。";
+
+    public static string NoReport(IEnumerable<string> names)
+    {
+        var list = names.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.Ordinal).ToList();
+        if (list.Count == 0)
+            return "還沒有可以產生的報表。";
+        return "沒有對上的報表。可以用的有：" + string.Join("、", list) + "。";
+    }
+
+    public static string SeveralReports(IEnumerable<string> names) =>
+        "對上不只一份：" + string.Join("、", names) + "。請只留一份。";
+
+    public static string MissingConditions(IEnumerable<string> names) =>
+        "缺少條件。還缺" + string.Join("、", names) + "。";
 
     public static ErrorDto EnvironmentIncomplete(EnvironmentSnapshot snapshot)
     {

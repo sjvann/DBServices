@@ -1,1 +1,1 @@
-{"saved":[{"name":"Portgres","serverType":"PostgreSQL","connectionString":"Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=1qazxsw234;SSL Mode=Prefer"}],"removed":[]}
+{"saved":[{"name":"lamp","serverType":"PostgreSQL","connectionString":"Host=localhost;Port=5432;Database=lamp;Username=postgres;Password=1qazxsw234;SSL Mode=Prefer"}],"removed":["Portgres"]}

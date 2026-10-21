@@ -293,6 +293,9 @@ internal sealed class RecordingConnectionAdmin : IConnectionAdmin
     public Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
         => Task.FromResult(CatalogWriteResult.Fail("connection_failed", "無法建立連線。"));
 
+    public Task<DatabaseListResult> DatabasesAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(DatabaseListResult.Fail("connection_failed", "無法建立連線。"));
+
     public Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken)
         => Task.FromResult(CatalogWriteResult.Fail("not_found", "找不到連線。"));
 }

@@ -65,6 +65,14 @@ public sealed class ConnectionFields
         _ => Fail("請選擇資料庫種類。"),
     };
 
+    public OpResult<string> CatalogConnection(string? serverType) => serverType?.Trim() switch
+    {
+        "SqlServer" => SqlServerCatalog(),
+        "MySQL" => MySqlCatalog(),
+        "PostgreSQL" => PostgreSqlCatalog(),
+        _ => Fail("這個種類要直接指定資料庫。"),
+    };
+
     private OpResult<string> Sqlite()
     {
         if (Place == "memory")
@@ -122,6 +130,41 @@ public sealed class ConnectionFields
             ("TrustServerCertificate", TrustCertificate)));
     }
 
+    private OpResult<string> SqlServerCatalog()
+    {
+        var endpoint = Endpoint();
+        if (endpoint.Error is not null)
+            return Fail(endpoint.Error);
+        if (Encrypt is not ("Mandatory" or "Optional" or "Strict" or "False"))
+            return Fail("請選擇加密。");
+        if (TrustCertificate is not ("True" or "False"))
+            return Fail("請選擇憑證處理。");
+
+        var server = endpoint.Host.Contains(':') && !endpoint.Host.StartsWith('[')
+            ? "[" + endpoint.Host + "]"
+            : endpoint.Host;
+        server += "," + endpoint.Port;
+        if (Auth == "windows")
+            return Ok(Build(
+                ("Server", server),
+                ("Database", "master"),
+                ("Integrated Security", "True"),
+                ("Encrypt", Encrypt),
+                ("TrustServerCertificate", TrustCertificate)));
+        if (Auth != "sql")
+            return Fail("請選擇驗證方式。");
+        var account = Account();
+        if (account.Error is not null)
+            return Fail(account.Error);
+        return Ok(Build(
+            ("Server", server),
+            ("Database", "master"),
+            ("User ID", account.User),
+            ("Password", account.Password),
+            ("Encrypt", Encrypt),
+            ("TrustServerCertificate", TrustCertificate)));
+    }
+
     private OpResult<string> MySql()
     {
         var endpoint = Endpoint();
@@ -146,6 +189,24 @@ public sealed class ConnectionFields
             ("SslMode", SslMode)));
     }
 
+    private OpResult<string> MySqlCatalog()
+    {
+        var endpoint = Endpoint();
+        if (endpoint.Error is not null)
+            return Fail(endpoint.Error);
+        if (SslMode is not ("Preferred" or "Required" or "None" or "VerifyCA" or "VerifyFull"))
+            return Fail("請選擇加密連線。");
+        var account = Account();
+        if (account.Error is not null)
+            return Fail(account.Error);
+        return Ok(Build(
+            ("Server", endpoint.Host),
+            ("Port", endpoint.Port),
+            ("User ID", account.User),
+            ("Password", account.Password),
+            ("SslMode", SslMode)));
+    }
+
     private OpResult<string> PostgreSql()
     {
         var endpoint = Endpoint();
@@ -165,6 +226,25 @@ public sealed class ConnectionFields
             ("Host", endpoint.Host),
             ("Port", endpoint.Port),
             ("Database", database),
+            ("Username", account.User),
+            ("Password", account.Password),
+            ("SSL Mode", SslMode)));
+    }
+
+    private OpResult<string> PostgreSqlCatalog()
+    {
+        var endpoint = Endpoint();
+        if (endpoint.Error is not null)
+            return Fail(endpoint.Error);
+        if (SslMode is not ("Prefer" or "Require" or "Disable" or "Allow" or "VerifyCA" or "VerifyFull"))
+            return Fail("請選擇加密連線。");
+        var account = Account();
+        if (account.Error is not null)
+            return Fail(account.Error);
+        return Ok(Build(
+            ("Host", endpoint.Host),
+            ("Port", endpoint.Port),
+            ("Database", "postgres"),
             ("Username", account.User),
             ("Password", account.Password),
             ("SSL Mode", SslMode)));

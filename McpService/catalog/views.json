@@ -1,0 +1,37 @@
+[
+  {
+    "id": "v-9f72172d4282",
+    "name": "Users",
+    "purpose": "Users",
+    "published": true,
+    "sources": [
+      "Users"
+    ],
+    "links": [],
+    "parameters": [
+      {
+        "name": "\u59D3\u540D",
+        "column": "Username",
+        "source": "Users"
+      }
+    ],
+    "columns": [
+      {
+        "name": "UserID",
+        "source": "Users"
+      },
+      {
+        "name": "Username",
+        "source": "Users"
+      },
+      {
+        "name": "Email",
+        "source": "Users"
+      },
+      {
+        "name": "DisplayName",
+        "source": "Users"
+      }
+    ]
+  }
+]

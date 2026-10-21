@@ -140,6 +140,44 @@ public class ConnectionFormTests
     }
 
     [TestMethod]
+    public void PostgreSql_catalog_uses_the_maintenance_database()
+    {
+        var fields = ConnectionFields.For("PostgreSQL");
+        fields.User = "postgres";
+        fields.Password = "secret";
+
+        var parsed = Parse(fields.CatalogConnection("PostgreSQL"));
+
+        Assert.AreEqual("postgres", parsed["Database"]);
+        Assert.AreEqual("postgres", parsed["Username"]);
+    }
+
+    [TestMethod]
+    public void MySql_catalog_omits_the_database_name()
+    {
+        var fields = ConnectionFields.For("MySQL");
+        fields.User = "root";
+        fields.Password = "secret";
+
+        var parsed = Parse(fields.CatalogConnection("MySQL"));
+
+        Assert.IsFalse(parsed.ContainsKey("Database"));
+        Assert.AreEqual("root", parsed["User ID"]);
+    }
+
+    [TestMethod]
+    public void SqlServer_catalog_uses_master()
+    {
+        var fields = ConnectionFields.For("SqlServer");
+        fields.Auth = "windows";
+
+        var parsed = Parse(fields.CatalogConnection("SqlServer"));
+
+        Assert.AreEqual("master", parsed["Database"]);
+        Assert.AreEqual("True", parsed["Integrated Security"]);
+    }
+
+    [TestMethod]
     public void Network_fields_reject_a_blank_database_and_a_bad_port()
     {
         var blank = ConnectionFields.For("PostgreSQL");

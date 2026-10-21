@@ -101,6 +101,25 @@ app.MapPost("/connections", async (HttpContext http, ConnectionDirectory directo
         return Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
     return Results.Json(new Dictionary<string, string> { ["name"] = result.Name, ["serverType"] = result.ServerType });
 });
+app.MapPost("/connections/databases", async (HttpContext http, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    ConnectionInput? input;
+    try
+    {
+        input = await http.Request.ReadFromJsonAsync<ConnectionInput>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "invalid_arguments", message = "連線內容不完整。" }, statusCode: 400);
+    }
+
+    var listed = await Task.Run(() => DbServices.Api.Shared.ConnectionProbe.ListDatabases(input?.ServerType, input?.ConnectionString), http.RequestAborted);
+    return listed.Ok
+        ? Results.Json(new { names = listed.Names })
+        : Results.Json(new { code = listed.Code, message = listed.Message }, statusCode: 400);
+});
 app.MapPost("/connections/probe", async (HttpContext http, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
@@ -163,6 +182,35 @@ app.MapPost("/views/{id}/publish", (string id, HttpContext http, ViewCatalog vie
     SetPublished(id, true, http, views, configuration));
 app.MapPost("/views/{id}/unpublish", (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
     SetPublished(id, false, http, views, configuration));
+
+app.MapGet("/schema/graph", (string? connectionId, HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    var graph = SchemaGraph.Read(directory.Catalog, connectionId);
+    return graph.Ok
+        ? Results.Json(new { tables = graph.Tables })
+        : Results.Json(new { code = graph.Code, message = graph.Message }, statusCode: 400);
+});
+app.MapPost("/schema/preview", async (HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    SchemaPreviewInput? input;
+    try
+    {
+        input = await http.Request.ReadFromJsonAsync<SchemaPreviewInput>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "invalid_arguments", message = "請先選擇資料表。" }, statusCode: 400);
+    }
+
+    var preview = SchemaGraph.Preview(directory.Catalog, input?.ConnectionId, input?.View, input?.Parameters);
+    return preview.Ok
+        ? Results.Json(new { columns = preview.Columns, rows = preview.Rows, truncated = preview.Truncated })
+        : Results.Json(new { code = preview.Code, message = preview.Message }, statusCode: 400);
+});
 
 app.MapMcp("/mcp");
 app.Run();
@@ -387,6 +435,13 @@ static string ResolvedConnectionId(ToolCatalog catalog, string connectionId)
     }
 
     return connectionId;
+}
+
+sealed class SchemaPreviewInput
+{
+    public string? ConnectionId { get; set; }
+    public ViewDocument? View { get; set; }
+    public Dictionary<string, string>? Parameters { get; set; }
 }
 
 public partial class Program;

@@ -20,32 +20,27 @@
             <p class="who">@_me.DisplayName</p>
             @if (_station == EntryNames.Analyst)
             {
-                <p class="workplace">定義檢視</p>
-                <p class="meta">系統分析師</p>
+                <p class="meta">現在的工作</p>
                 <NavLink href="/views">檢視</NavLink>
             }
             else if (_station == EntryNames.Designer)
             {
-                <p class="workplace">排樣式</p>
-                <p class="meta">報表設計師</p>
+                <p class="meta">現在的工作</p>
                 <NavLink href="/styles">樣式</NavLink>
             }
             else if (_station == EntryNames.Terminal)
             {
-                <p class="workplace">產生報表</p>
-                <p class="meta">終端使用者</p>
-                <NavLink href="/talk">交談</NavLink>
+                <p class="meta">現在的工作</p>
+                <NavLink href="/talk">產生報表</NavLink>
                 <NavLink href="/records">生成紀錄</NavLink>
             }
             else if (_page == "stations")
             {
-                <p class="workplace">選擇工作</p>
-                <p class="meta">換成另一個已指派的工作</p>
+                <p class="meta">選擇要做的工作</p>
             }
             else if (_page == "environment")
             {
-                <p class="workplace">環境設定</p>
-                <p class="meta">資料庫連線與 AI</p>
+                <p class="meta">資料庫與 AI</p>
             }
             @if (_me.IsAdmin)
             {
@@ -58,7 +53,6 @@
                 @if (_me.Entries.Count > 1)
                 {
                     <NavLink href="/stations">換工作</NavLink>
-                    <p class="meta">你有多個工作身份，這裡整頁換過去。</p>
                 }
                 <button class="secondary" type="button" @onclick="Logout">登出</button>
             </div>

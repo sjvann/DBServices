@@ -441,6 +441,24 @@ public sealed class StyleService
         return OpResult<IReadOnlyList<StyleDto>>.Success(_styles.ReadableBy(operatorId).Select(ToDto).ToList());
     }
 
+    public async Task<OpResult<IReadOnlyList<ViewSummaryDto>>> PublishedViewsAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (await ClosedAsync(operatorId, EntryNames.Designer, cancellationToken) is { } error)
+            return OpResult<IReadOnlyList<ViewSummaryDto>>.Fail(error);
+        var documents = await _catalog.ListAsync(operatorId, cancellationToken);
+        IReadOnlyList<ViewSummaryDto> rows = documents
+            .Where(item => item.Published)
+            .Select(item => new ViewSummaryDto
+            {
+                Id = item.Id,
+                Name = item.Name,
+                Purpose = item.Purpose,
+                Published = item.Published,
+            })
+            .ToList();
+        return OpResult<IReadOnlyList<ViewSummaryDto>>.Success(rows);
+    }
+
     public async Task<OpResult<IReadOnlyList<StyleBlockDto>>> SuggestAsync(string operatorId, string? viewId, CancellationToken cancellationToken)
     {
         if (await ClosedAsync(operatorId, EntryNames.Designer, cancellationToken) is { } error)
@@ -688,20 +706,20 @@ public sealed class UtteranceService
         {
             var matches = Match(utterance, readable);
             if (matches.Count == 0)
-                return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.NoMatch));
+                return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.NoReport(readable.Select(item => item.Name))));
             if (matches.Count > 1)
-                return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.ManyMatches));
+                return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.SeveralReports(matches.Select(item => item.Name))));
             style = matches[0];
         }
 
         var view = await _catalog.FindAsync(style.ViewId, operatorId, cancellationToken);
         if (view is null)
-            return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.NoMatch));
+            return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.ReportUnavailable));
 
         var parameters = Parse(utterance, view.Parameters);
         var missing = view.Parameters.Select(item => item.Name).Where(name => !parameters.ContainsKey(name)).ToList();
         if (missing.Count > 0)
-            return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.MissingParameters + string.Join("、", missing)));
+            return OpResult<UtteranceResponse>.Success(NotReady(WorkbenchMessages.MissingConditions(missing)));
 
         var tally = await _connections.TallyAsync(cancellationToken);
         if (tally.Available != 1 || string.IsNullOrWhiteSpace(tally.OnlyName))

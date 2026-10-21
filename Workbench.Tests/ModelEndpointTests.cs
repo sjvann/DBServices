@@ -76,6 +76,9 @@ public class ModelEndpointTests
         Assert.IsFalse(labels.Any(label => Hidden(label)));
         await page.Cut.FindAll("button").Single(button => button.TextContent == "llama3.2").ClickAsync(new MouseEventArgs());
         Assert.AreEqual("llama3.2", page.Cut.Find("#model-id").GetAttribute("value"));
+        page.Handler.Respond(HttpStatusCode.OK, Models("llama3.2"));
+        await Probe(page.Cut);
+        Assert.AreEqual("已連上。llama3.2 可以使用。", page.Cut.Find("#model-result").TextContent);
         page.World.Unchanged();
     }
 
@@ -120,6 +123,7 @@ public class ModelEndpointTests
         await Probe(page.Cut);
 
         Assert.Contains("清單沒有這個模型", page.Cut.Find("[role=status]").TextContent);
+        Assert.Contains("清單沒有這個模型", page.Cut.Find("#model-result").TextContent);
         Assert.AreEqual("llama3.2", page.Cut.Find("#model-id").GetAttribute("value"));
         Assert.AreEqual("Llama3.2", page.Cut.FindAll("button").Single(button => button.TextContent == "Llama3.2").TextContent);
         page.World.Unchanged();
@@ -349,6 +353,7 @@ public class ModelEndpointTests
         await Probe(page.Cut);
 
         Assert.Contains("連不上這個位址。", page.Cut.Find("[role=alert]").TextContent);
+        Assert.AreEqual("連不上這個位址。", page.Cut.Find("#model-result").TextContent);
         page.World.Unchanged();
     }
 

@@ -4,6 +4,7 @@
 @inject EnvironmentService Environments
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>樣式</h1>
 @if (_denied)
 {
@@ -15,34 +16,50 @@ else if (_closed)
 }
 else
 {
+    <p class="lead">選一份已發布的檢視，系統會排出標題、說明與表格。用上移、下移調整順序，再採用。</p>
     @if (_error is not null)
     {
         <div class="error" role="alert"><span>@_error.Message</span></div>
     }
     <form class="panel" @onsubmit="Suggest" @onsubmit:preventDefault="true">
-        <label>檢視識別<input @bind="_viewId" @bind:event="oninput" /></label>
-        <label>樣式名稱<input @bind="_name" @bind:event="oninput" /></label>
-        <label><input type="checkbox" @bind="_shared" /> 共享</label>
+        <label for="style-view">檢視
+            <select id="style-view" @bind="_viewId" @bind:after="PrefillName">
+                <option value="">選擇檢視</option>
+                @foreach (var view in _views)
+                {
+                    <option value="@view.Id">@view.Name</option>
+                }
+            </select>
+        </label>
+        <label for="style-name">樣式名稱
+            <input id="style-name" autocomplete="off" placeholder="可以沿用檢視的名字" @bind="_name" @bind:event="oninput" />
+        </label>
+        <label><input type="checkbox" @bind="_shared" /> 其他人也能用</label>
         <div class="actions">
-            <button class="secondary" type="submit">建議</button>
-            <button class="secondary" type="button" @onclick="Accept">接受</button>
-            <button class="secondary" type="button" @onclick="Ignore">忽略</button>
+            <button class="confirm" type="submit">排出版面</button>
+            <button class="secondary" type="button" @onclick="Accept">採用</button>
+            <button class="secondary" type="button" @onclick="Ignore">先不用</button>
         </div>
     </form>
-    <ol>
-        @for (var index = 0; index < _blocks.Count; index++)
-        {
-            var block = _blocks[index];
-            var current = index;
-            <li>
-                <span class="code">@block.Type</span>
-                <span>@(block.Text ?? block.Parameter ?? string.Join("、", block.Columns))</span>
-                <button type="button" @onclick="() => Move(current, -1)">上移</button>
-                <button type="button" @onclick="() => Move(current, 1)">下移</button>
-            </li>
-        }
-    </ol>
+    @if (_blocks.Count > 0)
+    {
+        <ol class="block-list">
+            @for (var index = 0; index < _blocks.Count; index++)
+            {
+                var block = _blocks[index];
+                var current = index;
+                <li>
+                    <span>@BlockLabel(block)</span>
+                    <span>
+                        <button type="button" @onclick="() => Move(current, -1)">上移</button>
+                        <button type="button" @onclick="() => Move(current, 1)">下移</button>
+                    </span>
+                </li>
+            }
+        </ol>
+    }
 }
+</div>
 
 @code {
     private bool _denied;
@@ -54,6 +71,7 @@ else
     private bool _shared;
     private string? _styleId;
     private List<StyleBlockDto> _blocks = [];
+    private List<ViewSummaryDto> _views = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -66,7 +84,36 @@ else
         await Environments.RefreshAsync(CancellationToken.None);
         _snapshot = Environments.Current;
         _closed = !_snapshot.Ready;
+        if (_closed)
+            return;
+
+        var listed = await StyleEditor.PublishedViewsAsync(profile.Id, CancellationToken.None);
+        if (!listed.Ok)
+        {
+            _error = listed.Error;
+            return;
+        }
+
+        _views = listed.Value!.ToList();
     }
+
+    private void PrefillName()
+    {
+        if (!string.IsNullOrWhiteSpace(_name))
+            return;
+        var match = _views.FirstOrDefault(item => item.Id == _viewId);
+        if (match is not null)
+            _name = match.Name;
+    }
+
+    private static string BlockLabel(StyleBlockDto block) => block.Type switch
+    {
+        "title" => "標題：" + block.Text,
+        "text" => "說明：" + block.Text,
+        "parameter" => "要問的條件：" + (block.Label ?? block.Parameter),
+        "table" => "表格：" + string.Join("、", block.Columns),
+        _ => block.Text ?? block.Parameter ?? string.Join("、", block.Columns),
+    };
 
     private async Task Suggest()
     {

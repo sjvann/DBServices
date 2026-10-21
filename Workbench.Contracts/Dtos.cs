@@ -174,3 +174,30 @@ public sealed class LayoutWriteRequest
     public string? Name { get; set; }
     public bool Shared { get; set; }
 }
+
+public sealed class SchemaColumnDto
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public bool PrimaryKey { get; set; }
+    public string? ReferencesTable { get; set; }
+    public string? ReferencesColumn { get; set; }
+}
+
+public sealed class SchemaTableDto
+{
+    public string Name { get; set; } = "";
+    public List<SchemaColumnDto> Columns { get; set; } = [];
+}
+
+public sealed class SchemaGraphDto
+{
+    public List<SchemaTableDto> Tables { get; set; } = [];
+}
+
+public sealed class SchemaPreviewDto
+{
+    public List<string> Columns { get; set; } = [];
+    public List<List<string>> Rows { get; set; } = [];
+    public bool Truncated { get; set; }
+}

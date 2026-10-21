@@ -9,7 +9,8 @@
 @inject IJSRuntime Js
 @layout WorkbenchLayout
 
-<h1>交談</h1>
+<div class="page">
+<h1>產生報表</h1>
 @if (_denied)
 {
     <p role="alert">沒有權限。</p>
@@ -25,16 +26,11 @@ else
         <p role="status">@_notice</p>
     }
     <form class="panel" @onsubmit="Submit" @onsubmit:preventDefault="true">
-        <label for="utterance">語句
-            <input id="utterance" @bind="_text" @bind:event="oninput" />
+        <label for="utterance">要用哪一份報表
+            <textarea id="utterance" class="ask" @bind="_text" @bind:event="oninput" placeholder="例如：銷貨月報，年月 2026-10"></textarea>
         </label>
         <div class="actions">
-            <button class="secondary" type="submit">送出</button>
-            <button class="secondary" type="button" @onclick="SaveRecord">存成紀錄</button>
-            <button class="secondary" type="button" @onclick="() => SaveRecordShared(true)">存成共享紀錄</button>
-            <button class="secondary" type="button" @onclick="SaveStyle">存回樣式</button>
-            <button class="secondary" type="button" @onclick="Download">匯出 PDF</button>
-            <button class="secondary" type="button" @onclick="Leave">離開</button>
+            <button class="confirm" type="submit">產生</button>
         </div>
     </form>
     @foreach (var block in _blocks.OrderBy(item => item.Order))
@@ -62,7 +58,18 @@ else
             </tbody>
         </table>
     }
+    @if (_columns.Count > 0 || _blocks.Count > 0)
+    {
+        <div class="actions">
+            <button class="secondary" type="button" @onclick="SaveRecord">留下紀錄</button>
+            <button class="secondary" type="button" @onclick="() => SaveRecordShared(true)">與其他人共享</button>
+            <button class="secondary" type="button" @onclick="SaveStyle">存回樣式</button>
+            <button class="secondary" type="button" @onclick="Download">匯出 PDF</button>
+            <button class="secondary" type="button" @onclick="Leave">清掉這次</button>
+        </div>
+    }
 }
+</div>
 
 @code {
     private bool _denied;

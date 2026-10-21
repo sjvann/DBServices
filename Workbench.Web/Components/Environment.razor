@@ -3,6 +3,7 @@
 @inject EnvironmentService Environments
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>環境設定</h1>
 @if (_denied)
 {
@@ -29,7 +30,7 @@ else
     </div>
 
     <h2>資料庫連線</h2>
-    <p class="hint">@_snapshot.DatabaseDetail 先測試再儲存。測試不會寫入連線。</p>
+    <p class="hint">@_snapshot.DatabaseDetail 帳號和密碼填好後，會列出可以選的資料庫。測試不會寫入連線。</p>
     @if (_connections.Count == 0)
     {
         <p class="empty">還沒有資料庫連線。</p>
@@ -93,16 +94,13 @@ else
             case "SqlServer":
                 <div class="grid">
                     <label for="connection-host">主機
-                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-port">連接埠
-                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                    </label>
-                    <label for="connection-database">資料庫 <span class="req">必填</span>
-                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
+                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-auth">驗證
-                        <select id="connection-auth" @bind="_fields.Auth">
+                        <select id="connection-auth" @bind="_fields.Auth" @bind:after="AuthChanged">
                             <option value="sql">SQL 帳號</option>
                             <option value="windows">Windows 整合驗證</option>
                         </select>
@@ -110,14 +108,14 @@ else
                     @if (_fields.Auth != "windows")
                     {
                         <label for="connection-user">帳號 <span class="req">必填</span>
-                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" />
+                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                         </label>
                         <label for="connection-password" class="span-2">密碼 <span class="req">必填</span>
-                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                         </label>
                     }
                     <label for="connection-encrypt">加密
-                        <select id="connection-encrypt" @bind="_fields.Encrypt">
+                        <select id="connection-encrypt" @bind="_fields.Encrypt" @bind:after="AuthChanged">
                             <option value="Mandatory">強制加密</option>
                             <option value="Optional">選擇性加密</option>
                             <option value="Strict">嚴格加密</option>
@@ -125,7 +123,7 @@ else
                         </select>
                     </label>
                     <label for="connection-trust">憑證
-                        <select id="connection-trust" @bind="_fields.TrustCertificate">
+                        <select id="connection-trust" @bind="_fields.TrustCertificate" @bind:after="AuthChanged">
                             <option value="False">驗證憑證</option>
                             <option value="True">信任伺服器憑證</option>
                         </select>
@@ -160,22 +158,19 @@ else
             default:
                 <div class="grid">
                     <label for="connection-host">主機
-                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-port">連接埠
-                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                    </label>
-                    <label for="connection-database">資料庫 <span class="req">必填</span>
-                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：postgres" @bind="_fields.Database" @bind:event="oninput" />
+                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-user">帳號 <span class="req">必填</span>
-                        <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="@(_serverType == "MySQL" ? "例如：root" : "例如：postgres")" @bind="_fields.User" @bind:event="oninput" />
+                        <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="@(_serverType == "MySQL" ? "例如：root" : "例如：postgres")" @bind="_fields.User" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-password">密碼 <span class="req">必填</span>
-                        <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                        <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-ssl">加密連線
-                        <select id="connection-ssl" @bind="_fields.SslMode">
+                        <select id="connection-ssl" @bind="_fields.SslMode" @bind:after="AuthChanged">
                             @if (_serverType == "MySQL")
                             {
                                 <option value="Preferred">優先</option>
@@ -198,14 +193,55 @@ else
                 </div>
                 break;
         }
+        @if (_serverType is "PostgreSQL" or "MySQL" or "SqlServer")
+        {
+            <div class="database-choices" aria-live="polite">
+                <p class="hint">資料庫</p>
+                @if (_listing)
+                {
+                    <p class="hint">正在讀取這個帳號可以看到的資料庫。</p>
+                }
+                else if (!string.IsNullOrEmpty(_databaseNote))
+                {
+                    <p class="reason" role="alert">@_databaseNote</p>
+                    <button class="secondary" type="button" @onclick="ReloadDatabases">再看一次</button>
+                }
+                else if (_databases.Count == 0)
+                {
+                    <p class="hint">@(_fields.Auth == "windows" && _serverType == "SqlServer" ? "主機填好後，會列出可以選的資料庫。" : "帳號和密碼填好後，會列出可以選的資料庫。")</p>
+                }
+                else if (_databases.Count > 8)
+                {
+                    <label for="connection-database">選擇資料庫 <span class="req">必填</span>
+                        <select id="connection-database" @bind="_fields.Database" @bind:after="NameFromDatabase">
+                            <option value="">選擇資料庫</option>
+                            @foreach (var name in _databases)
+                            {
+                                <option value="@name">@name</option>
+                            }
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <div class="chip-row" role="listbox" aria-label="可以選的資料庫">
+                        @foreach (var name in _databases)
+                        {
+                            var current = name;
+                            <button type="button" class="chip" aria-pressed="@DatabaseSelected(current)" @onclick="() => ChooseDatabase(current)">@current</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
         <div class="actions">
-            <button class="secondary" type="button" disabled="@_probing" @onclick="ProbeConnection">@(_probing ? "正在測試…" : "測試連線")</button>
-            <button class="secondary" type="submit" disabled="@_probing">儲存連線</button>
+            <button class="secondary" type="button" disabled="@(_probing || _listing)" @onclick="ProbeConnection">@(_probing ? "正在測試…" : "測試連線")</button>
+            <button class="confirm" type="submit" disabled="@(_probing || _listing)">儲存連線</button>
         </div>
     </form>
 
     <h2>AI 設定</h2>
-    <p class="hint">@_snapshot.ModelDetail 必須啟用，工作台才會開放。</p>
+    <p class="hint">@(_snapshot.ModelReady ? _snapshot.ModelDetail : _snapshot.ModelDetail + "必須啟用，工作台才會開放。")</p>
     <form class="panel" @onsubmit="SaveModel" @onsubmit:preventDefault="true">
         <label><input type="checkbox" @bind="_enabled" /> 啟用</label>
         <label for="model-placement">放置
@@ -262,12 +298,17 @@ else
             <input id="model-key" type="password" autocomplete="new-password" @bind="_apiKey" @bind:event="oninput" />
         </label>
         <p class="hint">@(_keyPresent ? "已儲存金鑰。留白表示沿用，不會再顯示。" : "雲端必須填金鑰。本機可以留白。金鑰不會再顯示。")</p>
+        @if (!string.IsNullOrEmpty(_modelNote))
+        {
+            <p id="model-result" class="hint">@_modelNote</p>
+        }
         <div class="actions">
-            <button class="secondary" type="button" disabled="@_pulling" @onclick="ProbeModel">測試連線</button>
-            <button class="confirm" type="submit" disabled="@_pulling">儲存 AI 設定</button>
-        </div>
-    </form>
+            <button class="secondary" type="button" disabled="@(_pulling || _probingModel)" @onclick="ProbeModel">@(_probingModel ? "正在測試…" : "測試連線")</button>
+        <button class="confirm" type="submit" disabled="@(_pulling || _probingModel)">儲存 AI 設定</button>
+    </div>
+</form>
 }
+</div>
 
 @code {
     private bool _denied;
@@ -279,6 +320,14 @@ else
     private string _serverType = "Sqlite";
     private ConnectionFields _fields = ConnectionFields.For("Sqlite");
     private bool _probing;
+    private bool _listing;
+    private string _databaseNote = "";
+    private string _listedFor = "";
+    private int _listGeneration;
+    private Task? _reveal;
+    private List<string> _databases = [];
+    private bool _probingModel;
+    private string _modelNote = "";
     private bool _enabled;
     private string _placement = "local";
     private string _endpoint = "";
@@ -335,6 +384,12 @@ else
         var profile = Gate.Current!;
         _error = null;
         _status = "";
+        if (await NeedDatabase() is { } waiting)
+        {
+            _databaseNote = waiting;
+            return;
+        }
+
         var composed = _fields.Compose(_serverType);
         if (!composed.Ok)
         {
@@ -361,6 +416,12 @@ else
         var profile = Gate.Current!;
         _error = null;
         _status = "";
+        if (await NeedDatabase() is { } waiting)
+        {
+            _databaseNote = waiting;
+            return;
+        }
+
         var composed = _fields.Compose(_serverType);
         if (!composed.Ok)
         {
@@ -386,7 +447,123 @@ else
         }
     }
 
-    private void UseEngine() => _fields = ConnectionFields.For(_serverType);
+    private void UseEngine()
+    {
+        _fields = ConnectionFields.For(_serverType);
+        ForgetDatabases();
+    }
+
+    private void ForgetDatabases()
+    {
+        _listGeneration++;
+        _listedFor = "";
+        _reveal = null;
+        _databases = [];
+        _fields.Database = "";
+        _databaseNote = "";
+    }
+
+    private async Task AuthChanged()
+    {
+        ForgetDatabases();
+        await RevealDatabases();
+    }
+
+    private Task RevealDatabases()
+    {
+        if (_reveal is { IsCompleted: false })
+            return _reveal;
+        _reveal = RevealCore();
+        return _reveal;
+    }
+
+    private async Task ReloadDatabases()
+    {
+        _listedFor = "";
+        _reveal = null;
+        await RevealDatabases();
+    }
+
+    private async Task RevealCore()
+    {
+        if (_serverType is not ("PostgreSQL" or "MySQL" or "SqlServer"))
+            return;
+        var windows = _serverType == "SqlServer" && _fields.Auth == "windows";
+        if (!windows && (_fields.User.Trim().Length == 0 || _fields.Password.Length == 0))
+            return;
+        if (_fields.Host.Trim().Length == 0 || _fields.Port.Trim().Length == 0)
+            return;
+
+        var generation = _listGeneration;
+        var signature = string.Join('\u001f', _serverType, _fields.Host.Trim(), _fields.Port.Trim(), _fields.Auth, _fields.User.Trim(), _fields.Password, _fields.SslMode, _fields.Encrypt, _fields.TrustCertificate);
+        if (signature == _listedFor)
+            return;
+
+        var composed = _fields.CatalogConnection(_serverType);
+        if (!composed.Ok)
+        {
+            _databaseNote = composed.Error!.Message;
+            return;
+        }
+
+        _listing = true;
+        _databaseNote = "";
+        try
+        {
+            var listed = await Environments.DatabasesAsync(Gate.Current!.Id, _serverType, composed.Value!, CancellationToken.None);
+            if (generation != _listGeneration)
+                return;
+            if (!listed.Ok)
+            {
+                _databases = [];
+                _fields.Database = "";
+                _databaseNote = listed.Error!.Message;
+                _listedFor = signature;
+                return;
+            }
+
+            _databases = listed.Value!.ToList();
+            _listedFor = signature;
+            if (_databases.Count == 1)
+                ChooseDatabase(_databases[0]);
+            else if (_databases.All(name => !string.Equals(name, _fields.Database, StringComparison.OrdinalIgnoreCase)))
+                _fields.Database = "";
+            _databaseNote = _databases.Count == 0 ? "這個帳號看不到任何資料庫。" : "";
+        }
+        finally
+        {
+            _listing = false;
+        }
+    }
+
+    private async Task<string?> NeedDatabase()
+    {
+        if (_serverType is not ("PostgreSQL" or "MySQL" or "SqlServer"))
+            return null;
+        if (!string.IsNullOrWhiteSpace(_fields.Database))
+            return null;
+        await RevealDatabases();
+        if (!string.IsNullOrWhiteSpace(_fields.Database))
+            return null;
+        return _databases.Count == 0
+            ? (_databaseNote.Length == 0 ? "先填帳號和密碼，才能列出資料庫。" : _databaseNote)
+            : "請選擇一個資料庫。";
+    }
+
+    private void ChooseDatabase(string name)
+    {
+        _fields.Database = name;
+        NameFromDatabase();
+        _databaseNote = "";
+    }
+
+    private void NameFromDatabase()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionName) && !string.IsNullOrWhiteSpace(_fields.Database))
+            _connectionName = _fields.Database;
+    }
+
+    private bool DatabaseSelected(string name) => string.Equals(_fields.Database, name, StringComparison.OrdinalIgnoreCase);
 
     private async Task Remove(string name)
     {
@@ -439,23 +616,37 @@ else
         var profile = Gate.Current!;
         _error = null;
         _status = "";
+        _modelNote = "";
+        _probingModel = true;
         ApplyLocalAddress();
-        var probed = await Environments.ProbeModelAsync(profile.Id, new ModelDraft
+        try
         {
-            Enabled = _enabled,
-            Placement = _placement,
-            Endpoint = _endpoint,
-            ModelId = _modelId,
-            ApiKey = _apiKey,
-        }, CancellationToken.None);
-        if (!probed.Ok)
-        {
-            _error = probed.Error;
-            return;
-        }
+            var probed = await Environments.ProbeModelAsync(profile.Id, new ModelDraft
+            {
+                Enabled = _enabled,
+                Placement = _placement,
+                Endpoint = _endpoint,
+                ModelId = _modelId,
+                ApiKey = _apiKey,
+            }, CancellationToken.None);
+            if (!probed.Ok)
+            {
+                _error = probed.Error;
+                _modelNote = probed.Error?.Message ?? "連不上這個位址。";
+                return;
+            }
 
-        _status = probed.Value?.Message ?? "已連上。";
-        _names = probed.Value?.Names ?? [];
+            _status = probed.Value?.Message ?? "已連上。";
+            _names = probed.Value?.Names ?? [];
+            var typed = _modelId.Trim();
+            _modelNote = _status == "已連上。" && typed.Length > 0
+                ? "已連上。" + typed + " 可以使用。"
+                : _status;
+        }
+        finally
+        {
+            _probingModel = false;
+        }
     }
 
     private async Task RefreshInstalled()
@@ -468,6 +659,8 @@ else
         if (!probed.Ok)
         {
             _error ??= probed.Error;
+            if (string.IsNullOrEmpty(_modelNote))
+                _modelNote = probed.Error?.Message ?? "";
             return;
         }
 
@@ -478,7 +671,10 @@ else
     {
         _modelId = name;
         if (_status.Contains("清單沒有這個模型", StringComparison.Ordinal))
+        {
             _status = "";
+            _modelNote = "";
+        }
     }
 
     private async Task Pull(string name)
@@ -500,6 +696,7 @@ else
             if (!pulled.Ok)
             {
                 _error = pulled.Error;
+                _modelNote = pulled.Error?.Message ?? "";
                 _pullStatus = "";
                 return;
             }
@@ -507,6 +704,7 @@ else
             _modelId = pulled.Value?.ModelId ?? name;
             _names = pulled.Value?.Names ?? _names;
             _status = "已下載。還沒有儲存。";
+            _modelNote = _status;
             _pullStatus = "";
         }
         finally

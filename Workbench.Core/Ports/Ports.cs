@@ -124,6 +124,30 @@ public sealed class ViewCallOutcome
     public List<List<string>> Rows { get; init; } = [];
 }
 
+public sealed class SchemaReadResult
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public SchemaGraphDto? Graph { get; init; }
+    public SchemaPreviewDto? Preview { get; init; }
+
+    public static SchemaReadResult FromGraph(SchemaGraphDto graph) => new() { Ok = true, Graph = graph };
+    public static SchemaReadResult FromPreview(SchemaPreviewDto preview) => new() { Ok = true, Preview = preview };
+    public static SchemaReadResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public interface ISchemaBrowser
+{
+    Task<SchemaReadResult> GraphAsync(string connectionId, string callerId, CancellationToken cancellationToken);
+    Task<SchemaReadResult> PreviewAsync(
+        string connectionId,
+        ViewDocumentDto document,
+        IReadOnlyDictionary<string, string> parameters,
+        string callerId,
+        CancellationToken cancellationToken);
+}
+
 public interface IViewCaller
 {
     Task<ViewCallOutcome> CallAsync(
@@ -177,11 +201,24 @@ public sealed class NamedConnection
     public string ServerType { get; init; } = "";
 }
 
+public sealed class DatabaseListResult
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    public static DatabaseListResult Success(IReadOnlyList<string> names) => new() { Ok = true, Names = names };
+
+    public static DatabaseListResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
 public interface IConnectionAdmin
 {
     Task<IReadOnlyList<NamedConnection>> ListAsync(CancellationToken cancellationToken);
     Task<CatalogWriteResult> SaveAsync(string name, string serverType, string connectionString, string callerId, CancellationToken cancellationToken);
     Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken);
+    Task<DatabaseListResult> DatabasesAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken);
     Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken);
 }
 

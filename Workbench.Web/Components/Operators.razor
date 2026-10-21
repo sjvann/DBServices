@@ -3,6 +3,7 @@
 @inject OperatorService Accounts
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>帳號</h1>
 @if (_denied)
 {
@@ -10,15 +11,15 @@
 }
 else
 {
-    <p class="meta">新帳號不是管理者。</p>
+    <p class="lead">建立可以登入的人。新帳號不是管理者，工作身份再到入口指派勾選。</p>
     @if (_error is not null)
     {
         <div class="error" role="alert"><span>@_error.Message</span></div>
     }
     <form class="panel" @onsubmit="Create" @onsubmit:preventDefault="true">
         <label>名稱<input @bind="_name" @bind:event="oninput" /></label>
-        <label>秘密<input type="password" @bind="_secret" @bind:event="oninput" /></label>
-        <button class="secondary" type="submit">建立操作者</button>
+        <label>密碼<input type="password" autocomplete="new-password" @bind="_secret" @bind:event="oninput" /></label>
+        <button class="confirm" type="submit">建立帳號</button>
     </form>
     <ul>
         @foreach (var item in _operators)
@@ -27,6 +28,7 @@ else
         }
     </ul>
 }
+</div>
 
 @code {
     private bool _denied;

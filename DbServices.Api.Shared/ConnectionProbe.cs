@@ -20,6 +20,44 @@ public static class ConnectionProbe
     public static ProbeResult Try(string? serverType, string? connectionString)
         => Try(serverType, connectionString, Load);
 
+    public static DatabaseList ListDatabases(string? serverType, string? connectionString)
+        => ListDatabases(serverType, connectionString, Load);
+
+    public static DatabaseList ListDatabases(string? serverType, string? connectionString, Func<string, Assembly?> load)
+    {
+        var engine = serverType?.Trim() ?? "";
+        var sql = CatalogSql(engine);
+        if (sql is null)
+            return DatabaseList.Fail("invalid_arguments", "這個種類要直接指定資料庫。");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return DatabaseList.Fail("invalid_arguments", "連線內容不完整。");
+        if (Missing(engine, load) is { } missing)
+            return DatabaseList.Fail(missing.Code, missing.Message);
+
+        var listed = ReadNames(engine, connectionString, sql, load);
+        if (listed.Ok || engine != "PostgreSQL" || !MissingCatalog(listed.Message))
+            return listed;
+
+        var builder = new DbConnectionStringBuilder { ConnectionString = connectionString };
+        if (Value(builder, "Database").Equals("template1", StringComparison.OrdinalIgnoreCase))
+            return listed;
+        builder["Database"] = "template1";
+        var retry = ReadNames(engine, builder.ConnectionString, sql, load);
+        return retry.Ok ? retry : listed;
+    }
+
+    public static IReadOnlyList<string> Visible(string? serverType, IReadOnlyList<string> names)
+    {
+        var hidden = serverType?.Trim() switch
+        {
+            "MySQL" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "information_schema", "performance_schema", "mysql", "sys" },
+            "SqlServer" => new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tempdb" },
+            _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+        };
+        var kept = Clean(names.Where(name => !hidden.Contains(name.Trim())));
+        return kept.Count == 0 ? Clean(names) : kept;
+    }
+
     public static ProbeResult Try(string? serverType, string? connectionString, Func<string, Assembly?> load)
     {
         var engine = serverType?.Trim() ?? "";
@@ -80,6 +118,80 @@ public static class ConnectionProbe
             ? ProbeResult.Success("已連上資料庫。")
             : ProbeResult.Success("已連上資料庫。這個路徑可以建立檔案，測試沒有留下檔案。");
     }
+
+    private static DatabaseList ReadNames(string serverType, string connectionString, string sql, Func<string, Assembly?> load)
+    {
+        var driver = Drivers[serverType];
+        Assembly? assembly;
+        try
+        {
+            assembly = load(driver.Assembly);
+        }
+        catch (Exception exception) when (IsMissing(exception))
+        {
+            return DatabaseList.Fail(Missing(serverType).Code, Missing(serverType).Message);
+        }
+
+        if (assembly is null)
+        {
+            var missing = Missing(serverType);
+            return DatabaseList.Fail(missing.Code, missing.Message);
+        }
+
+        try
+        {
+            var type = assembly.GetType(driver.Type, throwOnError: true)!;
+            var connection = (DbConnection)Activator.CreateInstance(type, WithTimeout(serverType, connectionString))!;
+            using (connection)
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                using var reader = command.ExecuteReader();
+                var names = new List<string>();
+                while (reader.Read())
+                {
+                    if (reader.IsDBNull(0))
+                        continue;
+                    var name = reader.GetValue(0)?.ToString()?.Trim() ?? "";
+                    if (name.Length > 0)
+                        names.Add(name);
+                }
+
+                return DatabaseList.Success(Visible(serverType, names));
+            }
+        }
+        catch (Exception exception) when (IsMissing(exception))
+        {
+            var missing = Missing(serverType);
+            return DatabaseList.Fail(missing.Code, missing.Message);
+        }
+        catch (Exception exception)
+        {
+            return DatabaseList.Fail("connection_failed", Describe(exception, connectionString));
+        }
+    }
+
+    private static string? CatalogSql(string engine) => engine switch
+    {
+        "PostgreSQL" => "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname",
+        "MySQL" => "SHOW DATABASES",
+        "SqlServer" => "SELECT name FROM sys.databases WHERE state = 0 AND HAS_DBACCESS(name) = 1 ORDER BY name",
+        _ => null,
+    };
+
+    private static bool MissingCatalog(string message)
+        => message.Contains("3D000", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+           || message.Contains("不存在", StringComparison.Ordinal);
+
+    private static List<string> Clean(IEnumerable<string> names)
+        => names
+            .Select(name => name.Trim())
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static ProbeResult Open(string serverType, string connectionString, Func<string, Assembly?> load)
     {
@@ -221,6 +333,18 @@ public static class ConnectionProbe
         => builder.TryGetValue(key, out var value) ? value?.ToString()?.Trim() ?? "" : "";
 
     private sealed record Driver(string Assembly, string Type, string Product);
+}
+
+public sealed class DatabaseList
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    public static DatabaseList Success(IReadOnlyList<string> names) => new() { Ok = true, Names = names };
+
+    public static DatabaseList Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
 public sealed class ProbeResult

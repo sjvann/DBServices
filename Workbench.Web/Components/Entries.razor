@@ -3,6 +3,7 @@
 @inject OperatorService Accounts
 @layout WorkbenchLayout
 
+<div class="page">
 <h1>入口指派</h1>
 @if (_denied)
 {
@@ -31,9 +32,10 @@ else
         </label>
     }
     <div class="actions">
-        <button class="secondary" type="button" @onclick="Save">保存入口</button>
+        <button class="confirm" type="button" @onclick="Save">保存</button>
     </div>
 }
+</div>
 
 @code {
     private bool _denied;

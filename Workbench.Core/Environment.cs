@@ -130,6 +130,21 @@ public sealed class EnvironmentService
         return OpResult<string>.Success(message);
     }
 
+    public async Task<OpResult<IReadOnlyList<string>>> DatabasesAsync(string operatorId, string? serverType, string? connectionString, CancellationToken cancellationToken)
+    {
+        if (Admin(operatorId) is { } error)
+            return OpResult<IReadOnlyList<string>>.Fail(error);
+        if (string.IsNullOrWhiteSpace(serverType))
+            return OpResult<IReadOnlyList<string>>.Fail(WorkbenchMessages.Text("invalid_arguments", "請選擇資料庫種類。"));
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return OpResult<IReadOnlyList<string>>.Fail(WorkbenchMessages.Text("invalid_arguments", "連線內容不完整。"));
+
+        var listed = await _admin.DatabasesAsync(serverType.Trim(), connectionString, operatorId, cancellationToken);
+        return listed.Ok
+            ? OpResult<IReadOnlyList<string>>.Success(listed.Names)
+            : OpResult<IReadOnlyList<string>>.Fail(WorkbenchMessages.Text(listed.Code, listed.Message));
+    }
+
     public async Task<OpResult<ModelProbe>> ProbeModelAsync(string operatorId, ModelDraft draft, CancellationToken cancellationToken)
     {
         if (Admin(operatorId) is { } error)
