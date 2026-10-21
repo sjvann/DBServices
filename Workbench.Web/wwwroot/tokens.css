@@ -364,11 +364,22 @@ pre {
   color: var(--ink-secondary);
   font-size: var(--meta);
 }
-form.connection { max-width: 36rem; }
-form.connection label { max-width: none; }
-form.connection .field-row { max-width: none; }
-form.connection fieldset { max-width: none; margin-top: var(--space-2); }
-form.connection fieldset .hint:last-child { margin-bottom: 0; }
+form.connection {
+  max-width: 52rem;
+  padding: var(--space-4);
+}
+form.connection label { max-width: none; margin-bottom: var(--space-2); gap: 2px; }
+form.connection .grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(5.5rem, 0.6fr) minmax(0, 1.2fr);
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+form.connection .grid label { margin: 0; }
+form.connection .grid .span-2 { grid-column: span 2; }
+form.connection .grid .span-3 { grid-column: 1 / -1; }
+form.connection .hint { margin: 0 0 var(--space-2); }
+form.connection .actions { margin: 0; }
 .req { color: var(--ink-secondary); font-size: var(--meta); font-weight: 400; }
 .editor fieldset { max-width: 40rem; }
 .editor fieldset .hint { margin-top: 0; }
@@ -445,5 +456,8 @@ form.connection fieldset .hint:last-child { margin-bottom: 0; }
 }
 @media (max-width: 720px) {
   .field-row { grid-template-columns: 1fr; }
+  form.connection .grid { grid-template-columns: 1fr; }
+  form.connection .grid .span-2,
+  form.connection .grid .span-3 { grid-column: auto; }
   .rail { width: 200px; }
 }

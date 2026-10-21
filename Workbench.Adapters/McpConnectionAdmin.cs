@@ -48,7 +48,7 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
     private async Task<CatalogWriteResult> SendAsync(HttpMethod method, string url, string callerId, object? body, CancellationToken cancellationToken)
     {
         if (_http.BaseAddress is null)
-            return CatalogWriteResult.Fail("connection_failed", url == "connections/probe" ? "資料服務沒有回應，無法測試連線。" : "無法建立連線。");
+            return CatalogWriteResult.Fail("connection_failed", url == "connections/probe" ? "尚未設定資料服務位址，無法測試連線。" : "無法建立連線。");
         try
         {
             using var request = new HttpRequestMessage(method, url);
@@ -69,7 +69,9 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException or TaskCanceledException)
         {
-            var message = url == "connections/probe" ? "資料服務沒有回應，無法測試連線。" : "無法建立連線。";
+            var message = url == "connections/probe"
+                ? "資料服務沒有回應（" + _http.BaseAddress + "），無法測試連線。"
+                : "無法建立連線。";
             return CatalogWriteResult.Fail("connection_failed", message);
         }
     }

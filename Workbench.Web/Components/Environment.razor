@@ -29,7 +29,7 @@ else
     </div>
 
     <h2>資料庫連線</h2>
-    <p class="hint">@_snapshot.DatabaseDetail 依資料庫種類填欄位。預設值可以直接改。送出後連線只留在資料服務，這個畫面不會再顯示。</p>
+    <p class="hint">@_snapshot.DatabaseDetail 先測試再儲存。測試不會寫入連線。</p>
     @if (_connections.Count == 0)
     {
         <p class="empty">還沒有資料庫連線。</p>
@@ -47,23 +47,24 @@ else
         </ul>
     }
     <form class="panel connection" @onsubmit="SaveConnection" @onsubmit:preventDefault="true">
-        <label for="connection-name">名稱 <span class="req">必填</span>
-            <input id="connection-name" autocomplete="off" placeholder="例如：warehouse" @bind="_connectionName" @bind:event="oninput" />
-        </label>
-        <label for="connection-engine">資料庫種類 <span class="req">必填</span>
-            <select id="connection-engine" @bind="_serverType" @bind:after="UseEngine">
-                <option value="Sqlite">SQLite</option>
-                <option value="SqlServer">SQL Server</option>
-                <option value="MySQL">MySQL</option>
-                <option value="Oracle">Oracle</option>
-                <option value="PostgreSQL">PostgreSQL</option>
-            </select>
-        </label>
-        <fieldset>
-            <legend>連線參數</legend>
-            @switch (_serverType)
-            {
-                case "Sqlite":
+        <div class="grid">
+            <label for="connection-name" class="span-2">名稱 <span class="req">必填</span>
+                <input id="connection-name" autocomplete="off" placeholder="例如：warehouse" @bind="_connectionName" @bind:event="oninput" />
+            </label>
+            <label for="connection-engine">資料庫種類 <span class="req">必填</span>
+                <select id="connection-engine" @bind="_serverType" @bind:after="UseEngine">
+                    <option value="Sqlite">SQLite</option>
+                    <option value="SqlServer">SQL Server</option>
+                    <option value="MySQL">MySQL</option>
+                    <option value="Oracle">Oracle</option>
+                    <option value="PostgreSQL">PostgreSQL</option>
+                </select>
+            </label>
+        </div>
+        @switch (_serverType)
+        {
+            case "Sqlite":
+                <div class="grid">
                     <label for="connection-place">位置
                         <select id="connection-place" @bind="_fields.Place">
                             <option value="file">檔案</option>
@@ -72,7 +73,7 @@ else
                     </label>
                     @if (_fields.Place == "memory")
                     {
-                        <p class="hint">使用預設的行程內資料庫，不用填路徑。程序結束後資料消失。</p>
+                        <p class="hint span-3">使用預設的行程內資料庫。程序結束後資料消失。</p>
                     }
                     else
                     {
@@ -86,18 +87,17 @@ else
                                 <option value="ReadOnly">唯讀</option>
                             </select>
                         </label>
-                        <p class="hint">路徑是資料服務看得到的檔案。</p>
                     }
-                    break;
-                case "SqlServer":
-                    <div class="field-row">
-                        <label for="connection-host">主機
-                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-port">連接埠
-                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                        </label>
-                    </div>
+                </div>
+                break;
+            case "SqlServer":
+                <div class="grid">
+                    <label for="connection-host">主機
+                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-port">連接埠
+                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                    </label>
                     <label for="connection-database">資料庫 <span class="req">必填</span>
                         <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
                     </label>
@@ -107,133 +107,97 @@ else
                             <option value="windows">Windows 整合驗證</option>
                         </select>
                     </label>
-                    @if (_fields.Auth == "windows")
+                    @if (_fields.Auth != "windows")
                     {
-                        <p class="hint">使用資料服務的 Windows 身分，不送帳號與密碼。</p>
-                    }
-                    else
-                    {
-                        <div class="field-row">
-                            <label for="connection-user">帳號 <span class="req">必填</span>
-                                <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" />
-                            </label>
-                            <label for="connection-password">密碼 <span class="req">必填</span>
-                                <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
-                            </label>
-                        </div>
-                    }
-                    <div class="field-row">
-                        <label for="connection-encrypt">加密
-                            <select id="connection-encrypt" @bind="_fields.Encrypt">
-                                <option value="Mandatory">強制加密</option>
-                                <option value="Optional">選擇性加密</option>
-                                <option value="Strict">嚴格加密</option>
-                                <option value="False">不加密</option>
-                            </select>
-                        </label>
-                        <label for="connection-trust">憑證
-                            <select id="connection-trust" @bind="_fields.TrustCertificate">
-                                <option value="False">驗證憑證</option>
-                                <option value="True">信任伺服器憑證</option>
-                            </select>
-                        </label>
-                    </div>
-                    <p class="hint">本機或自簽憑證請改為信任伺服器憑證。</p>
-                    break;
-                case "MySQL":
-                    <div class="field-row">
-                        <label for="connection-host">主機
-                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-port">連接埠
-                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                        </label>
-                    </div>
-                    <label for="connection-database">資料庫 <span class="req">必填</span>
-                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
-                    </label>
-                    <div class="field-row">
                         <label for="connection-user">帳號 <span class="req">必填</span>
-                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：root" @bind="_fields.User" @bind:event="oninput" />
+                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" />
                         </label>
-                        <label for="connection-password">密碼 <span class="req">必填</span>
+                        <label for="connection-password" class="span-2">密碼 <span class="req">必填</span>
                             <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
                         </label>
-                    </div>
-                    <label for="connection-ssl">加密連線
-                        <select id="connection-ssl" @bind="_fields.SslMode">
-                            <option value="Preferred">優先</option>
-                            <option value="Required">必須</option>
-                            <option value="None">不使用</option>
-                            <option value="VerifyCA">驗證憑證機構</option>
-                            <option value="VerifyFull">驗證伺服器名稱</option>
+                    }
+                    <label for="connection-encrypt">加密
+                        <select id="connection-encrypt" @bind="_fields.Encrypt">
+                            <option value="Mandatory">強制加密</option>
+                            <option value="Optional">選擇性加密</option>
+                            <option value="Strict">嚴格加密</option>
+                            <option value="False">不加密</option>
                         </select>
                     </label>
-                    <p class="hint">連接埠預設 3306。</p>
-                    break;
-                case "Oracle":
-                    <div class="field-row">
-                        <label for="connection-host">主機
-                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-port">連接埠
-                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                        </label>
-                    </div>
+                    <label for="connection-trust">憑證
+                        <select id="connection-trust" @bind="_fields.TrustCertificate">
+                            <option value="False">驗證憑證</option>
+                            <option value="True">信任伺服器憑證</option>
+                        </select>
+                    </label>
+                </div>
+                break;
+            case "Oracle":
+                <div class="grid">
+                    <label for="connection-host">主機
+                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-port">連接埠
+                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                    </label>
                     <label for="connection-oracle-kind">目標
                         <select id="connection-oracle-kind" @bind="_fields.OracleKind">
                             <option value="service">服務名稱</option>
                             <option value="sid">SID</option>
                         </select>
                     </label>
-                    <label for="connection-oracle-name">@(_fields.OracleKind == "sid" ? "SID" : "服務名稱") <span class="req">必填</span>
+                    <label for="connection-oracle-name" class="span-2">@(_fields.OracleKind == "sid" ? "SID" : "服務名稱") <span class="req">必填</span>
                         <input id="connection-oracle-name" autocomplete="off" spellcheck="false" placeholder="例如：ORCL" @bind="_fields.OracleName" @bind:event="oninput" />
                     </label>
-                    <div class="field-row">
-                        <label for="connection-user">帳號 <span class="req">必填</span>
-                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：system" @bind="_fields.User" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-password">密碼 <span class="req">必填</span>
-                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
-                        </label>
-                    </div>
-                    <p class="hint">連接埠預設 1521。服務名稱與 SID 擇一。</p>
-                    break;
-                default:
-                    <div class="field-row">
-                        <label for="connection-host">主機
-                            <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-port">連接埠
-                            <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
-                        </label>
-                    </div>
-                    <label for="connection-database">資料庫 <span class="req">必填</span>
-                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：app" @bind="_fields.Database" @bind:event="oninput" />
+                    <label for="connection-user">帳號 <span class="req">必填</span>
+                        <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：system" @bind="_fields.User" @bind:event="oninput" />
                     </label>
-                    <div class="field-row">
-                        <label for="connection-user">帳號 <span class="req">必填</span>
-                            <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：postgres" @bind="_fields.User" @bind:event="oninput" />
-                        </label>
-                        <label for="connection-password">密碼 <span class="req">必填</span>
-                            <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
-                        </label>
-                    </div>
+                    <label for="connection-password" class="span-2">密碼 <span class="req">必填</span>
+                        <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                    </label>
+                </div>
+                break;
+            default:
+                <div class="grid">
+                    <label for="connection-host">主機
+                        <input id="connection-host" autocomplete="off" spellcheck="false" @bind="_fields.Host" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-port">連接埠
+                        <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-database">資料庫 <span class="req">必填</span>
+                        <input id="connection-database" autocomplete="off" spellcheck="false" placeholder="例如：postgres" @bind="_fields.Database" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-user">帳號 <span class="req">必填</span>
+                        <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="@(_serverType == "MySQL" ? "例如：root" : "例如：postgres")" @bind="_fields.User" @bind:event="oninput" />
+                    </label>
+                    <label for="connection-password">密碼 <span class="req">必填</span>
+                        <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
+                    </label>
                     <label for="connection-ssl">加密連線
                         <select id="connection-ssl" @bind="_fields.SslMode">
-                            <option value="Prefer">優先</option>
-                            <option value="Require">必須</option>
-                            <option value="Disable">不使用</option>
-                            <option value="Allow">允許</option>
-                            <option value="VerifyCA">驗證憑證機構</option>
-                            <option value="VerifyFull">驗證伺服器名稱</option>
+                            @if (_serverType == "MySQL")
+                            {
+                                <option value="Preferred">優先</option>
+                                <option value="Required">必須</option>
+                                <option value="None">不使用</option>
+                                <option value="VerifyCA">驗證憑證機構</option>
+                                <option value="VerifyFull">驗證伺服器名稱</option>
+                            }
+                            else
+                            {
+                                <option value="Prefer">優先</option>
+                                <option value="Require">必須</option>
+                                <option value="Disable">不使用</option>
+                                <option value="Allow">允許</option>
+                                <option value="VerifyCA">驗證憑證機構</option>
+                                <option value="VerifyFull">驗證伺服器名稱</option>
+                            }
                         </select>
                     </label>
-                    <p class="hint">連接埠預設 5432。</p>
-                    break;
-            }
-        </fieldset>
-        <p class="hint">先測試再儲存。測試不會寫入連線，也會指出缺少的驅動程式。</p>
+                </div>
+                break;
+        }
         <div class="actions">
             <button class="secondary" type="button" disabled="@_probing" @onclick="ProbeConnection">@(_probing ? "正在測試…" : "測試連線")</button>
             <button class="secondary" type="submit" disabled="@_probing">儲存連線</button>
