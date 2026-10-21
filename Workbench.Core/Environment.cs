@@ -9,14 +9,16 @@ public sealed class EnvironmentService
     private readonly IConnectionCount _connections;
     private readonly IConnectionAdmin _admin;
     private readonly IModelProfile _models;
+    private readonly IModelEndpoint _modelEndpoint;
     private readonly Profiles _profiles;
     private EnvironmentSnapshot _current = EnvironmentSnapshot.NotReady;
 
-    public EnvironmentService(IConnectionCount connections, IConnectionAdmin admin, IModelProfile models, Profiles profiles)
+    public EnvironmentService(IConnectionCount connections, IConnectionAdmin admin, IModelProfile models, IModelEndpoint modelEndpoint, Profiles profiles)
     {
         _connections = connections;
         _admin = admin;
         _models = models;
+        _modelEndpoint = modelEndpoint;
         _profiles = profiles;
     }
 
@@ -126,6 +128,16 @@ public sealed class EnvironmentService
             return OpResult<string>.Fail(WorkbenchMessages.Text(probed.Code, probed.Message));
         var message = string.IsNullOrWhiteSpace(probed.Message) ? "已連上資料庫。" : probed.Message;
         return OpResult<string>.Success(message);
+    }
+
+    public async Task<OpResult<ModelProbe>> ProbeModelAsync(string operatorId, ModelDraft draft, CancellationToken cancellationToken)
+    {
+        if (Admin(operatorId) is { } error)
+            return OpResult<ModelProbe>.Fail(error);
+        var probed = await _modelEndpoint.ProbeAsync(draft, cancellationToken);
+        if (!probed.Ok)
+            return OpResult<ModelProbe>.Fail(WorkbenchMessages.Text(probed.Code, probed.Message));
+        return OpResult<ModelProbe>.Success(probed);
     }
 
     public async Task<OpResult<bool>> RemoveConnectionAsync(string operatorId, string name, CancellationToken cancellationToken)

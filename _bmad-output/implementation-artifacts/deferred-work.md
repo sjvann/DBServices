@@ -19,3 +19,6 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
   summary: 測試連線的操作加固：失敗或變更位址時清掉清單、測試中不可再測或儲存、不跟隨重新導向。
   evidence: 使用者再次選擇拆開。預設位址、測試連線與整段名稱比對留在原規格；這些操作可獨立驗收。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
+  summary: 探測用的 HttpClient 是否真的套用 8 秒逾時，目前只斷言了公開常數。
+  evidence: 把 Timeout 改成無限時，現有測試仍通過。要觀察私有 client 就得為測試露出它。

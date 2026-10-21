@@ -2,7 +2,7 @@
 title: '本機模型可測試連線並以整段名稱選取'
 type: 'feature'
 created: '2026-10-21'
-status: 'draft'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 baseline_commit: 'b0d48c7d9ad9a1ebcc6ec9b36bc43b11b5e076aa'
@@ -59,14 +59,14 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `Workbench.Core/Ports/Ports.cs` -- 探測結果與 `IModelEndpoint`，以及不回畫面的金鑰解析 -- 金鑰留在設定檔
-- [ ] `Workbench.Adapters/FileModelProfile.cs` -- 空白金鑰沿用檔內值 -- 不必為了測試重貼金鑰
-- [ ] `Workbench.Adapters/ModelEndpoint.cs` -- 只做測試：8 秒、整段比對、可注入 `HttpMessageHandler` -- 網路不進 Core，且沒有下載
-- [ ] `Workbench.Core/Environment.cs` -- 僅管理者可測 -- 與資料庫測試同一權限
-- [ ] `Workbench/Program.cs` -- 註冊 `IModelEndpoint` -- 執行期能呼叫
-- [ ] `Workbench.Web/Components/Environment.razor` -- 預設位址、測試、點選整段名稱 -- 沒有下載鈕
-- [ ] `Workbench.Tests/Host.cs` -- 假端點與金鑰解析 -- 既有宿主仍可啟動
-- [ ] `Workbench.Tests/ModelEndpointTests.cs` -- 假 HTTP 覆蓋矩陣，含標籤名稱。不連真 Ollama -- 不寫檔且回應不含金鑰
+- [x] `Workbench.Core/Ports/Ports.cs` -- 探測結果與 `IModelEndpoint`，以及不回畫面的金鑰解析 -- 金鑰留在設定檔
+- [x] `Workbench.Adapters/FileModelProfile.cs` -- 空白金鑰沿用檔內值 -- 不必為了測試重貼金鑰
+- [x] `Workbench.Adapters/ModelEndpoint.cs` -- 只做測試：8 秒、整段比對、可注入 `HttpMessageHandler` -- 網路不進 Core，且沒有下載
+- [x] `Workbench.Core/Environment.cs` -- 僅管理者可測 -- 與資料庫測試同一權限
+- [x] `Workbench/Program.cs` -- 註冊 `IModelEndpoint` -- 執行期能呼叫
+- [x] `Workbench.Web/Components/Environment.razor` -- 預設位址、測試、點選整段名稱 -- 沒有下載鈕
+- [x] `Workbench.Tests/Host.cs` -- 假端點與金鑰解析 -- 既有宿主仍可啟動
+- [x] `Workbench.Tests/ModelEndpointTests.cs` -- 假 HTTP 覆蓋矩陣，含標籤名稱。不連真 Ollama -- 不寫檔且回應不含金鑰
 
 **Acceptance Criteria:**
 - Given 管理者打開環境設定且位址空白, when 放置是本機, then 位址為 `http://127.0.0.1:11434/v1`，且畫面上沒有下載鈕。
@@ -76,6 +76,7 @@ context: []
 ## Implementation Notes
 
 - 含下載的程式已撤回。下載，以及清清單、測試中鎖按鈕、不跟隨重新導向，都已延後。
+- 測試連線已接上。`ModelEndpoint` 只做探測。`FullyQualifiedName~ModelEndpoint|FullyQualifiedName~Model_file_keeps_the_key_out_of_the_status` 16 項通過。矩陣各列都有對應測試且已執行。沒有在瀏覽器打開網站。
 
 ## Spec Change Log
 
@@ -83,6 +84,27 @@ context: []
 - 下載，以及清清單、測試中鎖按鈕、不跟隨重新導向，已改到 deferred-work。
 
 ## Review Triage Log
+
+- low — `ModelsUrl` 用字串接 `/models`，查詢字串或片段會接錯。日常位址沒有查詢字串，改成 Uri 要另寫組裝。拒絕。
+- low — chat 未設 `stream: false` 時，串流回應會拖到逾時。兩次請求各 8 秒不是缺陷。patch：JSON 加上 `stream: false`。
+- false — 不跟隨重新導向是這次意圖明確不做的。代理送出金鑰要另做處理，不在這次。
+- false — 401 與連線失敗都用「連不上這個位址。」已是人話。Ollama 的清單欄位是小寫 `data`／`id`。空清單仍算連上。
+- low — 只含空白的金鑰不會沿用檔內值。patch：空白視同沒填。金鑰很短就遮掉模型名稱要另定長度，拒絕那一部分。
+- false — `ResolveKey` 只給探測使用，畫面經管理者檢查才呼叫。測試替身不必複製檔案金鑰。
+- low — 預設位址寫了兩份；從本機改回雲端會留下 http 位址。要共享常數與切換邏輯。拒絕。
+- medium — 點選 `llama3.2:latest` 後，狀態仍寫清單沒有這個模型。patch：點選時清掉這句。失敗或改位址後留下舊清單是這次明確不做的。
+- false — 頁面沒有取消權杖，離開頁面不會取消。兩顆「測試連線」是資料庫與 AI 各自的按鈕，文案是規格要的。
+- false — Code Map 行號過時。修正方式是改規格。拒絕。
+- low — 金鑰含換行可能讓標頭丟出例外。要另加檢查。拒絕。
+- low — 清單本文沒有長度上限。要另加上限。拒絕。
+- low — 手動清空位址後按儲存不會先填預設。開啟頁面時會填。拒絕。
+- false — 測試中再按一次會互相覆蓋。測試中鎖按鈕是這次明確不做的。
+- low — 未登入時 `Gate.Current` 為空會中斷。表單只在管理者時出現。拒絕。
+- false — 比對前去掉前後空白，不會把 `:latest` 切掉，也不改大小寫。
+- medium — 頁面測試失敗沒有斷言 alert。已核對：拿掉 `_error = probed.Error` 時現有頁面測試仍過。patch：補頁面斷言。
+- medium — 畫面上新打的金鑰沒有進入頁面測試。已核對：草稿改送空白時，直接呼叫的測試仍過。patch：補頁面斷言。
+- medium — `ftp://127.0.0.1` 沒有測試。已核對：刪掉 scheme 判斷時現有 http 測試仍過。patch：補一筆不斷線的拒絕。
+- medium — `HttpClient.Timeout` 的指派沒有被測試鎖住。要把 client 露出來才觀察得到。defer。
 
 ## Design Notes
 

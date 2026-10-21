@@ -209,7 +209,7 @@ else
     <form class="panel" @onsubmit="SaveModel" @onsubmit:preventDefault="true">
         <label><input type="checkbox" @bind="_enabled" /> 啟用</label>
         <label for="model-placement">放置
-            <select id="model-placement" @bind="_placement">
+            <select id="model-placement" @bind="_placement" @bind:after="ApplyLocalAddress">
                 <option value="cloud">雲端</option>
                 <option value="local">本機</option>
             </select>
@@ -220,11 +220,21 @@ else
         <label for="model-id">模型名稱 <span class="req">必填</span>
             <input id="model-id" autocomplete="off" @bind="_modelId" @bind:event="oninput" />
         </label>
+        @if (_names.Count > 0)
+        {
+            <div class="actions">
+                @foreach (var name in _names)
+                {
+                    <button class="secondary" type="button" @onclick="() => UseName(name)">@name</button>
+                }
+            </div>
+        }
         <label for="model-key">金鑰
             <input id="model-key" type="password" autocomplete="new-password" @bind="_apiKey" @bind:event="oninput" />
         </label>
         <p class="hint">@(_keyPresent ? "已儲存金鑰。留白表示沿用，不會再顯示。" : "雲端必須填金鑰。本機可以留白。金鑰不會再顯示。")</p>
         <div class="actions">
+            <button class="secondary" type="button" @onclick="ProbeModel">測試連線</button>
             <button class="confirm" type="submit">儲存 AI 設定</button>
         </div>
     </form>
@@ -246,6 +256,7 @@ else
     private string _modelId = "";
     private string _apiKey = "";
     private bool _keyPresent;
+    private IReadOnlyList<string> _names = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -279,6 +290,7 @@ else
         _modelId = model.Value.ModelId;
         _keyPresent = model.Value.KeyPresent;
         _apiKey = "";
+        ApplyLocalAddress();
     }
 
     private async Task SaveConnection()
@@ -383,5 +395,42 @@ else
             _status = "AI 已設定。還差資料庫連線。";
         else if (!saved.Value.Ready)
             _status = "已儲存。啟用且內容完整之後，AI 才算設定完成。";
+    }
+
+    private async Task ProbeModel()
+    {
+        var profile = Gate.Current!;
+        _error = null;
+        _status = "";
+        ApplyLocalAddress();
+        var probed = await Environments.ProbeModelAsync(profile.Id, new ModelDraft
+        {
+            Enabled = _enabled,
+            Placement = _placement,
+            Endpoint = _endpoint,
+            ModelId = _modelId,
+            ApiKey = _apiKey,
+        }, CancellationToken.None);
+        if (!probed.Ok)
+        {
+            _error = probed.Error;
+            return;
+        }
+
+        _status = probed.Value?.Message ?? "已連上。";
+        _names = probed.Value?.Names ?? [];
+    }
+
+    private void UseName(string name)
+    {
+        _modelId = name;
+        if (_status.Contains("清單沒有這個模型", StringComparison.Ordinal))
+            _status = "";
+    }
+
+    private void ApplyLocalAddress()
+    {
+        if (_placement == "local" && string.IsNullOrWhiteSpace(_endpoint))
+            _endpoint = "http://127.0.0.1:11434/v1";
     }
 }

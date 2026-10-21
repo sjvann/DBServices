@@ -91,6 +91,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
             services.AddSingleton<IConnectionCount>(Connections);
             services.AddSingleton<IConnectionAdmin>(new RecordingConnectionAdmin());
             services.AddSingleton<IModelProfile>(new RecordingModel(ModelReady));
+            services.AddSingleton<IModelEndpoint>(new RecordingModelEndpoint());
         });
     }
 
@@ -268,6 +269,14 @@ internal sealed class RecordingModel : IModelProfile
     };
 
     public ModelWriteResult Save(ModelDraft draft) => ModelWriteResult.Success(Read());
+
+    public string ResolveKey(string? submitted) => string.IsNullOrEmpty(submitted) ? "" : submitted;
+}
+
+internal sealed class RecordingModelEndpoint : IModelEndpoint
+{
+    public Task<ModelProbe> ProbeAsync(ModelDraft draft, CancellationToken cancellationToken)
+        => Task.FromResult(ModelProbe.Success("已連上。", []));
 }
 
 internal sealed class RecordingConnectionAdmin : IConnectionAdmin

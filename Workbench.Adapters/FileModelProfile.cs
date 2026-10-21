@@ -24,12 +24,22 @@ public sealed class FileModelProfile : IModelProfile
             return ToStatus(Load());
     }
 
+    public string ResolveKey(string? submitted)
+    {
+        lock (_gate)
+        {
+            if (!string.IsNullOrWhiteSpace(submitted))
+                return submitted;
+            return Load()?.ApiKey ?? "";
+        }
+    }
+
     public ModelWriteResult Save(ModelDraft draft)
     {
         lock (_gate)
         {
             var existing = Load();
-            var key = string.IsNullOrEmpty(draft.ApiKey) ? existing?.ApiKey ?? "" : draft.ApiKey!;
+            var key = string.IsNullOrWhiteSpace(draft.ApiKey) ? existing?.ApiKey ?? "" : draft.ApiKey!;
             var stored = new StoredModel
             {
                 Enabled = draft.Enabled,

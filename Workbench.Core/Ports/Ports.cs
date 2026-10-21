@@ -215,10 +215,27 @@ public sealed class ModelWriteResult
     public static ModelWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class ModelProbe
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public IReadOnlyList<string> Names { get; init; } = [];
+
+    public static ModelProbe Success(string message, IReadOnlyList<string> names) => new() { Ok = true, Message = message, Names = names };
+    public static ModelProbe Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public interface IModelEndpoint
+{
+    Task<ModelProbe> ProbeAsync(ModelDraft draft, CancellationToken cancellationToken);
+}
+
 public interface IModelProfile
 {
     ModelStatus Read();
     ModelWriteResult Save(ModelDraft draft);
+    string ResolveKey(string? submitted);
 }
 
 public sealed class EnvironmentSnapshot
