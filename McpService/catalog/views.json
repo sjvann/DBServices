@@ -33,5 +33,49 @@
         "source": "Users"
       }
     ]
+  },
+  {
+    "id": "v-c3ce782712b1",
+    "name": "User2",
+    "purpose": "User2",
+    "published": true,
+    "sources": [
+      "Users"
+    ],
+    "links": [],
+    "parameters": [
+      {
+        "name": "\u5EFA\u7ACB\u65E5\u671F",
+        "column": "CreatedDate",
+        "source": "Users"
+      },
+      {
+        "name": "\u4ECD\u6D3B\u8E8D",
+        "column": "IsActive",
+        "source": "Users"
+      }
+    ],
+    "columns": [
+      {
+        "name": "UserID",
+        "source": "Users"
+      },
+      {
+        "name": "Username",
+        "source": "Users"
+      },
+      {
+        "name": "DisplayName",
+        "source": "Users"
+      },
+      {
+        "name": "IsActive",
+        "source": "Users"
+      },
+      {
+        "name": "CreatedDate",
+        "source": "Users"
+      }
+    ]
   }
 ]

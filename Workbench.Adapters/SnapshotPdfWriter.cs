@@ -37,14 +37,9 @@ public sealed class SnapshotPdfWriter : IReportPdf
                 page.DefaultTextStyle(style => style.FontSize(11).FontFamily(FontFamilyName));
                 page.Content().Column(column =>
                 {
-                    var first = true;
+                    column.Spacing(8);
                     foreach (var block in report.Blocks)
-                    {
-                        if (!first)
-                            column.Item().PageBreak();
-                        first = false;
                         column.Item().Element(element => Draw(element, block));
-                    }
 
                     if (report.Blocks.Count == 0)
                         column.Item().Text(string.Empty);
@@ -55,7 +50,13 @@ public sealed class SnapshotPdfWriter : IReportPdf
 
     private static void Draw(IContainer container, PrintBlock block)
     {
-        if (block.Type is BlockKinds.Title or BlockKinds.Text or BlockKinds.Parameter)
+        if (block.Type == BlockKinds.Title)
+        {
+            container.Text(block.Text ?? "").FontSize(18);
+            return;
+        }
+
+        if (block.Type is BlockKinds.Text or BlockKinds.Parameter)
         {
             container.Text(block.Text ?? "");
             return;

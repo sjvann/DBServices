@@ -4,11 +4,12 @@
 @inject EnvironmentService Environments
 @layout WorkbenchLayout
 
-<div class="page">
-<h1>樣式</h1>
 @if (_denied)
 {
-    <p role="alert">沒有權限。</p>
+    <div class="page">
+        <h1>樣式</h1>
+        <p role="alert">沒有權限。</p>
+    </div>
 }
 else if (_closed)
 {
@@ -16,62 +17,292 @@ else if (_closed)
 }
 else
 {
-    <p class="lead">選一份已發布的檢視，系統會排出標題、說明與表格。用上移、下移調整順序，再採用。</p>
-    @if (_error is not null)
-    {
-        <div class="error" role="alert"><span>@_error.Message</span></div>
-    }
-    <form class="panel" @onsubmit="Suggest" @onsubmit:preventDefault="true">
-        <label for="style-view">檢視
-            <select id="style-view" @bind="_viewId" @bind:after="PrefillName">
-                <option value="">選擇檢視</option>
-                @foreach (var view in _views)
-                {
-                    <option value="@view.Id">@view.Name</option>
-                }
-            </select>
-        </label>
-        <label for="style-name">樣式名稱
-            <input id="style-name" autocomplete="off" placeholder="可以沿用檢視的名字" @bind="_name" @bind:event="oninput" />
-        </label>
-        <label><input type="checkbox" @bind="_shared" /> 其他人也能用</label>
-        <div class="actions">
-            <button class="confirm" type="submit">排出版面</button>
-            <button class="secondary" type="button" @onclick="Accept">採用</button>
-            <button class="secondary" type="button" @onclick="Ignore">先不用</button>
-        </div>
-    </form>
-    @if (_blocks.Count > 0)
-    {
-        <ol class="block-list">
-            @for (var index = 0; index < _blocks.Count; index++)
+    <div class="style-studio @(_showPreview ? "show-preview" : "show-sheet")">
+        <header class="style-bar">
+            <div>
+                <h1>樣式</h1>
+                <p class="meta">把元件排到中間的報表紙。右邊是預覽，不含實際資料。</p>
+            </div>
+            <div class="style-switch" role="group" aria-label="窄螢幕切換">
+                <button type="button" aria-pressed="@(!_showPreview)" @onclick="() => _showPreview = false">編排</button>
+                <button type="button" aria-pressed="@_showPreview" @onclick="() => _showPreview = true">預覽</button>
+            </div>
+            <div class="actions">
+                <button class="confirm" type="button" disabled="@(!CanAccept)" @onclick="Accept">採用</button>
+                <button class="secondary" type="button" @onclick="Restore">還原</button>
+            </div>
+            @if (_error is not null)
             {
-                var block = _blocks[index];
-                var current = index;
-                <li>
-                    <span>@BlockLabel(block)</span>
-                    <span>
-                        <button type="button" @onclick="() => Move(current, -1)">上移</button>
-                        <button type="button" @onclick="() => Move(current, 1)">下移</button>
-                    </span>
-                </li>
+                <div class="error" role="alert"><span>@_error.Message</span></div>
             }
-        </ol>
-    }
+            <p class="meta" role="status">@_notice</p>
+        </header>
+        <aside class="palette" aria-label="元件">
+            <label for="style-view">檢視
+                <select id="style-view" @bind="_viewId" @bind:after="ViewChanged">
+                    <option value="">選擇檢視</option>
+                    @foreach (var view in _views)
+                    {
+                        <option value="@view.Id">@view.Name</option>
+                    }
+                </select>
+            </label>
+            <label for="style-name">樣式名稱
+                <input id="style-name" autocomplete="off" placeholder="可以沿用檢視的名字" @bind="_name" @bind:event="oninput" />
+            </label>
+            <label for="style-shared"><input id="style-shared" type="checkbox" @bind="_shared" /> 其他人也能用</label>
+            <button class="confirm" type="button" disabled="@(string.IsNullOrEmpty(_viewId) || _busy)" @onclick="Suggest">排出初稿</button>
+            <p class="meta palette-label">元件</p>
+            <button type="button" class="table-pick" draggable="true" @ondragstart="() => BeginPalette(DragKind.PaletteTitle)" @ondragend="EndDrag" @onclick="AddTitle">標題</button>
+            <button type="button" class="table-pick" draggable="true" @ondragstart="() => BeginPalette(DragKind.PaletteText)" @ondragend="EndDrag" @onclick="AddText">說明</button>
+            <button type="button" class="table-pick" draggable="true" @ondragstart="() => BeginPalette(DragKind.PaletteTable)" @ondragend="EndDrag" @onclick="AddTable">表格</button>
+            @if (_outline is null)
+            {
+                <p class="meta">排出初稿後，這份檢視的條件和欄位會出現在這裡。</p>
+            }
+            else
+            {
+                <p class="meta palette-label">條件</p>
+                @if (!UnusedParameters.Any())
+                {
+                    <p class="meta">條件都在報表紙上。</p>
+                }
+                @foreach (var name in UnusedParameters)
+                {
+                    var parameter = name;
+                    <button type="button" class="table-pick" draggable="true" @ondragstart="() => BeginPalette(DragKind.PaletteParameter, parameter)" @ondragend="EndDrag" @onclick="() => AddParameter(parameter)">@parameter</button>
+                }
+                <p class="meta palette-label">欄位</p>
+                @if (!UnusedColumns.Any())
+                {
+                    <p class="meta">欄位都在表格裡。</p>
+                }
+                @foreach (var name in UnusedColumns)
+                {
+                    var column = name;
+                    <button type="button" class="table-pick" draggable="true" @ondragstart="() => BeginPalette(DragKind.PaletteColumn, column)" @ondragend="EndDrag" @onclick="() => AddColumn(column)">@column</button>
+                }
+            }
+        </aside>
+        <section class="sheet-stage" aria-label="報表紙">
+            <div class="sheet-scroll">
+                <article class="paper @(_dragKind != DragKind.None ? "receiving" : null)"
+                         @ondragover:preventDefault="true"
+                         @ondrop="DropOnPaper"
+                         @ondrop:preventDefault="true"
+                         @ondrop:stopPropagation="true">
+                    @if (_pieces.Count == 0)
+                    {
+                        <p class="empty">選一份檢視後排出初稿，或把左側元件拖到這裡。</p>
+                    }
+                    @for (var index = 0; index < _pieces.Count; index++)
+                    {
+                        var current = index;
+                        var piece = _pieces[current];
+                        <div class="insert-line @(_dropIndex == current ? "active" : null)"
+                             @ondragover="() => Hover(current)"
+                             @ondragover:preventDefault="true"
+                             @ondrop="() => DropAt(current)"
+                             @ondrop:preventDefault="true"
+                             @ondrop:stopPropagation="true"></div>
+                        <section class="sheet-block" @key="piece.Key"
+                                 @ondragover="() => Hover(current)"
+                                 @ondragover:preventDefault="true"
+                                 @ondrop="() => DropOnBlock(current)"
+                                 @ondrop:preventDefault="true"
+                                 @ondrop:stopPropagation="true">
+                            <header>
+                                <button type="button" class="grip" draggable="true" aria-label="@($"拖曳{Kind(piece)}，Alt 加上下鍵也可移動")"
+                                        @ondragstart="() => BeginBlock(current)"
+                                        @ondragend="EndDrag"
+                                        @onkeydown="e => OnBlockKey(e, current)">
+                                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <circle cx="5" cy="3" r="1.1" /><circle cx="11" cy="3" r="1.1" />
+                                        <circle cx="5" cy="8" r="1.1" /><circle cx="11" cy="8" r="1.1" />
+                                        <circle cx="5" cy="13" r="1.1" /><circle cx="11" cy="13" r="1.1" />
+                                    </svg>
+                                </button>
+                                <span class="meta">@Kind(piece)</span>
+                                <span class="actions">
+                                    <button type="button" class="secondary" @onclick="() => MoveBlock(current, -1)">上移</button>
+                                    <button type="button" class="secondary" @onclick="() => MoveBlock(current, 1)">下移</button>
+                                    <button type="button" class="secondary" @onclick="() => RemovePiece(current)">移出</button>
+                                </span>
+                            </header>
+                            @if (piece.Block.Type == BlockKinds.Title)
+                            {
+                                <input class="paper-title" aria-label="標題文字" autocomplete="off" @bind="piece.Block.Text" @bind:event="oninput" />
+                            }
+                            else if (piece.Block.Type == BlockKinds.Text)
+                            {
+                                <textarea class="paper-text" aria-label="說明文字" @bind="piece.Block.Text" @bind:event="oninput"></textarea>
+                            }
+                            else if (piece.Block.Type == BlockKinds.Parameter)
+                            {
+                                <input class="paper-label" aria-label="條件標籤" autocomplete="off" @bind="piece.Block.Label" @bind:event="oninput" />
+                                <p class="meta">查詢時填入</p>
+                            }
+                            else
+                            {
+                                @if (piece.Block.Columns.Count == 0)
+                                {
+                                    <p class="meta">把左側欄位拖進來，或點欄位名稱。</p>
+                                }
+                                @for (var columnIndex = 0; columnIndex < piece.Block.Columns.Count; columnIndex++)
+                                {
+                                    var columnAt = columnIndex;
+                                    var columnName = piece.Block.Columns[columnAt];
+                                    <div class="column-row @(_columnHoverBlock == current && _columnHover == columnAt ? "active" : null)"
+                                         @ondragover="() => HoverColumn(current, columnAt)"
+                                         @ondragover:preventDefault="true"
+                                         @ondragover:stopPropagation="true"
+                                         @ondrop="() => DropColumn(current, columnAt)"
+                                         @ondrop:preventDefault="true"
+                                         @ondrop:stopPropagation="true">
+                                        <button type="button" class="grip" draggable="true" aria-label="@($"拖曳欄位 {columnName}，Alt 加上下鍵也可移動")"
+                                                @ondragstart="() => BeginColumn(current, columnAt)"
+                                                @ondragend="EndDrag"
+                                                @onkeydown="e => OnColumnKey(e, current, columnAt)">
+                                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                <circle cx="5" cy="3" r="1.1" /><circle cx="11" cy="3" r="1.1" />
+                                                <circle cx="5" cy="8" r="1.1" /><circle cx="11" cy="8" r="1.1" />
+                                                <circle cx="5" cy="13" r="1.1" /><circle cx="11" cy="13" r="1.1" />
+                                            </svg>
+                                        </button>
+                                        <span>@columnName</span>
+                                        <button type="button" class="secondary" @onclick="() => MoveColumn(current, columnAt, -1)">上移</button>
+                                        <button type="button" class="secondary" @onclick="() => MoveColumn(current, columnAt, 1)">下移</button>
+                                        <button type="button" class="secondary" @onclick="() => RemoveColumn(current, columnAt)">移出</button>
+                                    </div>
+                                }
+                                <div class="insert-line @(_columnHoverBlock == current && _columnHover == piece.Block.Columns.Count ? "active" : null)"
+                                     @ondragover="() => HoverColumn(current, piece.Block.Columns.Count)"
+                                     @ondragover:preventDefault="true"
+                                     @ondragover:stopPropagation="true"
+                                     @ondrop="() => DropColumn(current, piece.Block.Columns.Count)"
+                                     @ondrop:preventDefault="true"
+                                     @ondrop:stopPropagation="true"></div>
+                            }
+                        </section>
+                    }
+                    @if (_pieces.Count > 0)
+                    {
+                        <div class="insert-line @(_dropIndex == _pieces.Count ? "active" : null)"
+                             @ondragover="() => Hover(_pieces.Count)"
+                             @ondragover:preventDefault="true"
+                             @ondrop="() => DropAt(_pieces.Count)"
+                             @ondrop:preventDefault="true"
+                             @ondrop:stopPropagation="true"></div>
+                    }
+                </article>
+            </div>
+        </section>
+        <aside class="style-preview" aria-label="預覽">
+            <h2>預覽</h2>
+            <p class="meta">不含實際資料。條件留到查詢時才填，表格列是範例。</p>
+            <article class="paper preview-paper">
+                @if (_pieces.Count == 0)
+                {
+                    <p class="empty">報表紙是空的。</p>
+                }
+                @foreach (var piece in _pieces)
+                {
+                    var block = piece.Block;
+                    @if (block.Type == BlockKinds.Title)
+                    {
+                        <h3 class="preview-title">@block.Text</h3>
+                    }
+                    else if (block.Type == BlockKinds.Text)
+                    {
+                        <p class="preview-text">@block.Text</p>
+                    }
+                    else if (block.Type == BlockKinds.Parameter)
+                    {
+                        <p class="preview-parameter"><span>@ParameterLabel(block)</span> <span class="meta">查詢時填入</span></p>
+                    }
+                    else if (block.Columns.Count == 0)
+                    {
+                        <p class="meta">這個表格還沒有欄位。</p>
+                    }
+                    else
+                    {
+                        <table>
+                            <caption>範例</caption>
+                            <thead>
+                                <tr>
+                                    @foreach (var column in block.Columns)
+                                    {
+                                        <th scope="col">@column</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var row = 0; row < 2; row++)
+                                {
+                                    <tr class="sample">
+                                        @foreach (var column in block.Columns)
+                                        {
+                                            <td title="@column">範例</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </article>
+        </aside>
+    </div>
 }
-</div>
 
 @code {
+    private enum DragKind { None, Block, Column, PaletteTitle, PaletteText, PaletteTable, PaletteParameter, PaletteColumn }
+
+    private sealed class Piece
+    {
+        public string Key { get; } = Guid.NewGuid().ToString("N");
+        public StyleBlockDto Block { get; set; } = new();
+    }
+
+    private sealed class Outline
+    {
+        public string Title { get; set; } = "";
+        public string Purpose { get; set; } = "";
+        public List<string> Parameters { get; set; } = [];
+        public List<string> Columns { get; set; } = [];
+    }
+
     private bool _denied;
     private bool _closed;
+    private bool _busy;
+    private bool _showPreview;
     private EnvironmentSnapshot _snapshot = EnvironmentSnapshot.NotReady;
     private ErrorDto? _error;
     private string _viewId = "";
     private string _name = "";
     private bool _shared;
     private string? _styleId;
-    private List<StyleBlockDto> _blocks = [];
+    private string _notice = "";
+    private Outline? _outline;
     private List<ViewSummaryDto> _views = [];
+    private readonly List<Piece> _pieces = [];
+    private DragKind _dragKind;
+    private int _dragIndex = -1;
+    private int _dragColumn = -1;
+    private string? _dragName;
+    private int _dropIndex = -1;
+    private int _columnHoverBlock = -1;
+    private int _columnHover = -1;
+
+    private bool CanAccept => !_busy && _pieces.Count > 0 && !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrEmpty(_viewId);
+
+    private IEnumerable<string> UnusedParameters => _outline is null
+        ? []
+        : _outline.Parameters.Where(name => !UsedParameter(name));
+
+    private IEnumerable<string> UnusedColumns => _outline is null
+        ? []
+        : _outline.Columns.Where(name => !UsedColumn(name));
 
     protected override async Task OnInitializedAsync()
     {
@@ -97,6 +328,15 @@ else
         _views = listed.Value!.ToList();
     }
 
+    private void ViewChanged()
+    {
+        PrefillName();
+        _pieces.Clear();
+        _outline = null;
+        _error = null;
+        _notice = string.IsNullOrEmpty(_viewId) ? "" : "已換檢視。排出初稿後可以開始排。";
+    }
+
     private void PrefillName()
     {
         if (!string.IsNullOrWhiteSpace(_name))
@@ -106,69 +346,422 @@ else
             _name = match.Name;
     }
 
-    private static string BlockLabel(StyleBlockDto block) => block.Type switch
-    {
-        "title" => "標題：" + block.Text,
-        "text" => "說明：" + block.Text,
-        "parameter" => "要問的條件：" + (block.Label ?? block.Parameter),
-        "table" => "表格：" + string.Join("、", block.Columns),
-        _ => block.Text ?? block.Parameter ?? string.Join("、", block.Columns),
-    };
-
     private async Task Suggest()
     {
+        _busy = true;
         var result = await StyleEditor.SuggestAsync(Gate.Current!.Id, _viewId, CancellationToken.None);
+        _busy = false;
         if (!result.Ok)
         {
             _error = result.Error;
             return;
         }
 
+        var blocks = result.Value!.ToList();
         _error = null;
-        _blocks = result.Value!.ToList();
+        _outline = OutlineFrom(blocks);
+        _pieces.Clear();
+        _pieces.AddRange(blocks.Select(block => new Piece { Block = StyleService.CopyTemplate(block) }));
+        Number();
+        _notice = "已排出初稿。";
     }
 
     private async Task Accept()
     {
+        Number();
+        _busy = true;
         var result = await StyleEditor.AcceptAsync(Gate.Current!.Id, new StyleWriteRequest
         {
             Id = _styleId,
             Name = _name,
             ViewId = _viewId,
             Shared = _shared,
-            Blocks = _blocks,
+            Blocks = _pieces.Select(piece => StyleService.CopyTemplate(piece.Block)).ToList(),
         }, CancellationToken.None);
+        _busy = false;
         _error = result.Error;
-        if (result.Ok)
-        {
-            _styleId = result.Value!.Id;
-            _blocks = result.Value.Blocks;
-        }
+        if (!result.Ok)
+            return;
+
+        _styleId = result.Value!.Id;
+        Replace(result.Value.Blocks);
+        _notice = "已採用。";
     }
 
-    private void Ignore()
+    private void Restore()
     {
-        var result = StyleEditor.Ignore(Gate.Current!.Id, _styleId);
-        _error = result.Error;
-        if (result.Ok && result.Value is not null)
-            _blocks = result.Value.Blocks;
-    }
-
-    private void Move(int index, int direction)
-    {
+        _error = null;
         if (string.IsNullOrEmpty(_styleId))
         {
-            var target = index + direction;
-            if (index < 0 || target < 0 || index >= _blocks.Count || target >= _blocks.Count)
-                return;
-            (_blocks[index], _blocks[target]) = (_blocks[target], _blocks[index]);
-            _blocks = StyleService.Reindex(_blocks);
+            _pieces.Clear();
+            _notice = "已清空。";
             return;
         }
 
-        var result = StyleEditor.Move(Gate.Current!.Id, _styleId, index, direction);
+        var result = StyleEditor.Ignore(Gate.Current!.Id, _styleId);
         _error = result.Error;
-        if (result.Ok)
-            _blocks = result.Value!.Blocks;
+        if (!result.Ok || result.Value is null)
+            return;
+
+        _name = result.Value.Name;
+        _shared = result.Value.Shared;
+        _viewId = result.Value.ViewId;
+        if (_outline is null)
+            _outline = OutlineFrom(result.Value.Blocks);
+        Replace(result.Value.Blocks);
+        _notice = "已還原。";
+    }
+
+    private static Outline OutlineFrom(IReadOnlyList<StyleBlockDto> blocks) => new()
+    {
+        Title = blocks.FirstOrDefault(block => block.Type == BlockKinds.Title)?.Text ?? "",
+        Purpose = blocks.FirstOrDefault(block => block.Type == BlockKinds.Text)?.Text ?? "",
+        Parameters = blocks.Where(block => block.Type == BlockKinds.Parameter).Select(block => block.Parameter ?? "").Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+        Columns = blocks.Where(block => block.Type == BlockKinds.Table).SelectMany(block => block.Columns ?? []).Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+    };
+
+    private void AddTitle() => Insert(_pieces.Count, new StyleBlockDto { Type = BlockKinds.Title, Text = _outline?.Title ?? "" }, "已加入標題。");
+
+    private void AddText() => Insert(_pieces.Count, new StyleBlockDto { Type = BlockKinds.Text, Text = _outline?.Purpose ?? "" }, "已加入說明。");
+
+    private void AddTable() => Insert(_pieces.Count, new StyleBlockDto { Type = BlockKinds.Table }, "已加入表格。");
+
+    private void AddParameter(string name)
+    {
+        if (UsedParameter(name))
+            return;
+        Insert(_pieces.Count, new StyleBlockDto { Type = BlockKinds.Parameter, Parameter = name, Label = name }, "已加入條件：" + name + "。");
+    }
+
+    private void AddColumn(string name)
+    {
+        if (string.IsNullOrEmpty(name) || UsedColumn(name))
+            return;
+        var table = _pieces.LastOrDefault(piece => piece.Block.Type == BlockKinds.Table);
+        if (table is null)
+        {
+            Insert(_pieces.Count, new StyleBlockDto { Type = BlockKinds.Table, Columns = [name] }, "已加入欄位：" + name + "。");
+            return;
+        }
+
+        table.Block.Columns.Add(name);
+        _notice = "已加入欄位：" + name + "。";
+    }
+
+    private void BeginPalette(DragKind kind, string? name = null)
+    {
+        _dragKind = kind;
+        _dragName = name;
+        _dragIndex = -1;
+        _dragColumn = -1;
+    }
+
+    private void BeginBlock(int index)
+    {
+        _dragKind = DragKind.Block;
+        _dragIndex = index;
+        _dragName = null;
+    }
+
+    private void BeginColumn(int blockIndex, int columnIndex)
+    {
+        _dragKind = DragKind.Column;
+        _dragIndex = blockIndex;
+        _dragColumn = columnIndex;
+        _dragName = null;
+    }
+
+    private void EndDrag()
+    {
+        _dragKind = DragKind.None;
+        _dragIndex = -1;
+        _dragColumn = -1;
+        _dragName = null;
+        _dropIndex = -1;
+        _columnHoverBlock = -1;
+        _columnHover = -1;
+    }
+
+    private void Hover(int index)
+    {
+        if (_dropIndex == index)
+            return;
+        _dropIndex = index;
+        _columnHoverBlock = -1;
+        _columnHover = -1;
+    }
+
+    private void HoverColumn(int blockIndex, int columnIndex)
+    {
+        if (_columnHoverBlock == blockIndex && _columnHover == columnIndex)
+            return;
+        _columnHoverBlock = blockIndex;
+        _columnHover = columnIndex;
+        _dropIndex = -1;
+    }
+
+    private void DropOnPaper() => DropAt(_pieces.Count);
+
+    private void DropOnBlock(int index)
+    {
+        if (_dragKind is DragKind.Column or DragKind.PaletteColumn)
+        {
+            var at = index >= 0 && index < _pieces.Count && _pieces[index].Block.Type == BlockKinds.Table
+                ? _pieces[index].Block.Columns.Count
+                : 0;
+            DropColumn(index, at);
+            return;
+        }
+
+        DropAt(index);
+    }
+
+    private void DropAt(int index)
+    {
+        switch (_dragKind)
+        {
+            case DragKind.Block:
+                Relocate(_dragIndex, index);
+                break;
+            case DragKind.PaletteTitle:
+                Insert(index, new StyleBlockDto { Type = BlockKinds.Title, Text = _outline?.Title ?? "" }, "已加入標題。");
+                break;
+            case DragKind.PaletteText:
+                Insert(index, new StyleBlockDto { Type = BlockKinds.Text, Text = _outline?.Purpose ?? "" }, "已加入說明。");
+                break;
+            case DragKind.PaletteTable:
+                Insert(index, new StyleBlockDto { Type = BlockKinds.Table }, "已加入表格。");
+                break;
+            case DragKind.PaletteParameter when !string.IsNullOrEmpty(_dragName) && !UsedParameter(_dragName):
+                Insert(index, new StyleBlockDto { Type = BlockKinds.Parameter, Parameter = _dragName, Label = _dragName }, "已加入條件：" + _dragName + "。");
+                break;
+            case DragKind.PaletteColumn when !string.IsNullOrEmpty(_dragName):
+                PlaceColumn(index, _dragName);
+                break;
+            case DragKind.Column:
+                PlaceDraggedColumn(index);
+                break;
+        }
+
+        EndDrag();
+    }
+
+    private void DropColumn(int blockIndex, int columnIndex)
+    {
+        if (_dragKind is not (DragKind.Column or DragKind.PaletteColumn))
+        {
+            DropAt(blockIndex);
+            return;
+        }
+
+        if (blockIndex < 0 || blockIndex >= _pieces.Count || _pieces[blockIndex].Block.Type != BlockKinds.Table)
+        {
+            if (_dragKind == DragKind.PaletteColumn && !string.IsNullOrEmpty(_dragName))
+                PlaceColumn(Math.Clamp(blockIndex, 0, _pieces.Count), _dragName);
+            else if (_dragKind == DragKind.Column)
+                PlaceDraggedColumn(Math.Clamp(blockIndex, 0, _pieces.Count));
+            EndDrag();
+            return;
+        }
+
+        var columns = _pieces[blockIndex].Block.Columns;
+        if (_dragKind == DragKind.PaletteColumn && !string.IsNullOrEmpty(_dragName) && !UsedColumn(_dragName))
+        {
+            columns.Insert(Math.Clamp(columnIndex, 0, columns.Count), _dragName);
+            _notice = "已加入欄位：" + _dragName + "。";
+        }
+        else if (_dragKind == DragKind.Column)
+        {
+            var source = _pieces[_dragIndex].Block.Columns;
+            if (_dragColumn < 0 || _dragColumn >= source.Count)
+            {
+                EndDrag();
+                return;
+            }
+
+            var name = source[_dragColumn];
+            if (_dragIndex == blockIndex)
+            {
+                MoveWithin(source, _dragColumn, columnIndex);
+                var at = columns.FindIndex(item => item == name);
+                if (at >= 0)
+                    _notice = "欄位 " + name + " 已移到第 " + (at + 1) + " 欄。";
+            }
+            else
+            {
+                source.RemoveAt(_dragColumn);
+                columns.Insert(Math.Clamp(columnIndex, 0, columns.Count), name);
+                _notice = "欄位 " + name + " 已移到另一個表格。";
+            }
+        }
+
+        EndDrag();
+    }
+
+    private void OnBlockKey(KeyboardEventArgs key, int index)
+    {
+        if (!key.AltKey)
+            return;
+        if (key.Key == "ArrowUp")
+            MoveBlock(index, -1);
+        else if (key.Key == "ArrowDown")
+            MoveBlock(index, 1);
+    }
+
+    private void OnColumnKey(KeyboardEventArgs key, int blockIndex, int columnIndex)
+    {
+        if (!key.AltKey)
+            return;
+        if (key.Key == "ArrowUp")
+            MoveColumn(blockIndex, columnIndex, -1);
+        else if (key.Key == "ArrowDown")
+            MoveColumn(blockIndex, columnIndex, 1);
+    }
+
+    private void MoveBlock(int index, int direction)
+    {
+        var target = index + direction;
+        if (index < 0 || target < 0 || index >= _pieces.Count || target >= _pieces.Count)
+            return;
+        (_pieces[index], _pieces[target]) = (_pieces[target], _pieces[index]);
+        Number();
+        _notice = Kind(_pieces[target]) + "已移到第 " + (target + 1) + " 個。";
+    }
+
+    private void MoveColumn(int blockIndex, int columnIndex, int direction)
+    {
+        var columns = _pieces[blockIndex].Block.Columns;
+        var target = columnIndex + direction;
+        if (columnIndex < 0 || target < 0 || columnIndex >= columns.Count || target >= columns.Count)
+            return;
+        (columns[columnIndex], columns[target]) = (columns[target], columns[columnIndex]);
+        _notice = "欄位 " + columns[target] + " 已移到第 " + (target + 1) + " 欄。";
+    }
+
+    private void RemovePiece(int index)
+    {
+        if (index < 0 || index >= _pieces.Count)
+            return;
+        var kind = Kind(_pieces[index]);
+        _pieces.RemoveAt(index);
+        Number();
+        _notice = "已移出" + kind + "。";
+    }
+
+    private void RemoveColumn(int blockIndex, int columnIndex)
+    {
+        var columns = _pieces[blockIndex].Block.Columns;
+        if (columnIndex < 0 || columnIndex >= columns.Count)
+            return;
+        var name = columns[columnIndex];
+        columns.RemoveAt(columnIndex);
+        _notice = "已移出欄位：" + name + "。";
+    }
+
+    private void Relocate(int from, int to)
+    {
+        if (from < 0 || from >= _pieces.Count || to < 0 || to > _pieces.Count)
+            return;
+        if (to == from || to == from + 1)
+            return;
+        var piece = _pieces[from];
+        _pieces.RemoveAt(from);
+        if (to > from)
+            to--;
+        _pieces.Insert(to, piece);
+        Number();
+        _notice = Kind(piece) + "已移到第 " + (to + 1) + " 個。";
+    }
+
+    private void Insert(int index, StyleBlockDto block, string notice)
+    {
+        index = Math.Clamp(index, 0, _pieces.Count);
+        _pieces.Insert(index, new Piece { Block = block });
+        Number();
+        _notice = notice;
+    }
+
+    private void PlaceColumn(int paperIndex, string name)
+    {
+        if (UsedColumn(name))
+            return;
+        var table = TableNear(paperIndex);
+        if (table is null)
+        {
+            Insert(paperIndex, new StyleBlockDto { Type = BlockKinds.Table, Columns = [name] }, "已加入欄位：" + name + "。");
+            return;
+        }
+
+        table.Block.Columns.Add(name);
+        _notice = "已加入欄位：" + name + "。";
+    }
+
+    private void PlaceDraggedColumn(int paperIndex)
+    {
+        if (_dragIndex < 0 || _dragIndex >= _pieces.Count)
+            return;
+        var source = _pieces[_dragIndex].Block.Columns;
+        if (_dragColumn < 0 || _dragColumn >= source.Count)
+            return;
+        var name = source[_dragColumn];
+        var table = TableNear(paperIndex);
+        if (table is null || ReferenceEquals(table, _pieces[_dragIndex]))
+            return;
+
+        source.RemoveAt(_dragColumn);
+        table.Block.Columns.Add(name);
+        _notice = "欄位 " + name + " 已移到另一個表格。";
+    }
+
+    private Piece? TableNear(int index)
+    {
+        for (var cursor = Math.Min(index, _pieces.Count) - 1; cursor >= 0; cursor--)
+        {
+            if (_pieces[cursor].Block.Type == BlockKinds.Table)
+                return _pieces[cursor];
+        }
+
+        return _pieces.FirstOrDefault(piece => piece.Block.Type == BlockKinds.Table);
+    }
+
+    private void Replace(IReadOnlyList<StyleBlockDto> blocks)
+    {
+        _pieces.Clear();
+        _pieces.AddRange(blocks.Select(block => new Piece { Block = StyleService.CopyTemplate(block) }));
+        Number();
+    }
+
+    private void Number()
+    {
+        for (var index = 0; index < _pieces.Count; index++)
+            _pieces[index].Block.Order = index;
+    }
+
+    private bool UsedParameter(string name) => _pieces.Any(piece => piece.Block.Type == BlockKinds.Parameter && string.Equals(piece.Block.Parameter, name, StringComparison.OrdinalIgnoreCase));
+
+    private bool UsedColumn(string name) => _pieces.Any(piece => piece.Block.Type == BlockKinds.Table && piece.Block.Columns.Any(column => string.Equals(column, name, StringComparison.OrdinalIgnoreCase)));
+
+    private static string Kind(Piece piece) => piece.Block.Type switch
+    {
+        BlockKinds.Title => "標題",
+        BlockKinds.Text => "說明",
+        BlockKinds.Parameter => "條件",
+        BlockKinds.Table => "表格",
+        _ => "區塊",
+    };
+
+    private static string ParameterLabel(StyleBlockDto block) => string.IsNullOrWhiteSpace(block.Label) ? block.Parameter ?? "" : block.Label!;
+
+    private static void MoveWithin(List<string> columns, int from, int to)
+    {
+        if (from < 0 || from >= columns.Count || to < 0 || to > columns.Count)
+            return;
+        if (to == from || to == from + 1)
+            return;
+        var name = columns[from];
+        columns.RemoveAt(from);
+        if (to > from)
+            to--;
+        columns.Insert(to, name);
     }
 }

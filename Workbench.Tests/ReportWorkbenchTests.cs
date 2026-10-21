@@ -516,13 +516,13 @@ public class ReportWorkbenchTests
         await SaveViewAsync(world.Lin, View("ship-1", "出貨", "說明"));
         await world.Lin.RawAsync(HttpMethod.Post, "api/views/ship-1/publish");
         var accepted = await AcceptAsync(world.Zhou, "ship-1", "出貨", shared: true);
-        var blockCount = accepted.Body.GetProperty("blocks").GetArrayLength();
+        Assert.IsTrue(accepted.Body.GetProperty("blocks").GetArrayLength() > 1);
         await world.Chen.RawAsync(HttpMethod.Post, "api/utterance", new UtteranceRequest { Text = "出貨 狀態=完成" });
         var calls = host.Caller.Count;
         var pdf = await world.Chen.Client.GetAsync("api/export/pdf");
         var bytes = await pdf.Content.ReadAsByteArrayAsync();
         Assert.AreEqual(HttpStatusCode.OK, pdf.StatusCode);
-        AssertPdf(bytes, blockCount);
+        AssertPdf(bytes, 1);
         Assert.AreEqual(calls, host.Caller.Count);
 
         var left = await world.Chen.RawAsync(HttpMethod.Post, "api/reports/leave");
@@ -542,8 +542,8 @@ public class ReportWorkbenchTests
         calls = host.Caller.Count;
         var again = await world.Chen.Client.GetAsync("api/export/pdf?recordId=" + recordId);
         var print = await world.Chen.Client.GetAsync("api/export/print?recordId=" + recordId);
-        AssertPdf(await again.Content.ReadAsByteArrayAsync(), blockCount);
-        AssertPdf(await print.Content.ReadAsByteArrayAsync(), blockCount);
+        AssertPdf(await again.Content.ReadAsByteArrayAsync(), 1);
+        AssertPdf(await print.Content.ReadAsByteArrayAsync(), 1);
         Assert.AreEqual(calls, host.Caller.Count);
     }
 
@@ -667,6 +667,10 @@ public class ReportWorkbenchTests
         using var document = PdfDocument.Open(bytes);
         Assert.AreEqual(pages, document.NumberOfPages);
         var text = string.Join("\n", document.GetPages().Select(page => page.Text));
+        var first = document.GetPage(1).Text;
+        Assert.Contains("出貨", first);
+        Assert.Contains("ROWMARKER", first);
+        Assert.Contains("完成", first);
         Assert.Contains("ROWMARKER", text);
         Assert.Contains("完成", text);
         AssertNoSecrets(text, Password, "Data Source=", "Password=");
