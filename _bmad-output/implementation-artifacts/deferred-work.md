@@ -13,3 +13,9 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-1-5-用等值條件查列-計數-判斷存在.md`
   summary: 未列出的頂層鍵、篩選保留鍵（含 filters 裡的 connectionId）、只差大小寫的篩選鍵、非物件 filters、篩選值為物件或陣列，以及 connectionString 與 connectString，另做拒絕規則。
   evidence: 從 Story 1.5 拆出，讓這一則只交付可連線名稱加上純量 filters 的查列、計數與存在判斷；參數拒絕是另一個可獨立驗收的規則。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
+  summary: 本機 Ollama 可下載建議模型（llama3.2、llama3.1、qwen2.5、mistral），含進度、取消，以及下載位址先去掉 /models 再呼叫 /api/pull。
+  evidence: 規格超過 2000 token，使用者選擇拆開。測試連線與整段名稱比對留在原規格；下載可獨立驗收。名稱是否已安裝仍以整段字串為準，不在這一則實作。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
+  summary: 測試連線的操作加固：失敗或變更位址時清掉清單、測試中不可再測或儲存、不跟隨重新導向。
+  evidence: 使用者再次選擇拆開。預設位址、測試連線與整段名稱比對留在原規格；這些操作可獨立驗收。
