@@ -12,6 +12,8 @@
   href: web/
 - name: MCP
   href: mcp/
+- name: 報表工作台
+  href: workbench/
 - name: API 參考
   href: api/
   homepage: api/index.md

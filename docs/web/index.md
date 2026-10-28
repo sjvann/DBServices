@@ -24,7 +24,7 @@ dotnet run
 
 `Program.cs` 讀取 `ConnectionStrings:default` 與 `ServerType:Name`，再交給 `DbServiceFactory`。`ServerType:Name` 必須是 `Sqlite`、`SqlServer`、`MySQL`、`Oracle`、`PostgreSQL` 其中一個，大小寫要一致。無法辨識時會記錄錯誤，並且不註冊資料表端點。
 
-同一組端點的 GraphQL 表面見 [GraphQL](graphql.md)。外部 Agent 的唯讀工具見 [MCP 資料平面](../mcp/index.md)。
+同一組端點的 GraphQL 表面見 [GraphQL](graphql.md)。外部 Agent 的唯讀工具見 [MCP 資料平面](../mcp/index.md)。用已發布檢視產生報表見 [動態報表工作台](../workbench/index.md)。
 
 ## 端點
 

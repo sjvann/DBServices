@@ -8,7 +8,7 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://sjvann.github.io/DBServices/)
 [![GitHub Release](https://img.shields.io/github/v/release/sjvann/DBServices)](https://github.com/sjvann/DBServices/releases)
 
-DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL、Oracle 和 PostgreSQL 資料庫。本專案採用 .NET 10 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務、事務管理、資料庫遷移等現代化功能。
+DBServices 是一個基於 Dapper 的現代化多資料庫 ORM 工具包，提供統一的資料庫存取介面，支援 SQLite、SQL Server、MySQL、Oracle 和 PostgreSQL 資料庫。本專案採用 .NET 10 開發，具備非同步支援、依賴注入、建構器模式、重試機制、驗證服務、事務管理、資料庫遷移等現代化功能。同一條 Session 也供應命令列、REST、GraphQL、MCP 宿主，以及用已發布檢視產生動態報表的工作台。
 
 ## 🏗️ 系統架構
 
@@ -35,10 +35,16 @@ DBServices/
 ├── GraphQLService/              # GraphQL API 服務（動態 Schema）
 ├── DbServices.Api.Shared/       # REST / GraphQL 共用業務層
 ├── DbServices.Cli/              # dbsql（SQL 與函數 CLI）
+├── DbServices.Mcp/              # 已發布檢視的目錄、調度與稽核
+├── McpService/                  # MCP 宿主（POST /mcp）
+├── Workbench/                   # 動態報表工作台宿主
+├── Workbench.Core/              # 檢視、樣式、語句與生成紀錄
+├── Workbench.Web/               # Blazor 頁面
+├── Workbench.Avalonia/          # 桌面殼（只打工作台 HTTP）
 └── DBServiceTest/               # 單元測試
 ```
 
-底層契約見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：所有客戶端走 `IQuerySession`（Query／Call／Utility），連線每次從 pool 取出、用完歸還。
+底層契約見 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：所有客戶端走 `IQuerySession`（Query／Call／Utility），連線每次從 pool 取出、用完歸還。MCP 的 Discovery 只列出已發布檢視。報表工作台不持有來源庫連線字串，取列時只呼叫該檢視一次。
 
 ## 🚀 主要功能
 
@@ -66,6 +72,8 @@ DBServices/
 - **進階查詢**: 分頁、排序、計數等進階查詢功能
 - **PostgreSQL JSON 支援**: 完整的 JSON/JSONB 類型支援
 - **Web API**: RESTful 與 GraphQL API 介面
+- **MCP 資料平面**: 已發布檢視成為 Agent 的唯讀工具，連線字串留在伺服器
+- **動態報表工作台**: 分析師發布檢視、設計師排樣式、終端使用者用一句話產生報表，並可留下生成紀錄與 PDF
 
 ## 📦 安裝
 
@@ -357,6 +365,39 @@ dotnet run
 
 啟動時依資料庫 metadata **動態產生**各資料表的 GraphQL 型別。詳見 [GraphQLService/README.md](GraphQLService/README.md)。
 
+## 🤖 MCP 資料平面
+
+`McpService` 用 Streamable HTTP 對外部 Agent 露出**已發布檢視**。工具名稱就是檢視名稱。沒有已發布檢視時清單是空的，不回退成資料表工具。寫入、自由 SQL 與 `tables`／`query` 這類表級名稱都不會被這個宿主執行。
+
+```bash
+dotnet run --project McpService
+# POST http://localhost:5291/mcp
+```
+
+連線寫在伺服器組態或 `catalog/connections.json`，呼叫端只傳 `connectionId` 與該檢視的參數。目錄的讀寫（檢視、連線、表結構）走另外的 HTTP，並且要帶與工作台相同的 `Workbench:CatalogKey`。
+
+詳見 [docs/mcp/index.md](docs/mcp/index.md) 與 [McpService/README.md](McpService/README.md)。
+
+## 📊 動態報表工作台
+
+工作台分成三個入口，列只來自上面那次檢視呼叫：
+
+| 入口 | 網址 | 做什麼 |
+|------|------|--------|
+| 系統分析師 | `/views` | 依資料表定義檢視並發布。發布後才成為 MCP 工具 |
+| 報表設計師 | `/styles` | 把一筆已發布檢視排成標題、說明、參數與表格 |
+| 終端使用者 | `/talk` | 用一句話產生這一次的動態報表 |
+
+```bash
+dotnet run --project McpService
+dotnet run --project Workbench
+# http://localhost:5099
+```
+
+兩邊的 `Workbench:CatalogKey` 必須相同。管理員先在 `/environment` 接上資料庫並設定模型，產生報表時可用連線必須恰好一筆。語句對到恰好一份可讀樣式、參數也齊了，才會呼叫該檢視一次。生成紀錄與 PDF 用當時存下的列，不再回來源庫。桌面殼是 `Workbench.Avalonia`，只打同一座工作台。
+
+詳見 [docs/workbench/index.md](docs/workbench/index.md) 與 [Workbench/README.md](Workbench/README.md)。
+
 ## ⚙️ 設定選項
 
 ```csharp
@@ -436,6 +477,8 @@ dotnet tool run docfx -- docs/docfx.json --serve
 - [架構契約](docs/ARCHITECTURE.md)
 - [入門](docs/getting-started/index.md)
 - [指南](docs/guides/index.md)
+- [MCP 資料平面](docs/mcp/index.md)
+- [動態報表工作台](docs/workbench/index.md)
 - [API 文件](API_DOCUMENTATION.md)
 - [多資料庫管理指南](MULTI_DATABASE_GUIDE.md)
 - [效能調優指南](PERFORMANCE_TUNING.md)
@@ -445,6 +488,9 @@ dotnet tool run docfx -- docs/docfx.json --serve
 
 ## 🔄 版本歷史
 
+- **目前主線** — MCP 宿主與動態報表工作台
+  - ✅ 已發布檢視成為 Agent 工具（`McpService`）
+  - ✅ 報表工作台：檢視、樣式、一句話產生動態報表、生成紀錄與 PDF
 - **v5.0.0** (2026-08) - 接續 NuGet `DBService` 4.0.0，專案網站改為 GitHub Pages
   - ✅ 套件 ID 對齊 [DBService](https://www.nuget.org/packages/DBService/)
   - ✅ 文件站：https://sjvann.github.io/DBServices/

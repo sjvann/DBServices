@@ -7,11 +7,11 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/sjvann/DBServices/blob/master/LICENSE.txt)
 
 <div class="docs-hero">
-  <p class="docs-kicker">Session · REST · GraphQL · MCP</p>
-  <p class="docs-lead">一個介面對齊五種資料庫。C# SDK、命令列、Web API 與外部 Agent 都走同一條 Session，連線字串留在伺服器。</p>
+  <p class="docs-kicker">Session · REST · GraphQL · MCP · 報表</p>
+  <p class="docs-lead">一個介面對齊五種資料庫。C# SDK、命令列、Web API、外部 Agent 與報表工作台都走同一條 Session，連線字串留在伺服器。</p>
   <div class="docs-actions">
     <a class="docs-btn" href="getting-started/quickstart.html">三分鐘上手</a>
-    <a class="docs-btn docs-btn-ghost" href="mcp/index.html">Agent 唯讀工具</a>
+    <a class="docs-btn docs-btn-ghost" href="workbench/index.html">動態報表</a>
   </div>
 </div>
 
@@ -44,7 +44,13 @@
   <a class="docs-card" href="mcp/index.html">
     <i class="bi bi-shield-check" aria-hidden="true"></i>
     <h2>MCP</h2>
-    <p>外部 Agent 的 Discovery 只列出已發布模組視圖。寫入與自由 SQL 不廣告。</p>
+    <p>外部 Agent 的 Discovery 只列出已發布檢視。工具名稱就是檢視名稱。</p>
+    <span class="docs-chip">最新</span>
+  </a>
+  <a class="docs-card" href="workbench/index.html">
+    <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+    <h2>動態報表</h2>
+    <p>分析師發布檢視，設計師排樣式，終端使用者用一句話產生這一次的報表。</p>
     <span class="docs-chip">最新</span>
   </a>
   <a class="docs-card" href="architecture/index.html">
@@ -64,7 +70,8 @@
 - **一個介面、五種資料庫**：`IDbService` 對齊 CRUD、結構探索與參數化 SQL。
 - **Session 協定**：CLI、Web、GraphQL、MCP 與 C# SDK 都走 `IQuerySession`（Query／Call／Utility）。
 - **連線用完即還**：一般操作從 pool 取連線、用完 Dispose；只有事務期間才持有連線。
-- **Agent 的 Discovery**：只列出已發布模組視圖。沒有已發布視圖時清單是空的。連線由伺服器組態登記。表級 Call 不是公開目錄。
+- **Agent 的 Discovery**：只列出已發布檢視，工具名稱就是檢視名稱。沒有已發布檢視時清單是空的。連線由伺服器組態登記。
+- **動態報表**：工作台依樣式與一句話，向該檢視取一次列，並可留下生成紀錄與 PDF。
 
 ## 三分鐘上手
 
@@ -82,7 +89,7 @@ dbsql> \dt
 dbsql> SELECT * FROM Users;
 ```
 
-Agent 要接同一座庫時，改啟動 MCP 宿主，並在組態登記具名連線。見 [MCP 資料平面](mcp/index.md)。
+Agent 要接同一座庫時，改啟動 MCP 宿主，並在組態登記具名連線。見 [MCP 資料平面](mcp/index.md)。要讓人用一句話出報表，見 [動態報表工作台](workbench/index.md)。
 
 ## 支援的資料庫
 

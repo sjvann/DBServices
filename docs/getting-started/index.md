@@ -11,4 +11,5 @@
 - [dbsql CLI](../cli/index.md)
 - [Web API](../web/index.md) 與 [GraphQL](../web/graphql.md)
 - [MCP 資料平面](../mcp/index.md)
+- [動態報表工作台](../workbench/index.md)
 - [架構契約](../architecture/index.md)

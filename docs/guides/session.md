@@ -1,6 +1,6 @@
 # Session
 
-`IQuerySession` 是 CLI、REST、GraphQL、MCP 與程式內「一條請求」的統一入口。從 `IDbService.GetSession()` 取得（每個服務實例快取一份）。MCP 的 Discovery 只列出已發布模組視圖，見 [MCP 資料平面](../mcp/index.md)。表級 Call 不是公開目錄。
+`IQuerySession` 是 CLI、REST、GraphQL、MCP 與程式內「一條請求」的統一入口。從 `IDbService.GetSession()` 取得（每個服務實例快取一份）。MCP 的 Discovery 只列出已發布檢視，見 [MCP 資料平面](../mcp/index.md)。報表工作台取列也只經該檢視，見 [動態報表工作台](../workbench/index.md)。
 
 ## 請求
 

@@ -61,4 +61,4 @@ db.Functions.Register(new DbFunctionDescriptor
 
 ## MCP 只露出唯讀子集
 
-[MCP 宿主](../mcp/index.md) 的 Discovery 只列出已發布模組視圖。`tables`、`fields`、`get`、`query`、`count`、`exists` 不是公開目錄；若仍被實作，只在營運除錯路徑。`insert`、`update`、`delete` 與 `sql` 仍可在 SDK 與 CLI 使用，但不會出現在 Discovery，也不會被這個宿主執行。除錯路徑上的等值條件放進 `filters`，不與 `table` 放在同一層。
+[MCP 宿主](../mcp/index.md) 的 Discovery 只列出已發布檢視，呼叫時工具名稱就是檢視名稱。上表這些函數仍可在 SDK 與 CLI 使用，但不會出現在 Discovery，也不會被這個宿主執行。報表工作台取列時同樣只呼叫已發布檢視，見 [動態報表工作台](../workbench/index.md)。

@@ -26,7 +26,7 @@ dotnet docfx metadata docs/docfx.json
 | `docs/getting-started/` | 安裝與快速開始 |
 | `docs/guides/` | 操作指南 |
 | `docs/architecture/` | 分層與連線 |
-| `docs/cli/`、`docs/web/`、`docs/mcp/` | CLI、REST、GraphQL 與 MCP 宿主 |
+| `docs/cli/`、`docs/web/`、`docs/mcp/`、`docs/workbench/` | CLI、REST、GraphQL、MCP 宿主與報表工作台 |
 | `docs/api/` | 產生的 API（`index.md` 可手寫；`*.yml` 勿提交） |
 | `docs/template/` | modern 範本覆寫（GitHub 圖示） |
 

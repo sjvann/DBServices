@@ -5,7 +5,7 @@
 ## 分層
 
 ```
-CLI / Web / C# SDK / EZIE plugin
+CLI / REST / GraphQL / MCP / 報表工作台 / C# SDK / EZIE plugin
         ↓
    IQuerySession   （Query / Call / Utility）
         ↓
@@ -15,6 +15,8 @@ CLI / Web / C# SDK / EZIE plugin
         ↓
  Provider（連線工廠 + 方言 + 目錄 SQL）
 ```
+
+報表工作台不持有來源庫連線。它把已發布檢視寫進 `McpService` 的目錄，取列時只呼叫該檢視一次。說明見 [MCP 資料平面](mcp/index.md) 與 [動態報表工作台](workbench/index.md)。
 
 ## 三路分派
 
