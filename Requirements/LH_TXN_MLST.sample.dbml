@@ -1,0 +1,20 @@
+// 由 Requirements/Samples.xlsx 產生，供核對轉換結果。
+Table LH_TXN_MLST {
+  OFFICE_CODE char(6) [not null, note: '郵務局號；H 欄名 POST_BRH_NO；畫面格式 XXXXXX']
+  CNTR_NO char(1) [not null, note: '段別代號；畫面格式 X']
+  ACC_DATE date [not null, note: '帳務日期；西元年YYYY-MM-DD；民國年YYYMMDD；畫面格式 XXXXXXX']
+  TOUR_NO char(2) [not null, note: '班次；靠右，左補0；畫面格式 XX']
+  SEGC_NO char(7) [not null, note: '區段代碼；畫面格式 XXXXXXX']
+  MLST_NO char(7) [not null, note: '清單號碼；靠左，右補空白；畫面格式 XXXX；S 資料長度 4']
+  TRF_TYPE char(1) [not null, note: '登錄種類；1：交投；2：移交；3：未妥投；4：妥投；5：退件註銷；6：留局待投；畫面格式 X']
+  POSTMAN_ID char(4) [not null, note: '投遞士代號；畫面格式 XXXX']
+  SSO_ID varchar(10) [note: '投遞士員編；靠左，右補空白；畫面格式 XXXXXXXXXX']
+  TRANS_CODE char(1) [not null, note: '異動代號；I:新增；D:刪除；U:修改；畫面格式 X']
+  TABLE_DATE text [not null, note: '資料轉入時間；(yyyy-MM-dd hh:mm:ss:sss)；紀錄ETL建立該筆紀錄的時間，以利日後處理資料']
+
+  indexes {
+    (OFFICE_CODE, CNTR_NO, ACC_DATE, TOUR_NO, SEGC_NO, MLST_NO) [name: 'ix_lh_txn_mlst_append', note: 'S_唯一索引 以 V 勾記。此組合不是唯一鍵，因為異動為 append']
+  }
+
+  Note: '來源檔 T_LH_TXN_MLST。Hadoop 中郵務局號+段別代號+帳務日期+班次+區段代碼+清單號碼非 UK，因為是異動 append。'
+}
