@@ -255,7 +255,7 @@ else
             <p class="hint">本機使用 Ollama。</p>
         }
         <label for="model-endpoint">位址 <span class="req">必填</span>
-            <input id="model-endpoint" autocomplete="off" placeholder="雲端用 https，本機用 127.0.0.1" @bind="_endpoint" @bind:event="oninput" />
+            <input id="model-endpoint" autocomplete="off" placeholder="雲端用 https，本機用 127.0.0.1" value="@_endpoint" @oninput="EndpointChanged" />
         </label>
         <label for="model-id">模型名稱 <span class="req">必填</span>
             <input id="model-id" autocomplete="off" @bind="_modelId" @bind:event="oninput" />
@@ -621,16 +621,24 @@ else
         ApplyLocalAddress();
         try
         {
+            var endpoint = _endpoint;
+            await InvokeAsync(StateHasChanged);
+            if (!string.Equals(endpoint, _endpoint, StringComparison.Ordinal))
+                return;
+            endpoint = _endpoint;
             var probed = await Environments.ProbeModelAsync(profile.Id, new ModelDraft
             {
                 Enabled = _enabled,
                 Placement = _placement,
-                Endpoint = _endpoint,
+                Endpoint = endpoint,
                 ModelId = _modelId,
                 ApiKey = _apiKey,
             }, CancellationToken.None);
+            if (!string.Equals(endpoint, _endpoint, StringComparison.Ordinal))
+                return;
             if (!probed.Ok)
             {
+                _names = [];
                 _error = probed.Error;
                 _modelNote = probed.Error?.Message ?? "連不上這個位址。";
                 return;
@@ -655,9 +663,13 @@ else
         if (profile is null || _placement != "local")
             return;
         ApplyLocalAddress();
+        var endpoint = _endpoint;
         var probed = await Environments.ProbeModelAsync(profile.Id, Draft(), CancellationToken.None);
+        if (!string.Equals(endpoint, _endpoint, StringComparison.Ordinal))
+            return;
         if (!probed.Ok)
         {
+            _names = [];
             _error ??= probed.Error;
             if (string.IsNullOrEmpty(_modelNote))
                 _modelNote = probed.Error?.Message ?? "";
@@ -735,9 +747,19 @@ else
             _names = [];
     }
 
+    private void EndpointChanged(ChangeEventArgs args)
+    {
+        var next = args.Value?.ToString() ?? "";
+        if (!string.Equals(next, _endpoint, StringComparison.Ordinal))
+            _names = [];
+        _endpoint = next;
+    }
+
     private void ApplyLocalAddress()
     {
-        if (_placement == "local" && string.IsNullOrWhiteSpace(_endpoint))
-            _endpoint = OllamaCatalog.Address;
+        if (_placement != "local" || !string.IsNullOrWhiteSpace(_endpoint))
+            return;
+        _names = [];
+        _endpoint = OllamaCatalog.Address;
     }
 }

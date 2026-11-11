@@ -1,10 +1,9 @@
-using System.Text.Json;
 using DbServices.Api.Shared;
 
 namespace DbServices.Mcp;
 
 /// <summary>
-/// 從已登記連線讀出資料表、欄位與外鍵，並用既有檢視查詢做有上限的預覽。
+/// 從已登記連線讀出資料表、欄位與外鍵。預覽不讀業務列。
 /// </summary>
 public static class SchemaGraph
 {
@@ -76,29 +75,10 @@ public static class SchemaGraph
         IReadOnlyDictionary<string, string>? parameters)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        if (view is null || view.Sources is null || view.Sources.Count == 0)
-            return SchemaPreviewResult.Fail("invalid_arguments", "請先選擇資料表。");
-        if (!TrySnapshot(catalog, connectionId, out _, out var failed))
-            return SchemaPreviewResult.Fail(failed.Code, failed.Message);
-
-        try
-        {
-            var prepared = Prepare(view, parameters);
-            var outcome = ViewDispatch.Execute(catalog, connectionId ?? "", prepared.View, prepared.Parameters);
-            if (outcome.IsError)
-                return ReadError(outcome.Json);
-            if (!TryRead(outcome.Json, out var columns, out var rows))
-                return SchemaPreviewResult.Fail("execution_failed", "鍵值查詢失敗。");
-
-            var truncated = rows.Count > PreviewLimit;
-            if (truncated)
-                rows = rows.Take(PreviewLimit).ToList();
-            return SchemaPreviewResult.Success(columns, rows, truncated);
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            return SchemaPreviewResult.Fail("execution_failed", "鍵值查詢失敗。");
-        }
+        _ = connectionId;
+        _ = view;
+        _ = parameters;
+        return SchemaPreviewResult.Fail("preview_unavailable", "不讀取業務列。");
     }
 
     public static PreparedView Prepare(ViewDocument view, IReadOnlyDictionary<string, string>? parameters)
@@ -118,6 +98,7 @@ public static class SchemaGraph
             Id = view.Id,
             Name = view.Name,
             Purpose = view.Purpose,
+            Confirmed = view.Confirmed,
             Published = view.Published,
             Sources = (view.Sources ?? []).ToList(),
             Links = (view.Links ?? []).Select(link => new ViewLink
@@ -159,52 +140,6 @@ public static class SchemaGraph
         failed = null!;
         return true;
     }
-
-    private static SchemaPreviewResult ReadError(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            var code = document.RootElement.TryGetProperty("code", out var codeElement) ? codeElement.GetString() ?? "" : "";
-            var message = document.RootElement.TryGetProperty("message", out var messageElement) ? messageElement.GetString() ?? "" : "";
-            if (message.Length == 0)
-                message = "鍵值查詢失敗。";
-            return SchemaPreviewResult.Fail(code.Length == 0 ? "execution_failed" : code, message);
-        }
-        catch (JsonException)
-        {
-            return SchemaPreviewResult.Fail("execution_failed", "鍵值查詢失敗。");
-        }
-    }
-
-    private static bool TryRead(string json, out List<string> columns, out List<List<string>> rows)
-    {
-        columns = [];
-        rows = [];
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("columns", out var columnElement)
-                || !document.RootElement.TryGetProperty("rows", out var rowElement))
-                return false;
-
-            columns = columnElement.EnumerateArray().Select(item => item.GetString() ?? "").ToList();
-            foreach (var row in rowElement.EnumerateArray())
-                rows.Add(row.EnumerateArray().Select(Cell).ToList());
-            return true;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
-    private static string Cell(JsonElement element) => element.ValueKind switch
-    {
-        JsonValueKind.String => element.GetString() ?? "",
-        JsonValueKind.Null or JsonValueKind.Undefined => "",
-        _ => element.GetRawText(),
-    };
 }
 
 public sealed class SchemaColumnInfo

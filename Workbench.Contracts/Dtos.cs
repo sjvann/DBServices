@@ -73,6 +73,7 @@ public sealed class ViewDocumentDto
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Purpose { get; set; } = "";
+    public bool Confirmed { get; set; }
     public bool Published { get; set; }
     public List<string> Sources { get; set; } = [];
     public List<ViewLinkDto> Links { get; set; } = [];

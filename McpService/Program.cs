@@ -16,6 +16,7 @@ builder.Services.AddSingleton(sp =>
     var environment = sp.GetRequiredService<IWebHostEnvironment>();
     return new ConnectionDirectory(connections, Path.Combine(environment.ContentRootPath, "catalog", "connections.json"));
 });
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ConnectionDirectory>().Catalog);
 builder.Services.AddSingleton(sp =>
 {
     var environment = sp.GetRequiredService<IWebHostEnvironment>();
@@ -47,36 +48,91 @@ builder.Services
     {
         var services = request.Server.Services!;
         var name = request.Params?.Name ?? "";
+        var arguments = request.Params?.Arguments;
+        var environment = services.GetRequiredService<IWebHostEnvironment>();
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var http = services.GetRequiredService<IHttpContextAccessor>();
+        var directory = services.GetRequiredService<ConnectionDirectory>();
+        var requestedConnection = (ArgumentText(arguments, "connectionId") ?? "").Trim();
+        var auditArguments = AuditFromArguments(arguments);
+        if (IsClosedTool(name))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                name,
+                auditArguments,
+                TableDispatchResult.ToolDisabled()));
+        }
+
         var views = services.GetRequiredService<ViewCatalog>();
         var view = views.FindPublishedByName(name);
         if (view is null)
         {
-            return ValueTask.FromResult(ToolResult(TableDispatchResult.QueryExecutionFailed()));
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                name,
+                auditArguments,
+                TableDispatchResult.UnknownTool()));
         }
 
-        var arguments = request.Params?.Arguments;
-        var connectionId = ArgumentText(arguments, "connectionId") ?? "";
-        if (ParameterMissing(view, arguments))
-            return ValueTask.FromResult(ToolResult(TableDispatchResult.InvalidArguments()));
+        if (RejectedArguments(view, arguments))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                view.Name,
+                auditArguments,
+                TableDispatchResult.UnacceptableArguments()));
+        }
 
-        var parameters = ReadParameters(arguments);
-        var directory = services.GetRequiredService<ConnectionDirectory>();
-        var outcome = ViewDispatch.Execute(
-            directory.Catalog,
-            connectionId,
-            view,
-            parameters);
-        var auditArguments = new List<KeyValuePair<string, object?>>();
-        foreach (var pair in parameters)
-            auditArguments.Add(new KeyValuePair<string, object?>(pair.Key, pair.Value));
+        if (ParameterMissing(view, arguments))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                view.Name,
+                auditArguments,
+                TableDispatchResult.InvalidArguments()));
+        }
+
+        var catalog = directory.Catalog;
+        if (!TryResolveConnection(catalog, requestedConnection, out var connectionId, out var failure))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                catalog,
+                connectionId,
+                view.Name,
+                auditArguments,
+                failure!));
+        }
+
+        var parameters = ReadParameters(view, arguments);
+        var outcome = ViewDispatch.Execute(catalog, connectionId, view, parameters);
         return ValueTask.FromResult(Finish(
-            services.GetRequiredService<IWebHostEnvironment>(),
-            services.GetRequiredService<IConfiguration>(),
-            services.GetRequiredService<IHttpContextAccessor>(),
-            directory.Catalog,
+            environment,
+            configuration,
+            http,
+            catalog,
             connectionId,
             view.Name,
-            auditArguments,
+            AuditOf(parameters),
             outcome));
     });
 
@@ -260,22 +316,25 @@ static Tool ToTool(ViewDocument view)
     {
         ["connectionId"] = new Dictionary<string, object?> { ["type"] = "string" },
     };
+    var required = new List<string>();
     foreach (var parameter in view.Parameters)
     {
         if (string.IsNullOrWhiteSpace(parameter.Name) || properties.ContainsKey(parameter.Name))
             continue;
         properties[parameter.Name] = new Dictionary<string, object?> { ["type"] = "string" };
+        if (!parameter.Name.Equals("connectionId", StringComparison.OrdinalIgnoreCase))
+            required.Add(parameter.Name);
     }
 
     return new Tool
     {
         Name = view.Name,
-        Description = string.IsNullOrWhiteSpace(view.Purpose) ? view.Name : view.Purpose,
+        Description = Describe(view),
         InputSchema = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["type"] = "object",
             ["properties"] = properties,
-            ["required"] = new[] { "connectionId" },
+            ["required"] = required,
         }),
         Annotations = new ToolAnnotations
         {
@@ -315,19 +374,171 @@ static bool TryArgument(IDictionary<string, JsonElement>? arguments, string name
     return false;
 }
 
-static Dictionary<string, object?> ReadParameters(IDictionary<string, JsonElement>? arguments)
+static string Describe(ViewDocument view)
 {
-    var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+    var parts = new List<string>();
+    var purpose = view.Purpose?.Trim() ?? "";
+    if (purpose.Length > 0)
+        parts.Add(purpose);
+
+    var sources = (view.Sources ?? []).Select(source => source?.Trim() ?? "").Where(source => source.Length > 0).ToList();
+    if (sources.Count > 0)
+        parts.Add("來源表：" + string.Join("、", sources));
+
+    var links = new List<string>();
+    foreach (var link in view.Links ?? [])
+    {
+        if (string.IsNullOrWhiteSpace(link.From) || string.IsNullOrWhiteSpace(link.To)
+            || string.IsNullOrWhiteSpace(link.FromColumn) || string.IsNullOrWhiteSpace(link.ToColumn))
+            continue;
+        links.Add(link.From.Trim() + "." + link.FromColumn.Trim() + " = " + link.To.Trim() + "." + link.ToColumn.Trim());
+    }
+
+    if (links.Count > 0)
+        parts.Add("關聯：" + string.Join("；", links));
+
+    var columns = (view.Columns ?? []).Select(column => column.Name?.Trim() ?? "").Where(name => name.Length > 0).ToList();
+    if (columns.Count > 0)
+        parts.Add("輸出欄：" + string.Join("、", columns));
+
+    var parameters = (view.Parameters ?? []).Select(parameter => parameter.Name?.Trim() ?? "").Where(name => name.Length > 0).ToList();
+    if (parameters.Count > 0)
+        parts.Add("參數：" + string.Join("、", parameters));
+
+    return string.Join("。", parts);
+}
+
+static bool IsClosedTool(string name)
+    => name.Equals("insert", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("update", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("delete", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("sql", StringComparison.OrdinalIgnoreCase);
+
+static bool IsSecret(string name)
+    => name.Equals("connectionString", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("connectString", StringComparison.OrdinalIgnoreCase);
+
+static bool RejectedArguments(ViewDocument view, IDictionary<string, JsonElement>? arguments)
+{
     if (arguments is null)
-        return parameters;
+        return false;
+
+    var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var parameter in view.Parameters ?? [])
+    {
+        if (!string.IsNullOrWhiteSpace(parameter.Name))
+            declared.Add(parameter.Name);
+    }
 
     foreach (var pair in arguments)
     {
-        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase)
-            || pair.Key.Equals("filters", StringComparison.OrdinalIgnoreCase))
+        if (IsSecret(pair.Key))
+            return true;
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (!declared.Contains(pair.Key))
+            return true;
+    }
+
+    return false;
+}
+
+static bool TryResolveConnection(ToolCatalog catalog, string requested, out string connectionId, out TableDispatchResult? failure)
+{
+    failure = null;
+    var trimmed = requested.Trim();
+    if (trimmed.Length == 0)
+    {
+        string? only = null;
+        var count = 0;
+        foreach (var pair in catalog.Connections)
+        {
+            if (!pair.Value.Available)
+                continue;
+            count++;
+            only = pair.Key;
+        }
+
+        if (count != 1 || only is null)
+        {
+            connectionId = "";
+            failure = TableDispatchResult.ConnectionRequired();
+            return false;
+        }
+
+        connectionId = only;
+        return true;
+    }
+
+    string? found = null;
+    ConnectionSnapshot? snapshot = null;
+    foreach (var pair in catalog.Connections)
+    {
+        if (!pair.Key.Equals(trimmed, StringComparison.OrdinalIgnoreCase))
+            continue;
+        found = pair.Key;
+        snapshot = pair.Value;
+        break;
+    }
+
+    if (snapshot is null || found is null)
+    {
+        connectionId = trimmed;
+        failure = TableDispatchResult.UnknownConnection();
+        return false;
+    }
+
+    if (!snapshot.Available || string.IsNullOrWhiteSpace(snapshot.ConnectionString))
+    {
+        connectionId = found;
+        failure = TableDispatchResult.ConnectionFailed();
+        return false;
+    }
+
+    connectionId = found;
+    return true;
+}
+
+static List<KeyValuePair<string, object?>> AuditFromArguments(IDictionary<string, JsonElement>? arguments)
+{
+    var list = new List<KeyValuePair<string, object?>>();
+    if (arguments is null)
+        return list;
+
+    foreach (var pair in arguments)
+    {
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase) || IsSecret(pair.Key))
             continue;
         if (TryScalar(pair.Value, out var scalar))
-            parameters[pair.Key] = scalar;
+            list.Add(new KeyValuePair<string, object?>(pair.Key, scalar));
+    }
+
+    return list;
+}
+
+static List<KeyValuePair<string, object?>> AuditOf(IReadOnlyDictionary<string, object?> parameters)
+{
+    var list = new List<KeyValuePair<string, object?>>();
+    foreach (var pair in parameters)
+    {
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase) || IsSecret(pair.Key))
+            continue;
+        list.Add(new KeyValuePair<string, object?>(pair.Key, pair.Value));
+    }
+
+    return list;
+}
+
+static Dictionary<string, object?> ReadParameters(ViewDocument view, IDictionary<string, JsonElement>? arguments)
+{
+    var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+    foreach (var parameter in view.Parameters ?? [])
+    {
+        if (string.IsNullOrWhiteSpace(parameter.Name))
+            continue;
+        if (!TryArgument(arguments, parameter.Name, out var element) || !TryScalar(element, out var scalar))
+            continue;
+        parameters[parameter.Name] = scalar;
     }
 
     return parameters;

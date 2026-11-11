@@ -567,6 +567,108 @@ public class ModelEndpointTests
     }
 
     [TestMethod]
+    public void Probe_client_times_out_at_eight_seconds_and_does_not_follow_redirects()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "wb-probe-" + Guid.NewGuid().ToString("N") + ".json");
+        var endpoint = new ModelEndpoint(new FileModelProfile(path));
+        using var probe = endpoint.OpenProbeChannel();
+        using var pull = endpoint.OpenPullClient();
+        Assert.AreEqual(TimeSpan.FromSeconds(8), probe.Client.Timeout);
+        Assert.IsNotNull(probe.Redirects);
+        Assert.IsFalse(probe.Redirects.AllowAutoRedirect);
+        Assert.AreEqual(Timeout.InfiniteTimeSpan, pull.Timeout);
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+
+    [TestMethod]
+    public async Task A_redirect_is_not_followed_and_a_failed_probe_clears_names()
+    {
+        await using var page = new PageSession(
+            new ModelDraft { Enabled = false, Placement = "local", Endpoint = DefaultAddress },
+            Models("llama3.2"));
+        Assert.IsTrue(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+
+        page.Handler.Respond(HttpStatusCode.Redirect, "");
+        await Probe(page.Cut);
+
+        Assert.AreEqual(2, page.Handler.Calls.Count);
+        Assert.Contains("連不上這個位址。", page.Cut.Find("[role=alert]").TextContent);
+        Assert.IsFalse(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+        page.World.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task Changing_the_address_clears_the_model_list()
+    {
+        await using var page = new PageSession(
+            new ModelDraft { Enabled = false, Placement = "local", Endpoint = DefaultAddress },
+            Models("llama3.2"));
+        Assert.IsTrue(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+
+        page.Cut.Find("#model-endpoint").Input("http://127.0.0.1:9/v1");
+
+        Assert.AreEqual("http://127.0.0.1:9/v1", page.Cut.Find("#model-endpoint").GetAttribute("value"));
+        Assert.IsFalse(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+        page.World.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task Probe_buttons_stay_disabled_while_the_request_is_running()
+    {
+        await using var page = new PageSession(new ModelDraft { Enabled = false, Placement = "local", Endpoint = DefaultAddress });
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Handler.Pause(started, release);
+        var pending = Probe(page.Cut);
+        var signaled = await Task.WhenAny(started.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        try
+        {
+            Assert.AreSame(started.Task, signaled);
+            var form = page.Cut.Find("#model-endpoint").Closest("form")!;
+            var test = form.QuerySelectorAll("button").Single(item => item.TextContent.Contains("測試", StringComparison.Ordinal));
+            var save = form.QuerySelectorAll("button").Single(item => item.TextContent.Contains("儲存", StringComparison.Ordinal));
+            Assert.IsTrue(test.HasAttribute("disabled"));
+            Assert.IsTrue(save.HasAttribute("disabled"));
+        }
+        finally
+        {
+            release.TrySetResult(true);
+        }
+
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        page.World.Unchanged();
+    }
+
+    [TestMethod]
+    public async Task A_paused_probe_does_not_restore_names_after_the_address_changes()
+    {
+        await using var page = new PageSession(
+            new ModelDraft { Enabled = false, Placement = "local", Endpoint = DefaultAddress },
+            Models("llama3.2"));
+        Assert.IsTrue(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Handler.Pause(started, release);
+        var pending = Probe(page.Cut);
+        var signaled = await Task.WhenAny(started.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        try
+        {
+            Assert.AreSame(started.Task, signaled);
+            page.Cut.Find("#model-endpoint").Input("http://127.0.0.1:9/v1");
+        }
+        finally
+        {
+            release.TrySetResult(true);
+        }
+
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsFalse(page.Cut.FindAll("button").Any(button => button.TextContent == "llama3.2"));
+        page.World.Unchanged();
+    }
+
+    [TestMethod]
     public async Task Host_starts_with_the_fake_endpoint()
     {
         await using var host = new WorkbenchHost();
@@ -724,6 +826,14 @@ public class ModelEndpointTests
             await Remember(request, token);
             await Task.Delay(Timeout.Infinite, token);
             return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        public void Pause(TaskCompletionSource<bool> started, TaskCompletionSource<bool> release) => _steps.Enqueue(async (request, token) =>
+        {
+            await Remember(request, token);
+            started.TrySetResult(true);
+            await release.Task.WaitAsync(token);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Models("llama3.2")) };
         });
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

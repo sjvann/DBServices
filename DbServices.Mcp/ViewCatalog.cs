@@ -11,6 +11,7 @@ public sealed class ViewDocument
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Purpose { get; set; } = "";
+    public bool Confirmed { get; set; }
     public bool Published { get; set; }
     public List<string> Sources { get; set; } = [];
     public List<ViewLink> Links { get; set; } = [];
@@ -78,7 +79,7 @@ public sealed class ViewCatalog
     }
 
     public IReadOnlyList<ViewDocument> Published()
-        => List().Where(document => document.Published && !string.IsNullOrWhiteSpace(document.Name)).ToList();
+        => List().Where(document => document.Published && document.Confirmed && !string.IsNullOrWhiteSpace(document.Name)).ToList();
 
     public ViewDocument? Find(string id)
     {
@@ -94,7 +95,9 @@ public sealed class ViewCatalog
         lock (_gate)
         {
             var found = Load().FirstOrDefault(document =>
-                document.Published && string.Equals(document.Name, name, StringComparison.OrdinalIgnoreCase));
+                document.Published
+                && document.Confirmed
+                && string.Equals(document.Name, name, StringComparison.OrdinalIgnoreCase));
             return found is null ? null : Clone(found);
         }
     }
@@ -111,6 +114,15 @@ public sealed class ViewCatalog
 
             var copy = Clone(incoming);
             var index = documents.FindIndex(document => string.Equals(document.Id, copy.Id, StringComparison.Ordinal));
+            if (index >= 0 && PurposeChanged(documents[index], copy))
+            {
+                copy.Confirmed = false;
+                copy.Published = false;
+            }
+
+            if (!copy.Confirmed || string.IsNullOrWhiteSpace(copy.Purpose))
+                copy.Published = false;
+
             if (index < 0)
                 documents.Add(copy);
             else
@@ -155,6 +167,9 @@ public sealed class ViewCatalog
                 return ViewWriteResult.Fail("not_found", "找不到檢視。");
 
             var copy = Clone(documents[index]);
+            if (published && (string.IsNullOrWhiteSpace(copy.Purpose) || !copy.Confirmed))
+                return ViewWriteResult.Fail("unconfirmed", "解說尚未確認。");
+
             copy.Published = published;
             var check = Check(copy, documents);
             if (check is not null)
@@ -204,6 +219,9 @@ public sealed class ViewCatalog
 
         return null;
     }
+
+    private static bool PurposeChanged(ViewDocument stored, ViewDocument incoming)
+        => !string.Equals(stored.Purpose?.Trim() ?? "", incoming.Purpose?.Trim() ?? "", StringComparison.Ordinal);
 
     private static bool Connected(IReadOnlyList<string> sources, IReadOnlyList<ViewLink> links)
     {

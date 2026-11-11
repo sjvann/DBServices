@@ -724,6 +724,21 @@ public sealed class TableDispatchResult
     public static TableDispatchResult InvalidArguments()
         => Error("invalid_arguments", "未提供資料表名稱。");
 
+    public static TableDispatchResult UnacceptableArguments()
+        => Error("invalid_arguments", "參數無法接受。");
+
+    public static TableDispatchResult ToolDisabled()
+        => Error("tool_disabled", "這個工具已關閉。");
+
+    public static TableDispatchResult UnknownTool()
+        => Error("unknown_tool", "沒有這個工具。");
+
+    public static TableDispatchResult ConnectionRequired()
+        => Error("connection_required", "請指定連線。");
+
+    public static TableDispatchResult UnknownConnection()
+        => Error("unknown_connection", "找不到連線。");
+
     public static TableDispatchResult InvalidGetArguments()
         => Error("invalid_arguments", "未提供資料表名稱或整數 Id。");
 

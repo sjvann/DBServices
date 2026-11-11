@@ -110,7 +110,7 @@ else
                     }
                     else
                     {
-                        <p class="meta">選一張資料表，勾要看的欄。相關的表可以一起拖進來。下方會出現資料。</p>
+                        <p class="meta">選一張資料表，勾要看的欄。相關的表可以一起拖進來。預覽不讀取業務列。</p>
                     }
                 </div>
                 @if (_editing)
@@ -143,6 +143,7 @@ else
                     <input id="view-name" autocomplete="off" placeholder="@AutomaticName()" @bind="_name" @bind:event="oninput" />
                 </label>
                 <p class="hint">可以空白，會用資料表的名字。</p>
+                <label class="choice"><input type="checkbox" @bind="_confirmed" /> 解說已確認</label>
                 <div class="canvas @( _dragOver ? "drag-over" : null)"
                      @ondragenter="() => _dragOver = true"
                      @ondragleave="() => _dragOver = false"
@@ -286,7 +287,7 @@ else
                     <div role="status" aria-live="polite">
                         @if (_previewing)
                         {
-                            <p class="meta">正在取資料。</p>
+                            <p class="meta">正在準備預覽。</p>
                         }
                         else if (!string.IsNullOrEmpty(_previewNote))
                         {
@@ -295,7 +296,10 @@ else
                     </div>
                     @if (_previewColumns.Count == 0)
                     {
-                        <p class="empty">勾選欄位後，這裡會出現資料。篩選可以留白。</p>
+                        @if (string.IsNullOrEmpty(_previewNote) && !_previewing)
+                        {
+                            <p class="empty">勾選欄位後，這裡會顯示預覽說明。篩選可以留白。</p>
+                        }
                     }
                     else
                     {
@@ -334,6 +338,7 @@ else
     private bool _creating;
     private bool _busy;
     private bool _published;
+    private bool _confirmed;
     private bool _schemaBusy;
     private bool _previewing;
     private bool _dragOver;
@@ -419,6 +424,7 @@ else
         _editing = true;
         _creating = true;
         _published = false;
+        _confirmed = false;
         _id = "v-" + Guid.NewGuid().ToString("N")[..12];
         _name = "";
         _purpose = "";
@@ -447,6 +453,7 @@ else
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
         _published = document.Published;
+        _confirmed = document.Confirmed;
         _sources = (document.Sources ?? []).ToList();
         _links = (document.Links ?? []).Select(link => new ViewLinkDto
         {
@@ -827,6 +834,7 @@ else
             _previewColumns = [];
             _previewRows = [];
             _previewNote = "";
+            StateHasChanged();
             return;
         }
 
@@ -835,6 +843,7 @@ else
         _previewCts = cts;
         _previewing = true;
         _previewNote = "";
+        StateHasChanged();
         try
         {
             var document = Draft();
@@ -859,7 +868,10 @@ else
         finally
         {
             if (generation == _previewGeneration)
+            {
                 _previewing = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -952,6 +964,7 @@ else
             Id = _id.Trim(),
             Name = name,
             Purpose = string.IsNullOrWhiteSpace(_purpose) ? name : _purpose.Trim(),
+            Confirmed = _confirmed,
             Published = _published,
             Sources = _sources.ToList(),
             Links = _links.ToList(),
@@ -999,6 +1012,7 @@ else
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
         _published = document.Published;
+        _confirmed = document.Confirmed;
         _sources = (document.Sources ?? []).ToList();
         _links = (document.Links ?? []).ToList();
         _columns = (document.Columns ?? []).ToList();

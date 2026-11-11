@@ -22,7 +22,7 @@ public static class CallAudit
         ArgumentException.ThrowIfNullOrWhiteSpace(absolutePath);
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(connectionId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tool);
+        ArgumentNullException.ThrowIfNull(tool);
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(outcome);
 

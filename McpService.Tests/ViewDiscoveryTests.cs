@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using DbServices.Api.Shared;
+using DbServices.Mcp;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -59,7 +60,15 @@ public class ViewDiscoveryTests
             var tools = await ListToolsAsync(client);
             Assert.AreEqual(1, tools.Length);
             Assert.AreEqual("出貨", tools[0].GetProperty("name").GetString());
-            Assert.AreEqual("說明出貨", tools[0].GetProperty("description").GetString());
+            var description = tools[0].GetProperty("description").GetString() ?? "";
+            Assert.Contains("說明出貨", description);
+            Assert.Contains("products", description);
+            Assert.Contains("Name", description);
+            Assert.Contains("名稱", description);
+            Assert.IsFalse(description.Contains("SQL", StringComparison.OrdinalIgnoreCase), description);
+            Assert.IsFalse(description.Contains("表名", StringComparison.Ordinal), description);
+            var required = tools[0].GetProperty("inputSchema").GetProperty("required").EnumerateArray().Select(item => item.GetString()).ToArray();
+            Assert.IsFalse(required.Contains("connectionId", StringComparer.OrdinalIgnoreCase));
             var annotations = tools[0].GetProperty("annotations");
             Assert.IsTrue(annotations.GetProperty("readOnlyHint").GetBoolean());
             Assert.IsFalse(annotations.GetProperty("destructiveHint").GetBoolean());
@@ -159,7 +168,7 @@ public class ViewDiscoveryTests
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
             var saved = await SendAsync(client, HttpMethod.Put, "/views/join-1", "林可", "unit-catalog-key",
                 """
-                {"id":"join-1","name":"關聯","purpose":"訂單客戶","published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"}],"parameters":[{"name":"標題","column":"Title","source":"orders"}],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
+                {"id":"join-1","name":"關聯","purpose":"訂單客戶","confirmed":true,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"}],"parameters":[{"name":"標題","column":"Title","source":"orders"}],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
                 """);
             Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
             var published = await SendAsync(client, HttpMethod.Post, "/views/join-1/publish", "林可", "unit-catalog-key");
@@ -271,6 +280,613 @@ public class ViewDiscoveryTests
         }
     }
 
+    [TestMethod]
+    public async Task Closed_and_unknown_names_are_audited_without_a_query()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"view-closed-{Guid.NewGuid():N}.db");
+        var connectionString = "Data Source=" + dbPath;
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        var secret = "SecretMarkerDoNotLeak";
+        Directory.CreateDirectory(root);
+        try
+        {
+            Seed(connectionString);
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(factory);
+            var insert = await CallPayloadAsync(client,
+                "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"insert\",\"arguments\":{\"connectionString\":\"" + secret + "\"}}}");
+            AssertError(insert, "tool_disabled", "這個工具已關閉。");
+            Assert.IsFalse(insert.Body.Contains(secret, StringComparison.Ordinal), insert.Body);
+            Assert.IsFalse(insert.Body.Contains(connectionString, StringComparison.Ordinal), insert.Body);
+
+            var tables = await CallPayloadAsync(client,
+                "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"tables\",\"arguments\":{\"connectionId\":\"warehouse\"}}}");
+            AssertError(tables, "unknown_tool", "沒有這個工具。");
+
+            var audit = File.ReadAllText(Path.Combine(root, "audit", "mcp.jsonl"));
+            Assert.Contains("\"error\":\"tool_disabled\"", audit);
+            Assert.Contains("\"error\":\"unknown_tool\"", audit);
+            Assert.IsFalse(audit.Contains(secret, StringComparison.Ordinal), audit);
+            Assert.IsFalse(audit.Contains(connectionString, StringComparison.Ordinal), audit);
+            using var line = JsonDocument.Parse(audit.Split('\n', StringSplitOptions.RemoveEmptyEntries)[0]);
+            foreach (var field in new[] { "timestamp", "caller", "connectionId", "tool", "arguments", "rowCount", "value", "error" })
+                Assert.IsTrue(line.RootElement.TryGetProperty(field, out _), field);
+
+            var catalog = new ToolCatalog(new Dictionary<string, ConnectionSetting>
+            {
+                ["warehouse"] = new() { ServerType = "Sqlite", ConnectionString = connectionString },
+            });
+            var rows = TableDispatch.ExecuteQuery(catalog, "warehouse", "products", null);
+            Assert.Contains("one", rows.Json);
+            Assert.Contains("two", rows.Json);
+        }
+        finally
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                assembly.GetType("Microsoft.Data.Sqlite.SqliteConnection")?.GetMethod("ClearAllPools")?.Invoke(null, null);
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Connection_decision_follows_available_names()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"view-conn-{Guid.NewGuid():N}.db");
+        var connectionString = "Data Source=" + dbPath;
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Seed(connectionString);
+            await using var single = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(single);
+            var saved = await PutAsync(client, "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
+            var published = await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, published.Status, published.Body);
+
+            var omitted = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"出貨","arguments":{"名稱":"one"}}}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, omitted.Status, omitted.Body);
+            Assert.IsFalse(omitted.Rpc.GetProperty("result").GetProperty("isError").GetBoolean(), omitted.Body);
+            var omittedText = omitted.Rpc.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+            Assert.Contains("one", omittedText);
+
+            var missing = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"missing","名稱":"one"}}}
+                """);
+            AssertError(missing, "unknown_connection", "找不到連線。");
+        }
+        finally
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                assembly.GetType("Microsoft.Data.Sqlite.SqliteConnection")?.GetMethod("ClearAllPools")?.Invoke(null, null);
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+
+        var manyRoot = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(manyRoot);
+        try
+        {
+            await using var many = Factory(manyRoot,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Connections:other:ServerType", "Sqlite"),
+                new("Connections:other:ConnectionString", "Data Source=" + dbPath + "-other"),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(many);
+            Assert.AreEqual(HttpStatusCode.OK, (await PutAsync(client, "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+            var required = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"出貨","arguments":{"名稱":"one"}}}
+                """);
+            AssertError(required, "connection_required", "請指定連線。");
+        }
+        finally
+        {
+            if (Directory.Exists(manyRoot))
+                Directory.Delete(manyRoot, true);
+        }
+
+        var blankRoot = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(blankRoot);
+        try
+        {
+            await using var blank = Factory(blankRoot,
+            [
+                new("Connections:blank:ServerType", "Sqlite"),
+                new("Connections:blank:ConnectionString", "   "),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(blank);
+            Assert.AreEqual(HttpStatusCode.OK, (await PutAsync(client, "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+            var failed = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"blank","名稱":"one"}}}
+                """);
+            AssertError(failed, "connection_failed", "無法建立連線。");
+            var text = failed.Rpc.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+            Assert.IsFalse(text.Contains("\"rows\"", StringComparison.Ordinal), text);
+            var omitted = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"出貨","arguments":{"名稱":"one"}}}
+                """);
+            AssertError(omitted, "connection_required", "請指定連線。");
+        }
+        finally
+        {
+            if (Directory.Exists(blankRoot))
+                Directory.Delete(blankRoot, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Secret_arguments_are_rejected_without_echoing_the_value()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        var secret = "SecretMarkerDoNotLeak";
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", "Data Source=ignored.db"),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(factory);
+            Assert.AreEqual(HttpStatusCode.OK, (await PutAsync(client, "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+            var rejected = await CallPayloadAsync(client,
+                "{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"tools/call\",\"params\":{\"name\":\"出貨\",\"arguments\":{\"connectionId\":\"warehouse\",\"connectionString\":\"" + secret + "\",\"名稱\":\"one\"}}}");
+            AssertError(rejected, "invalid_arguments", "參數無法接受。");
+            Assert.IsFalse(rejected.Body.Contains(secret, StringComparison.Ordinal), rejected.Body);
+            var audit = File.ReadAllText(Path.Combine(root, "audit", "mcp.jsonl"));
+            Assert.IsFalse(audit.Contains(secret, StringComparison.Ordinal), audit);
+            Assert.Contains("\"error\":\"invalid_arguments\"", audit);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Publish_requires_a_confirmed_purpose_and_drops_it_when_the_purpose_changes()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var factory = Factory(root, [new("Workbench:CatalogKey", "unit-catalog-key")]);
+            using var client = Client(factory);
+            var unconfirmed = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":false,"published":false,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, unconfirmed.Status, unconfirmed.Body);
+            var refused = await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.BadRequest, refused.Status, refused.Body);
+            Assert.Contains("unconfirmed", refused.Body);
+            Assert.Contains("解說尚未確認。", refused.Body);
+            Assert.AreEqual(0, (await ListToolsAsync(client)).Length);
+
+            var blankPurpose = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"出貨","purpose":"   ","confirmed":true,"published":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, blankPurpose.Status, blankPurpose.Body);
+            using (var stored = JsonDocument.Parse(blankPurpose.Body))
+            {
+                Assert.IsFalse(stored.RootElement.GetProperty("published").GetBoolean());
+                Assert.IsFalse(stored.RootElement.GetProperty("confirmed").GetBoolean());
+            }
+            var stillRefused = await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.BadRequest, stillRefused.Status, stillRefused.Body);
+            Assert.AreEqual(0, (await ListToolsAsync(client)).Length);
+
+            var confirmed = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":true,"published":false,"sources":["products"],"links":[],"parameters":[{"name":"名稱","column":"Name","source":"products"}],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, confirmed.Status, confirmed.Body);
+            using (var cleared = JsonDocument.Parse(confirmed.Body))
+                Assert.IsFalse(cleared.RootElement.GetProperty("confirmed").GetBoolean());
+            var again = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":true,"published":false,"sources":["products"],"links":[],"parameters":[{"name":"名稱","column":"Name","source":"products"}],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            using (var kept = JsonDocument.Parse(again.Body))
+                Assert.IsTrue(kept.RootElement.GetProperty("confirmed").GetBoolean());
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+            var tools = await ListToolsAsync(client);
+            Assert.AreEqual(1, tools.Length);
+            Assert.AreEqual("出貨", tools[0].GetProperty("name").GetString());
+            var description = tools[0].GetProperty("description").GetString() ?? "";
+            Assert.Contains("說明出貨", description);
+            Assert.Contains("products", description);
+            Assert.Contains("Name", description);
+            Assert.IsFalse(description.Contains("SQL", StringComparison.OrdinalIgnoreCase), description);
+
+            var changed = await SendAsync(client, HttpMethod.Put, "/views/ship-1", "林可", "unit-catalog-key",
+                """
+                {"id":"ship-1","name":"出貨","purpose":"改過的說明","confirmed":true,"published":true,"sources":["products"],"links":[],"parameters":[{"name":"名稱","column":"Name","source":"products"}],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, changed.Status, changed.Body);
+            using (var stored = JsonDocument.Parse(changed.Body))
+            {
+                Assert.IsFalse(stored.RootElement.GetProperty("confirmed").GetBoolean());
+                Assert.IsFalse(stored.RootElement.GetProperty("published").GetBoolean());
+            }
+            Assert.AreEqual(0, (await ListToolsAsync(client)).Length);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task A_second_key_on_the_same_pair_drops_partial_matches()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"view-keys-{Guid.NewGuid():N}.db");
+        var connectionString = "Data Source=" + dbPath;
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, "Sqlite");
+            try
+            {
+                service!.ExecuteSQL("CREATE TABLE customers (Id INTEGER PRIMARY KEY, RegionId INTEGER NOT NULL, Name TEXT NOT NULL)");
+                service.ExecuteSQL("CREATE TABLE orders (Id INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL, RegionId INTEGER NOT NULL, Title TEXT NOT NULL)");
+                service.ExecuteSQL("INSERT INTO customers (Id, RegionId, Name) VALUES (1, 10, 'ada')");
+                service.ExecuteSQL("INSERT INTO customers (Id, RegionId, Name) VALUES (2, 99, 'zed')");
+                service.ExecuteSQL("INSERT INTO orders (Id, CustomerId, RegionId, Title) VALUES (1, 1, 10, 'both')");
+                service.ExecuteSQL("INSERT INTO orders (Id, CustomerId, RegionId, Title) VALUES (2, 1, 99, 'only-customer')");
+                service.ExecuteSQL("INSERT INTO orders (Id, CustomerId, RegionId, Title) VALUES (3, 2, 10, 'only-region')");
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(factory);
+            var saved = await SendAsync(client, HttpMethod.Put, "/views/keys-1", "林可", "unit-catalog-key",
+                """
+                {"id":"keys-1","name":"雙鍵","purpose":"兩條都要中","confirmed":true,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"},{"kind":"accepted","from":"orders","fromColumn":"RegionId","to":"customers","toColumn":"RegionId"}],"parameters":[],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/keys-1/publish", "林可", "unit-catalog-key")).Status);
+            var tools = await ListToolsAsync(client);
+            var description = tools[0].GetProperty("description").GetString() ?? "";
+            Assert.Contains("orders.CustomerId = customers.Id", description);
+            Assert.Contains("orders.RegionId = customers.RegionId", description);
+            Assert.Contains("Title", description);
+            Assert.IsFalse(description.Contains("SQL", StringComparison.OrdinalIgnoreCase), description);
+
+            var call = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"雙鍵","arguments":{"connectionId":"warehouse"}}}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+            var text = call.Rpc.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+            Assert.IsFalse(call.Rpc.GetProperty("result").GetProperty("isError").GetBoolean(), text);
+            using var payload = JsonDocument.Parse(text);
+            var rows = payload.RootElement.GetProperty("rows");
+            Assert.AreEqual(1, rows.GetArrayLength(), text);
+            Assert.AreEqual("both", rows[0][0].GetString());
+            Assert.AreEqual("ada", rows[0][1].GetString());
+            Assert.IsFalse(text.Contains("only-customer", StringComparison.Ordinal), text);
+            Assert.IsFalse(text.Contains("only-region", StringComparison.Ordinal), text);
+            Assert.IsFalse(text.Contains("zed", StringComparison.Ordinal), text);
+        }
+        finally
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                assembly.GetType("Microsoft.Data.Sqlite.SqliteConnection")?.GetMethod("ClearAllPools")?.Invoke(null, null);
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Schema_preview_does_not_read_business_rows()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"view-preview-{Guid.NewGuid():N}.db");
+        var connectionString = "Data Source=" + dbPath;
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Seed(connectionString);
+            var catalog = new ToolCatalog(new Dictionary<string, ConnectionSetting>
+            {
+                ["warehouse"] = new() { ServerType = "Sqlite", ConnectionString = connectionString },
+            });
+            var direct = SchemaGraph.Preview(catalog, "warehouse", new ViewDocument
+            {
+                Id = "ship-1",
+                Name = "出貨",
+                Purpose = "說明出貨",
+                Confirmed = true,
+                Sources = ["products"],
+                Columns = [new ViewColumn { Name = "Name", Source = "products" }],
+            }, null);
+            Assert.IsFalse(direct.Ok);
+            Assert.AreEqual("preview_unavailable", direct.Code);
+            Assert.AreEqual("不讀取業務列。", direct.Message);
+            Assert.AreEqual(0, direct.Rows.Count);
+
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = factory.CreateClient();
+            var preview = await SendAsync(client, HttpMethod.Post, "/schema/preview", "林可", "unit-catalog-key",
+                """
+                {"connectionId":"warehouse","view":{"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, preview.Status, preview.Body);
+            Assert.Contains("preview_unavailable", preview.Body);
+            Assert.Contains("不讀取業務列。", preview.Body);
+            Assert.IsFalse(preview.Body.Contains("\"rows\"", StringComparison.Ordinal), preview.Body);
+            Assert.IsFalse(preview.Body.Contains("one", StringComparison.Ordinal), preview.Body);
+
+            var graph = await SendAsync(client, HttpMethod.Get, "/schema/graph?connectionId=warehouse", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.OK, graph.Status, graph.Body);
+            Assert.Contains("\"tables\"", graph.Body);
+            Assert.Contains("products", graph.Body);
+            Assert.IsFalse(graph.Body.Contains("one", StringComparison.Ordinal), graph.Body);
+        }
+        finally
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                assembly.GetType("Microsoft.Data.Sqlite.SqliteConnection")?.GetMethod("ClearAllPools")?.Invoke(null, null);
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Configured_engines_keep_the_same_view_parameter_keys()
+    {
+        var expected = new[] { "connectionId", "名稱" };
+        await AssertViewParameterKeysAsync("Sqlite", "Data Source=ignored.db", expected);
+        var engines = new (string ServerType, string Variable)[]
+        {
+            ("SqlServer", "DBSERVICES_TEST_SQLSERVER"),
+            ("MySQL", "DBSERVICES_TEST_MYSQL"),
+            ("Oracle", "DBSERVICES_TEST_ORACLE"),
+            ("PostgreSQL", "DBSERVICES_TEST_POSTGRESQL"),
+        };
+        foreach (var (serverType, variable) in engines)
+        {
+            var connectionString = Environment.GetEnvironmentVariable(variable);
+            if (string.IsNullOrWhiteSpace(connectionString))
+                continue;
+            await AssertViewParameterKeysAsync(serverType, connectionString, expected);
+        }
+    }
+
+    private static async Task AssertViewParameterKeysAsync(string serverType, string connectionString, string[] expected)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", serverType),
+                new("Connections:warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(factory);
+            Assert.AreEqual(HttpStatusCode.OK, (await PutAsync(client, "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+            var tools = await ListToolsAsync(client);
+            var names = tools[0].GetProperty("inputSchema").GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray();
+            CollectionAssert.AreEquivalent(expected, names);
+            Assert.IsFalse(names.Contains("table", StringComparer.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Stored_unconfirmed_view_is_absent_from_tools_list()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "catalog"));
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "catalog", "views.json"),
+                """
+                [{"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":false,"published":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}]
+                """);
+            await using var factory = Factory(root, [new("Workbench:CatalogKey", "unit-catalog-key")]);
+            using var client = Client(factory);
+            Assert.AreEqual(0, (await ListToolsAsync(client)).Length);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Unconfirmed_saves_and_rejected_calls_stay_out_of_discovery()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-views-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await using var factory = Factory(root,
+            [
+                new("Connections:warehouse:ServerType", "Sqlite"),
+                new("Connections:warehouse:ConnectionString", "Data Source=ignored.db"),
+                new("Connections:other:ServerType", "Sqlite"),
+                new("Connections:other:ConnectionString", "Data Source=other.db"),
+                new("Connections:blank:ServerType", "Sqlite"),
+                new("Connections:blank:ConnectionString", "   "),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = Client(factory);
+
+            var blankPurpose = await SendAsync(client, HttpMethod.Put, "/views/blank-1", "林可", "unit-catalog-key",
+                """
+                {"id":"blank-1","name":"空白說明","purpose":"   ","confirmed":true,"published":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, blankPurpose.Status, blankPurpose.Body);
+            using (var stored = JsonDocument.Parse(blankPurpose.Body))
+            {
+                Assert.IsFalse(stored.RootElement.GetProperty("published").GetBoolean());
+                Assert.IsTrue(stored.RootElement.GetProperty("confirmed").GetBoolean());
+            }
+
+            var refused = await SendAsync(client, HttpMethod.Post, "/views/blank-1/publish", "林可", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.BadRequest, refused.Status, refused.Body);
+            Assert.Contains("unconfirmed", refused.Body);
+            Assert.Contains("解說尚未確認。", refused.Body);
+
+            var unconfirmed = await SendAsync(client, HttpMethod.Put, "/views/plain-1", "林可", "unit-catalog-key",
+                """
+                {"id":"plain-1","name":"未確認","purpose":"有說明","confirmed":false,"published":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, unconfirmed.Status, unconfirmed.Body);
+            using (var stored = JsonDocument.Parse(unconfirmed.Body))
+                Assert.IsFalse(stored.RootElement.GetProperty("published").GetBoolean());
+            Assert.IsFalse((await ListToolsAsync(client)).Any(tool => tool.GetProperty("name").GetString() == "未確認"));
+
+            Assert.AreEqual(HttpStatusCode.OK, (await PutAsync(client, "林可", "unit-catalog-key")).Status);
+            Assert.AreEqual(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, "/views/ship-1/publish", "林可", "unit-catalog-key")).Status);
+
+            var filtered = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"warehouse","名稱":"one","filters":{}}}}
+                """);
+            AssertError(filtered, "invalid_arguments", "參數無法接受。");
+            var filteredText = filtered.Rpc.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+            Assert.IsFalse(filteredText.Contains("\"rows\"", StringComparison.Ordinal), filteredText);
+
+            foreach (var name in new[] { "update", "delete", "sql" })
+            {
+                var closed = await CallPayloadAsync(client,
+                    "{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\",\"params\":{\"name\":\"" + name + "\",\"arguments\":{}}}");
+                AssertError(closed, "tool_disabled", "這個工具已關閉。");
+            }
+
+            var unknown = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"missing","名稱":"one"}}}
+                """);
+            AssertError(unknown, "unknown_connection", "找不到連線。");
+            var required = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"出貨","arguments":{"名稱":"one"}}}
+                """);
+            AssertError(required, "connection_required", "請指定連線。");
+            var failed = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"blank","名稱":"one"}}}
+                """);
+            AssertError(failed, "connection_failed", "無法建立連線。");
+
+            var missingParameter = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"出貨","arguments":{"connectionId":"warehouse"}}}
+                """);
+            AssertError(missingParameter, "invalid_arguments", "未提供資料表名稱。");
+
+            var emptyName = await CallPayloadAsync(client,
+                """
+                {"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"","arguments":{}}}
+                """);
+            AssertError(emptyName, "unknown_tool", "沒有這個工具。");
+
+            var audit = AuditRows(root);
+            foreach (var name in new[] { "update", "delete", "sql" })
+                Assert.IsTrue(audit.Any(row => row.Tool == name && row.Error == "tool_disabled"));
+            Assert.IsTrue(audit.Any(row => row.Error == "unknown_connection"));
+            Assert.IsTrue(audit.Any(row => row.Error == "connection_required"));
+            Assert.IsTrue(audit.Any(row => row.Error == "connection_failed"));
+            Assert.IsTrue(audit.Any(row => row.Tool == "出貨" && row.Error == "invalid_arguments"));
+            Assert.IsTrue(audit.Any(row => row.Tool == "" && row.Error == "unknown_tool"));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    private static List<(string Tool, string? Error)> AuditRows(string root)
+    {
+        var rows = new List<(string Tool, string? Error)>();
+        foreach (var line in File.ReadAllLines(Path.Combine(root, "audit", "mcp.jsonl")))
+        {
+            using var document = JsonDocument.Parse(line);
+            var error = document.RootElement.GetProperty("error");
+            rows.Add((
+                document.RootElement.GetProperty("tool").GetString() ?? "",
+                error.ValueKind == JsonValueKind.String ? error.GetString() : null));
+        }
+
+        return rows;
+    }
+
+    private static void AssertError((HttpStatusCode Status, string Body, JsonElement Rpc) call, string code, string message)
+    {
+        Assert.AreEqual(HttpStatusCode.OK, call.Status, call.Body);
+        var result = call.Rpc.GetProperty("result");
+        Assert.IsTrue(result.GetProperty("isError").GetBoolean(), call.Body);
+        using var payload = JsonDocument.Parse(result.GetProperty("content")[0].GetProperty("text").GetString() ?? "{}");
+        Assert.AreEqual(code, payload.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(message, payload.RootElement.GetProperty("message").GetString());
+    }
+
     private static void Seed(string connectionString)
     {
         var service = DbServiceFactory.Create(connectionString, "Sqlite");
@@ -284,6 +900,14 @@ public class ViewDiscoveryTests
         {
             (service as IDisposable)?.Dispose();
         }
+    }
+
+    private static HttpClient Client(WebApplicationFactory<Program> factory)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
+        return client;
     }
 
     private static WebApplicationFactory<Program> Factory(string root, IEnumerable<KeyValuePair<string, string?>> settings)
@@ -313,7 +937,7 @@ public class ViewDiscoveryTests
     {
         const string body =
             """
-            {"id":"ship-1","name":"出貨","purpose":"說明出貨","published":false,"sources":["products"],"links":[],"parameters":[{"name":"名稱","column":"Name","source":"products"}],"columns":[{"name":"Name","source":"products"}]}
+            {"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":true,"published":false,"sources":["products"],"links":[],"parameters":[{"name":"名稱","column":"Name","source":"products"}],"columns":[{"name":"Name","source":"products"}]}
             """;
         return await SendAsync(client, HttpMethod.Put, "/views/ship-1", caller, key, body);
     }
