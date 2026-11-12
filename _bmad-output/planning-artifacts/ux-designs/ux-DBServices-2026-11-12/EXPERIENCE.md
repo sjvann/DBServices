@@ -1,6 +1,6 @@
-﻿---
+---
 name: 資料來源註記
-status: draft
+status: final
 sources:
   - "{planning_artifacts}/prds/prd-DBServices-2026-11-12/prd.md"
   - "{planning_artifacts}/prds/prd-DBServices-2026-11-12/addendum.md"
@@ -146,8 +146,8 @@ updated: 2026-11-12
 
 - 介面語言是繁體中文。
 - 互動控制項沿用工作台最小高度 36px。
-- Tab 順序：左軌、package-bar 的動作由左至右、整包功能說明、表清單、欄註、關聯、差異、DBML。
-- 錯誤與確認結果使用 `role="alert"`。徽章「尚未註記」是文字，不只靠顏色。
+- Tab 順序：左軌、package-bar 的動作由左至右、整包功能說明、表清單、表註、欄註、關聯、差異、DBML。
+- 錯誤使用 `role="alert"`。確認成功使用 `role="status"`。徽章「尚未註記」是文字，不只靠顏色。
 - 差異列除了顏色，文字要寫「新增」「刪除」或「已改變」。
 - `prefers-reduced-motion: reduce` 時沿用工作台，取消 160ms 過渡。
 - 不新增只靠懸停才看得到的操作。

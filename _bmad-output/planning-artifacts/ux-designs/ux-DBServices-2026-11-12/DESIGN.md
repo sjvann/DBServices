@@ -1,7 +1,7 @@
-﻿---
+---
 name: 資料來源註記
 description: 報表工作台裡的資料治理入口。沿用 Workbench.Web 的 tokens.css，只為註記站補狀態，不另做品牌。
-status: draft
+status: final
 sources:
   - "{planning_artifacts}/prds/prd-DBServices-2026-11-12/prd.md"
   - "{planning_artifacts}/prds/prd-DBServices-2026-11-12/addendum.md"
@@ -150,7 +150,7 @@ components:
 
 ## Brand & Style
 
-資料來源註記是報表工作台裡的另一個入口，不是另一個產品。持有資料治理入口的人打開註記站，把 Excel 字典或資料庫結構補上表、欄、關聯與整包功能說明，確認後的 DBML 才進入設計目錄。
+資料來源註記是報表工作台裡的資料治理入口。持有這個入口的人打開註記站，把 Excel 字典或資料庫結構補上表、欄、關聯與整包功能說明，確認後的 DBML 才進入設計目錄。
 
 視覺身份就是工作台現有的 `Workbench.Web/wwwroot/tokens.css`。淺色表面、髮絲邊線、左軌 240px、繁體中文。這一輪不換品牌色，不加深色模式，也不為註記站做第二套字體。新增的只是狀態怎麼借用既有色：動作色代表正在使用與新增，危險色代表刪除與錯誤，警示色代表尚未註記與型別改變。
 
