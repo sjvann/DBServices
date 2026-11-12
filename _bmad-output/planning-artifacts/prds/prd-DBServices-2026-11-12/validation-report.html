@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>PRD Validation: DBServices 資料來源註記</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+    --grade-exc: #16a34a;
+    --grade-good: #65a30d;
+    --grade-fair: #d97706;
+    --grade-poor: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .grade-poor { background: var(--grade-poor); }
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding { padding: 14px 0; border-top: 1px solid var(--border); }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; }
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="report-header">
+      <div class="title">
+        <h1>DBServices 資料來源註記 — Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/prds/prd-DBServices-2026-11-12/prd.md</div>
+      </div>
+      <div class="grade grade-poor">Poor</div>
+    </header>
+
+    <div class="synthesis">
+      <p>論點與黃金路徑站得住：設計期目錄來自已確認的註記包，註記站不讀業務列，檢視文件的形狀維持不變。匯入對照、確認閘門、空目錄與反指標都寫成可測後果，足夠拆第一條註記到發布的故事。風險集中在兩處銜接：再次確認並取代舊包時，已保存檢視沒有產品後果；正文又把檢視與報表 PRD 的入口契約寫成不變，同時實質改寫該 PRD 的規劃期目錄。</p>
+      <p>對抗審查把第二處升高為定稿阻斷。十月 PRD 的 FR-4、UJ-1、第 12 與第 13 節仍要求規劃期目錄來自二代平台資料源，且這一讀不經過待轉資料庫。本文件用「已確認註記包」與「恰有一筆具名連線」回答開放問題 8，卻沒有寫明那筆連線是不是二代平台、Excel 確認包與活庫對不上時發布該怎麼失敗。這三項不拍板，架構與故事會同時拿到兩份相反契約。狀態維持 draft。</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card"><div class="dim-name">Decision-readiness</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Substance over theater</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Strategic coherence</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Done-ness clarity</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Scope honesty</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Downstream usability</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+    </div>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Decision-readiness</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>多數選擇寫成決定，而且寫出放棄了什麼。尚未能拍板的是「已確認包被換掉之後，既有檢視算什麼」。第 10 節只保護確認失敗，沒有定義哪些情況算失敗，也沒有寫確認成功時檢視是否仍有效。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">取代已確認包時，既有檢視沒有後果</h3><span class="finding-location">§8、UJ-4、FR-5、FR-6</span></header>
+            <div class="finding-note">新確認可取代先前啟用的包，提示內容與舊包去留都沒寫。被樣式引用而不能改欄的檢視，是否阻擋這次確認，沒有句子。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 拒絕且舊包與檢視保持原樣，或允許並讓受影響檢視進入寫明的不可用狀態。同時寫明舊包是停用還是刪除。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">「所有設計階段」與只改模組設計工具互相越界</h3><span class="finding-location">文首、§1、FR-5、FR-7</span></header>
+            <div class="finding-note">文首讓確認後的 DBML 成為後續所有設計階段的依據。FR-7 與第 7 節把直接讀者收成模組設計工具。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 模組設計工具直接讀已確認註記包；樣式範本與 Chat 仍只消費已發布檢視。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Substance over theater</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>第 1 節的賭注是這份產品自己的：設計期目錄來自已確認註記，註記站不讀業務列。人物只有方晴與林可。NFR 與成功指標都是這條邊界的驗收，不是活躍度裝飾。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Strategic coherence</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>功能沿同一條弧排：入口、兩種讀入、四層語意與確認、設計目錄只讀已確認包、來源變更時舊目錄維持到再次確認。反指標擋住自由 SQL、寫回來源庫、合併畫面。</p></div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Done-ness clarity</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>FR-1、FR-2、FR-4、FR-8 與 FR-7 的空目錄，工程師知道怎樣算做完。卡住的是確認門檻、再讀的身分，以及設計清單含哪些旗標。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">確認不要求任何註記內容</h3><span class="finding-location">§1、FR-4、FR-5、SM-3</span></header>
+            <div class="finding-note">空白結構可以滿足 SM-3。零張表的已確認包不是「資料來源尚未註記」那種空狀態。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 寫明確認門檻。若語意是完成定義，整包功能說明必填，空白欄註必須能被設計清單辨認。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">再讀只說同名保留</h3><span class="finding-location">FR-6、UJ-4、FR-2</span></header>
+            <div class="finding-note">沒有比對鍵，也沒有寫 Excel 再匯入算不算同一次再讀。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 比對鍵是實體表名加欄名。改名視為刪除後新增。兩種來源使用同一條規則。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">主鍵、可空與索引沒有設計清單去向</h3><span class="finding-location">FR-3、FR-7、addendum</span></header>
+            <div class="finding-note">FR-3 帶出主鍵與外鍵。FR-7 的清單是表、欄、型別、註解與已聲明關聯。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 用同一句話寫明設計清單包含或不包含主鍵、可空、索引。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">「組態完整」對不上既有規則</h3><span class="finding-location">FR-3、UJ-2</span></header>
+            <div class="finding-note">十月 PRD 寫的是「恰有一筆具名連線」，沒有「組態完整」。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 給出可判條件，或改回既有用詞。零筆與多筆都維持不讀取。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Scope honesty</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>第 5 節的排除是真的排除。假設索引把已決定事項收進推論，讀者若只信第 9 節，會把主決定當成尚未確認。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">假設索引把主決定收進推論</h3><span class="finding-location">§9</span></header>
+            <div class="finding-note">正文實際標成假設的只有入口指派、代碼 governance、一次只啟用一份。第 9 節另外列入四項已決定事項。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 第 9 節只索引正文中的假設。已決定事項改列出來。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Downstream usability</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>編號連續，四條旅程都有具名主角。會分叉的抽取點是分析師自訂關聯，以及全篇在用、詞彙卻沒有的「註記站」。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">只抽 UJ-3 會漏掉分析師自訂關聯</h3><span class="finding-location">UJ-3、FR-7</span></header>
+            <div class="finding-note">UJ-3 演的是選已聲明關聯。FR-7 另允許分析師寫明並接受、仍落在包內的關聯。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 二擇一。演一次自寫關聯並寫明代價，或 v1 只能選已聲明關聯。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Shape fit</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment"><p>形狀適合這份交接。對不齊的是它與仍有效的十月 PRD 之間的契約句，以及附錄把 ViewDocument 欄位清單寫成完整集合。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">「契約維持不變」與實際改寫的舊條文並列</h3><span class="finding-location">文首、§4.4、FR-8</span></header>
+            <div class="finding-note">十月 FR-4 仍要求規劃期看到二代平台資料源。本文件 FR-7 把目錄改成已確認註記包。兩份會同時被拿去拆故事。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 點名被取代的句子。保留檢視文件形狀，以及發布、樣式、Chat、報表生成紀錄。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">ViewDocument 清單漏了 Confirmed</h3><span class="finding-location">addendum</span></header>
+            <div class="finding-note">附錄把欄位清單寫成完整集合，現況另有 Confirmed。清單若被當成完整集合，架構會把它當成可刪欄位。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 補上 Confirmed，並寫明本 PRD 不改變它的既有意義。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="reviewer-section">
+      <details open>
+        <summary>
+          <h2>Adversarial review</h2>
+          <span class="reviewer-source">review-adversarial.md</span>
+        </summary>
+        <div class="dim-body"><div class="dim-judgment"><p>這份草稿不能交給架構或拆故事。文首同時寫契約不變與目錄改讀註記包。開放問題 8 問的是二代平台的讀取通道，不是准許用一份可以完全不連資料庫的 Excel 註記包把來源換掉。資料平面「不讀業務列、連線字串留在伺服器」這兩條，本文件有寫死。</p></div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">定稿 FR-4 仍是相反契約</h3><span class="finding-location">文首、十月 FR-4、§12、§13</span></header>
+            <div class="finding-note">新文件宣布舊文繼續有效，又改掉模組設計工具的目錄。十月 FR-4、UJ-1、第 13 節仍要求規劃期目錄來自二代平台資料源，且不經過待轉資料庫。沒有一句寫明哪些句子失效。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 寫作廢清單。保留檢視文件形狀與發布、樣式、Chat、報表生成紀錄。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">具名連線回答的不是開放問題 8</h3><span class="finding-location">FR-3、§7 接點 4</span></header>
+            <div class="finding-note">已確認註記包是人確認過的產物，不是二代平台的讀取通道。FR-3 從未寫那筆連線是二代平台，也從未寫它不是待轉庫。禁止 GET /meta 仍可能從同一座待轉庫讀結構。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 寫明讀的是二代平台資料源。不是這座來源就拒絕，讀列次數為 0。指不到就把 FR-3 移出本輪。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">Excel 可以確認出與活庫無關的包</h3><span class="finding-location">FR-2、FR-5、UJ-3、SM-1</span></header>
+            <div class="finding-note">確認不要求表名存在於任何資料庫。發布沿用舊規則，不檢查來源表。樣品同時有實體表名、來源檔名與 H 側欄名，文件沒有選哪一個進入檢視。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 檢視使用實體表名與實體欄名，且必須存在於執行期連線。對不上則拒絕發布。Excel 可做草稿。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">新確認取代舊包時，已定義檢視的去留是沉默的</h3><span class="finding-location">§8 第 2 點、UJ-4</span></header>
+            <div class="finding-note">成功取代沒有對應句子。已發布檢視依舊 PRD 不能取消發布，目錄卻可以不再列出它們的表。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 會使已保存檢視的來源落到包外時，拒絕確認，並列出檢視名稱。舊包與檢視維持原樣。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">「同名」不是可實作的身份鍵</h3><span class="finding-location">FR-6</span></header>
+            <div class="finding-note">沒有比較鍵、大小寫、改名行為。差異清單沒有可空、主鍵、外鍵、索引與註解原文。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 比對鍵是去除首尾空白後、區分大小寫的實體表名加實體欄名。改名就是刪除加新增。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">已聲明關聯被降成可選建議</h3><span class="finding-location">FR-7</span></header>
+            <div class="finding-note">分析師仍可另寫一條兩端都在包內的關聯。下一個人看到的已聲明關聯可以與已發布檢視實際使用的關聯不同。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 兩張以上來源表時，每一段關聯必須等於某一條已聲明關聯。分析師不可另造。</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-high">high</span><h3 class="finding-title">確認沒有可失敗的完成條件</h3><span class="finding-location">FR-5</span></header>
+            <div class="finding-note">空的整包說明、零張表、空白欄註都可以確認。故事可以做成一顆把 draft 改成 confirmed 的按鈕。</div>
+            <div class="finding-fix"><strong>Fix:</strong> 確認必須有非空白的整包功能說明、至少一張表、每個欄有註解。不滿足則維持草稿。</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li>本文件 FR、UJ、SM 編號連續無重號。本文件 FR-7 與十月 PRD 的 FR-7 是不同條文。</li>
+        <li>假設索引沒有往返對齊。正文假設只有三處，第 9 節多收了四項已決定事項。</li>
+        <li>詞彙未收「註記站」。UJ-1 用「整包功能說明」，UJ-2 用「整包說明」。</li>
+        <li>四條 UJ 都有具名主角。記憶紀錄的決定都已進入 PRD 或附錄。</li>
+        <li>樣品對照有 6 個會讓 SM-1 對不上的映射缺口，見 reconcile-samples.md。</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-11-12T09:10:00+08:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
