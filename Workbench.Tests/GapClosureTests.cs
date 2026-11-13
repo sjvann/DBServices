@@ -125,7 +125,13 @@ public class GapClosureTests
         Assert.AreEqual(2, lines.Length);
         Assert.AreEqual("找不到操作者。", lines[0].TextContent.Trim());
         Assert.AreEqual("forbidden", lines[1].TextContent.Trim());
+        Assert.IsTrue(lines[1].ClassList.Contains("code"));
         Assert.IsTrue(alert.InnerHtml.IndexOf("找不到操作者。", StringComparison.Ordinal) < alert.InnerHtml.IndexOf("forbidden", StringComparison.Ordinal));
+
+        await cut.Find("select").ChangeAsync(new ChangeEventArgs { Value = "lin" });
+        Assert.AreEqual(0, cut.FindAll(".status-message").Count);
+        Assert.IsTrue(Checked(cut, "終端使用者"));
+        await cut.Find("select").ChangeAsync(new ChangeEventArgs { Value = "fang" });
         Assert.IsFalse(cut.Markup.Contains("Data Source=", StringComparison.Ordinal));
         Assert.IsFalse(cut.Markup.Contains("Password=", StringComparison.Ordinal));
         Assert.IsFalse(cut.Markup.Contains("StackTrace", StringComparison.Ordinal));

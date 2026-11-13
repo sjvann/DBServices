@@ -2,7 +2,7 @@
 title: 'Story 1.1 指派資料治理入口並打開註記站'
 type: 'feature'
 created: '2026-11-13'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '93352be80f80f8c6afc61ba4f6b3bfb263892197'
 review_loop_iteration: 0
@@ -74,12 +74,28 @@ context:
 ## Implementation Notes
 
 - 左軌在同一份 `WorkbenchLayout` 裡換頁時不會重跑初始化，所以訂閱 `LocationChanged` 後重算目前的站。環境設定那段文案沒改。
-- 換工作卡片的說明句是「為資料來源補上註記。」標題與身份都是「資料治理」。
+- 換工作卡片的標題與身份是「資料治理」。說明留空，避免把還沒有的註記能力寫成已經能補。
 - `dotnet test Workbench.Tests/Workbench.Tests.csproj --filter FullyQualifiedName~Governance_entry`：通過 5、失敗 0、略過 0。
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+- false — `Entries.razor` 的 `LoadSelection` 已把 `_error` 清成 null。改選另一位操作者後，畫面上沒有上一筆「找不到操作者。」。
+- false — 代碼行已是 `class="code"`，沿用 `.code` 的等寬。指派失敗都帶 `forbidden` 或其他既有代碼，不會畫出空白的第二行。
+- false — 未持有者打開 `/governance`，規格要「沒有權限。」且左軌沒有「註記」。只持一個入口又不是管理員時，左軌本來就沒有別的工作連結，登出仍在。
+- carried defer — 環境未就緒時，換工作沿用既有 `SetupRequired`，不會列出任何入口。這一輪不改 `/environment`。deferred-work 已有這一筆，不再記一次。
+- false — `class="page"` 與檢視、樣式、帳號同一層。920px 是工作台內容寬。這份故事沒有要求註記站另做全寬。
+- low — Avalonia 登入後會把入口名稱與落點寫上既有文字塊。規格寫不改 Avalonia，diff 也沒改那個專案。加檔案鎖定或改殼都不是直接修正，拒絕。
+- carried false — 取消持有後再開，`OnInitialized` 依 `Has` 顯示「沒有權限。」人留在頁上不重讀，是既有站點的做法。
+- carried low — `LocationChanged` 在版面卸載後仍可能跑 `StateHasChanged`。站內換頁不會卸載版面。使用者平常碰不到，拒絕，不再加旗標。
+- carried false — 追蹤仍是 `in-progress`。審查進行中就是這個狀態，收尾才改成 `review`。
+- false — 保存失敗是 `FindById` 回 null。產品沒有刪除操作者；下拉名單仍是初始化讀到的那一份，人還在名單裡。
+- carried defer — `Assign` 丟出例外時，勾選不會還原，也沒有兩行錯誤。規格要沿用回傳的錯誤，不新造代碼。deferred-work 已有這一筆，不再記一次。
+- carried low — 網址大小寫不是 `governance` 時，左軌不畫「註記」。連結都是小寫，其他站也是完全比對。平常碰不到，拒絕。
+- low — 測試用標籤文字 `Contains` 找核取方塊。顯示名稱若含「資料治理」會打錯標籤。現有人名碰不到，改選取會多加分支，拒絕。
+- carried low — 驗證缺口：說明句「為資料來源補上註記。」沒被斷言釘住，而且把空站說成已經能補註記。說明已改成空字串。不另加斷言去鎖住被拿掉的那句。
+- carried medium — 驗證缺口：測試直接渲染元件，刪掉 `@page "/governance"` 仍會通過，使用者會看到「找不到這個表面。」既有列的處置是補路由測試；程式仍是直接渲染。carried，這輪不再補。
 
 ## Verification
 

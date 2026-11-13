@@ -19,3 +19,9 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
   summary: 探測用的 HttpClient 是否真的套用 8 秒逾時，目前只斷言了公開常數。
   evidence: 把 Timeout 改成無限時，現有測試仍通過。要觀察私有 client 就得為測試露出它。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-1-指派資料治理入口並打開註記站.md`
+  summary: 環境未就緒時，換工作不會列出資料治理。
+  evidence: `Stations` 在快照未就緒時直接顯示既有的環境設定提示並返回，這是這一輪明確不改的 `/environment` 閘門。直接打開 `/governance` 不受這道閘影響。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-1-指派資料治理入口並打開註記站.md`
+  summary: 指派若丟出例外，勾選不會回到保存前，也沒有兩行錯誤。
+  evidence: 畫面只處理回傳的 `ErrorDto`。例外沒有既有代碼；規格不准新造代碼。其他站的保存也沒有把儲存例外收成畫面錯誤。

@@ -15,7 +15,7 @@ else
     {
         <div class="status-message" role="alert">
             <span>@_error.Message</span>
-            <span>@_error.Code</span>
+            <span class="code">@_error.Code</span>
         </div>
     }
     <label>操作者
@@ -68,6 +68,7 @@ else
         var match = _operators.FirstOrDefault(item => item.Id == _operatorId);
         _committed = new HashSet<string>(match?.Entries ?? [], StringComparer.Ordinal);
         _selected = new HashSet<string>(_committed, StringComparer.Ordinal);
+        _error = null;
     }
 
     private void Toggle(string entry, ChangeEventArgs args)
