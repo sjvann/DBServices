@@ -123,6 +123,79 @@ public class ReportWorkbenchTests
     }
 
     [TestMethod]
+    public async Task Governance_entry_assigns_cancels_lands_and_rejects_without_adding_people()
+    {
+        await using var host = new WorkbenchHost();
+        var admin = await host.LoginAsync();
+        const string secret = "fang-secret";
+        var created = await CreateAsync(admin, "方晴", secret);
+        var people = CountOperators(host.SqlitePath);
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+
+        var assigned = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Governance],
+        });
+        Assert.AreEqual(200, assigned.Status, assigned.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Governance }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+        AssertNoSecrets(assigned.Text, secret, Password, "Data Source=", "Password=");
+        Assert.AreEqual(0, host.Caller.Count);
+
+        var only = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/governance", only.Me.Destination);
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Governance }, only.Me.Entries.ToArray());
+        Assert.IsFalse(only.Me.IsAdmin);
+
+        var both = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst, EntryNames.Governance],
+        });
+        Assert.AreEqual(200, both.Status, both.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        CollectionAssert.AreEquivalent(
+            new[] { EntryNames.Analyst, EntryNames.Governance },
+            ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+
+        var switched = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/stations", switched.Me.Destination);
+        Assert.AreEqual(2, switched.Me.Entries.Count);
+
+        var cancelled = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst],
+        });
+        Assert.AreEqual(200, cancelled.Status, cancelled.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+
+        var analyst = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/views", analyst.Me.Destination);
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, analyst.Me.Entries.ToArray());
+        Assert.IsFalse(analyst.Me.Entries.Contains(EntryNames.Governance));
+
+        var rejected = await analyst.RawAsync(HttpMethod.Put, "api/operators/" + analyst.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst, EntryNames.Governance],
+        });
+        Assert.AreEqual(403, rejected.Status);
+        Assert.Contains("forbidden", rejected.Text);
+        Assert.Contains("沒有權限。", rejected.Text);
+        AssertNoSecrets(rejected.Text, secret, Password, "Data Source=", "Password=");
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+
+        var hidden = await analyst.RawAsync(HttpMethod.Get, "api/operators");
+        Assert.AreEqual(403, hidden.Status);
+        Assert.Contains("沒有權限。", hidden.Text);
+        Assert.AreEqual(0, host.Caller.Count);
+        Assert.AreEqual(0, CountStyles(host.SqlitePath));
+        Assert.AreEqual(0, CountRecords(host.SqlitePath));
+    }
+
+    [TestMethod]
     public async Task Second_admin_is_rejected_and_data_stays()
     {
         await using var host = new WorkbenchHost();
@@ -704,6 +777,19 @@ public class ReportWorkbenchTests
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT password_verifier FROM operators";
         return (string)command.ExecuteScalar()!;
+    }
+
+    private static List<string> ReadEntries(string path, string operatorId)
+    {
+        using var connection = Open(path);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT entry FROM entries WHERE operator_id = $id ORDER BY entry";
+        command.Parameters.AddWithValue("$id", operatorId);
+        using var reader = command.ExecuteReader();
+        var list = new List<string>();
+        while (reader.Read())
+            list.Add(reader.GetString(0));
+        return list;
     }
 
     private static int CountOperators(string path)

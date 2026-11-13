@@ -5,14 +5,16 @@ public static class EntryNames
     public const string Analyst = "analyst";
     public const string Designer = "designer";
     public const string Terminal = "terminal";
+    public const string Governance = "governance";
 
-    public static readonly string[] All = [Analyst, Designer, Terminal];
+    public static readonly string[] All = [Analyst, Designer, Terminal, Governance];
 
     public static string Label(string entry) => entry switch
     {
         Analyst => "系統分析師",
         Designer => "設計師",
         Terminal => "終端使用者",
+        Governance => "資料治理",
         _ => entry,
     };
 
@@ -21,6 +23,7 @@ public static class EntryNames
         Analyst => "/views",
         Designer => "/styles",
         Terminal => "/talk",
+        Governance => "/governance",
         _ => "/stations",
     };
 }

@@ -13,7 +13,10 @@ else
 {
     @if (_error is not null)
     {
-        <div class="error" role="alert"><span>@_error.Message</span></div>
+        <div class="status-message" role="alert">
+            <span>@_error.Message</span>
+            <span>@_error.Code</span>
+        </div>
     }
     <label>操作者
         <select @bind="_operatorId" @bind:after="LoadSelection">
@@ -42,6 +45,7 @@ else
     private ErrorDto? _error;
     private string _operatorId = "";
     private IReadOnlyList<OperatorDto> _operators = [];
+    private HashSet<string> _committed = new(StringComparer.Ordinal);
     private HashSet<string> _selected = new(StringComparer.Ordinal);
 
     protected override void OnInitialized()
@@ -62,7 +66,8 @@ else
     private void LoadSelection()
     {
         var match = _operators.FirstOrDefault(item => item.Id == _operatorId);
-        _selected = new HashSet<string>(match?.Entries ?? [], StringComparer.Ordinal);
+        _committed = new HashSet<string>(match?.Entries ?? [], StringComparer.Ordinal);
+        _selected = new HashSet<string>(_committed, StringComparer.Ordinal);
     }
 
     private void Toggle(string entry, ChangeEventArgs args)
@@ -77,6 +82,19 @@ else
     {
         var profile = Gate.Current!;
         var result = Accounts.Assign(profile.Id, _operatorId, _selected.ToList());
-        _error = result.Error;
+        if (!result.Ok)
+        {
+            _selected = new HashSet<string>(_committed, StringComparer.Ordinal);
+            _error = result.Error;
+            return;
+        }
+
+        var saved = result.Value!.Entries;
+        var match = _operators.FirstOrDefault(item => item.Id == _operatorId);
+        if (match is not null)
+            match.Entries = saved.ToList();
+        _committed = new HashSet<string>(saved, StringComparer.Ordinal);
+        _selected = new HashSet<string>(_committed, StringComparer.Ordinal);
+        _error = null;
     }
 }

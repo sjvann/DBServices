@@ -1,0 +1,24 @@
+@page "/governance"
+@inject OperatorGate Gate
+@layout WorkbenchLayout
+
+<div class="page">
+@if (_denied)
+{
+    <p role="alert">沒有權限。</p>
+}
+else
+{
+    <h1>註記</h1>
+}
+</div>
+
+@code {
+    private bool _denied;
+
+    protected override void OnInitialized()
+    {
+        var profile = Gate.Current;
+        _denied = profile is null || !profile.Has(EntryNames.Governance);
+    }
+}

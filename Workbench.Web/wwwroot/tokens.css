@@ -182,7 +182,8 @@ button:disabled, .confirm:disabled {
   filter: none;
 }
 .reason { font-size: var(--body); color: var(--ink-primary); margin: var(--space-2) 0 0; }
-.error {
+.error,
+.status-message {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);

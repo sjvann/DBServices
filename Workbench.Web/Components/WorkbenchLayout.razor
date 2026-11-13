@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject CircuitSession Session
 @inject OperatorGate Gate
 @inject OperatorService Operators
@@ -33,6 +34,11 @@
                 <p class="meta">現在的工作</p>
                 <NavLink href="/talk">產生報表</NavLink>
                 <NavLink href="/records">生成紀錄</NavLink>
+            }
+            else if (_station == EntryNames.Governance && _me.Entries.Contains(EntryNames.Governance))
+            {
+                <p class="meta">現在的工作</p>
+                <NavLink href="/governance" ActiveClass="active rail-link-active">註記</NavLink>
             }
             else if (_page == "stations")
             {
@@ -87,8 +93,14 @@
         }
 
         Persistent.RegisterOnPersisting(PersistSession);
+        Nav.LocationChanged += OnLocationChanged;
         await RefreshAsync();
     }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+        => _ = InvokeAsync(RefreshAsync);
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 
     private Task PersistSession()
     {
@@ -108,6 +120,7 @@
             "views" => EntryNames.Analyst,
             "styles" => EntryNames.Designer,
             "talk" or "records" => EntryNames.Terminal,
+            "governance" => EntryNames.Governance,
             _ => null,
         };
         await InvokeAsync(StateHasChanged);
