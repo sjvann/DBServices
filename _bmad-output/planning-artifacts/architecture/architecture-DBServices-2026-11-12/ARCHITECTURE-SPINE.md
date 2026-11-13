@@ -7,7 +7,7 @@ paradigm: hexagonal
 scope: 註記站與已確認註記包。綁定 prd-DBServices-2026-11-12 的 FR-1 至 FR-8。十月檢視與報表 PRD 的同名 FR 編號不在此列。
 status: draft
 created: 2026-11-12
-updated: 2026-11-12
+updated: 2026-11-13
 binds:
   - prd-2026-11-12:FR-1
   - prd-2026-11-12:FR-2
@@ -30,7 +30,7 @@ companions: []
 
 # Architecture Spine — DBServices 資料來源註記
 
-本文件的 AD 編號只屬於資料來源註記。父層編號只出現在繼承表。標成 `[ASSUMPTION]` 的規則在被接受前，不作為實作授權。
+本文件的 AD 編號只屬於資料來源註記。父層編號只出現在繼承表。下列規則都是實作授權。
 
 ## Design Paradigm
 
@@ -56,7 +56,7 @@ flowchart LR
 | Inherited | From parent | Binds here |
 | --- | --- | --- |
 | 10-11 AD-1 | architecture-DBServices-2026-10-11 | 不修改 `IDbService`、Core、Provider、既有 REST 與 GraphQL |
-| 10-11 AD-2 | architecture-DBServices-2026-10-11 | Discovery 只列已發布檢視。本文件 AD-4 若被接受，只增加保留名 `source_annotation` |
+| 10-11 AD-2 | architecture-DBServices-2026-10-11 | Discovery 仍以已發布檢視為準。已接受的唯一例外是本文件 AD-4 的保留名 `source_annotation` |
 | 10-11 AD-4 | architecture-DBServices-2026-10-11 | `Connections` 的值仍只有 `ServerType` 與 `ConnectionString`。工作台進程不載入連線字串 |
 | 10-11 AD-6 | architecture-DBServices-2026-10-11 | 呼叫者標頭仍是 `X-DBServices-Caller`。註記包的目錄 HTTP 沿用它 |
 | 10-11 AD-7 | architecture-DBServices-2026-10-11 | MCP 工具錯誤的封閉清單不改寫。註記站畫面錯誤用本文件 AD-3，不從 AD-7 挑代碼來表示匯入或確認 |
@@ -67,19 +67,19 @@ flowchart LR
 
 ## Invariants & Rules
 
-### AD-1 — 註記包單一目錄 [ASSUMPTION]
+### AD-1 — 註記包單一目錄 [ADOPTED]
 
 - **Binds:** prd-2026-11-12:FR-2、FR-4、FR-5、FR-6
 - **Prevents:** 工作台 SQLite 與 `DbServices.Mcp` 各存一份註記包，或 Excel 再匯入與資料庫再讀各寫一套合併
 - **Rule:** 持久化檔在 `McpService` 內容根，組態鍵 `Catalog:AnnotationsPath`，預設 `catalog/annotations.json`。只由 `DbServices.Mcp` 的一個目錄型別寫入。文件鍵是 `id`、`title`、`purpose`、`status`、`active`、`tables`、`links`、`dbml`。`status` 只許 `draft` 或 `confirmed`。`draft` 的 `active` 是 false。`confirmed` 且 `active` 為 true 的文件同時最多一份。被取代的包留在檔內，`status` 仍是 `confirmed`，`active` 改為 false。工作中草稿同時最多一份。從啟用包開始編輯是另寫一份 `draft`，不改該筆 `confirmed`。放棄草稿只刪該筆 `draft`。檔內沒有 `connectionString` 與 `rows`。Excel 活頁簿只在 `Workbench.Core` 剖析成來源形狀，再交給這個目錄。再讀合併只在這個目錄：比對鍵是實體表名加實體欄名，去掉首尾空白後以區分大小寫的序數比較；同鍵的人寫註記保留；來源沒有的鍵不把註記搬到新名。DBML 文字只由這個目錄從結構化內容產生。確認時在同一目錄重算 `dbml`。設計端與匯出下載都不讀確認前另存的檔案。匯出檔名是 `title` 加 `.dbml`；`title` 不得含 `\ / : * ? " < > |`。此檔的備份是營運者複製該目錄檔，進程不另做複本。
 
-### AD-2 — 二代平台連線 [ASSUMPTION]
+### AD-2 — 二代平台連線 [ADOPTED]
 
 - **Binds:** prd-2026-11-12:FR-3、FR-5、FR-6
 - **Prevents:** 在 `Connections` 的值裡加角色欄，或由瀏覽器傳入 `connectionId` 來決定讀哪一座庫
 - **Rule:** `McpService` 組態鍵 `Annotation:PlatformConnection` 的值是連線名稱。`Connections` 的值仍只有 `ServerType` 與 `ConnectionString`。組態完整沿用父層：`ServerType` 是 `Sqlite`、`SqlServer`、`MySQL`、`Oracle`、`PostgreSQL` 之一，且 `ConnectionString` 非空白。名稱比對不區分大小寫。讀結構與確認對帳只在組態完整的連線恰有一筆，且該名稱等於 `Annotation:PlatformConnection` 時發生。零筆、多於一筆，或那一筆名稱不等，都不呼叫 `SchemaGraph.Read`。讀結構的路由忽略請求裡的 `connectionId`。實作路徑是既有 `SchemaGraph.Read`。不呼叫 `SchemaGraph.Preview`，不呼叫待轉庫的 `GET /meta`，不執行會返回業務列的查詢。表清單為空仍是成功，並可寫成草稿。`Workbench.Web` 不呼叫既有 `GET /schema/graph` 來組註記或設計清單。
 
-### AD-3 — 註記站錯誤碼 [ASSUMPTION]
+### AD-3 — 註記站錯誤碼 [ADOPTED]
 
 - **Binds:** prd-2026-11-12:FR-1 至 FR-8 的註記站與設計站拒絕
 - **Prevents:** 各故事自訂代碼字面，或把 10-11 AD-7 的工具代碼拿來表示匯入與確認
@@ -100,11 +100,11 @@ flowchart LR
 
 `connection_unselectable` 的訊息就是表上那一句，不另接連線名稱。名稱以頓號接在 `confirm_unmatched` 與 `confirm_blocked` 的冒號之後。
 
-### AD-4 — 啟用包的引用表面 [ASSUMPTION]
+### AD-4 — 啟用包的引用表面 [ADOPTED]
 
 - **Binds:** prd-2026-11-12:FR-7、FR-8
 - **Prevents:** 設計清單讀即時結構，而 MCP 客戶端讀到另一份包；或在沒有啟用包時回退成表級工具
-- **Rule:** 此假設接受前，Discovery 仍完全遵守 10-11 AD-2，不註冊註記工具。接受後，Discovery 的名稱集合等於已發布檢視的名稱，再加上保留名 `source_annotation`，而且只在存在 `active` 已確認包時加入該名。沒有啟用包時，該名不在 Discovery；對該名的呼叫回 `unknown_tool`，不呼叫 `SchemaGraph.Read`，也不回退成 `tables`、`fields`、`get`、`query`、`count`、`exists`。工具沒有參數，不接受 `connectionId` 或 SQL。結果是啟用包的表、欄、型別、註解與已聲明關聯。不含業務列與連線字串，也不含 `draft` 與 `active` 為 false 的包。`ReadOnly` 為 true，`Destructive` 為 false。檢視 `name` 不得與 `source_annotation` 相同，比對不區分大小寫。模組設計工具的左側清單與這個工具讀同一個目錄方法。設計工具不連二代平台資料源，也不連待轉資料庫。
+- **Rule:** Discovery 的名稱集合等於已發布檢視的名稱，再加上保留名 `source_annotation`，而且只在存在 `active` 已確認包時加入該名。這是 10-11 AD-2 的唯一例外。沒有啟用包時，該名不在 Discovery；對該名的呼叫回 `unknown_tool`，不呼叫 `SchemaGraph.Read`，也不回退成 `tables`、`fields`、`get`、`query`、`count`、`exists`。工具沒有參數，不接受 `connectionId` 或 SQL。結果是啟用包的表、欄、型別、註解與已聲明關聯。不含業務列與連線字串，也不含 `draft` 與 `active` 為 false 的包。`ReadOnly` 為 true，`Destructive` 為 false。檢視 `name` 不得與 `source_annotation` 相同，比對不區分大小寫。模組設計工具的左側清單與這個工具讀同一個目錄方法。設計工具不連二代平台資料源，也不連待轉資料庫。
 
 目錄 HTTP 在 `/mcp` 之外，寫入條件與檢視目錄相同：
 
@@ -119,7 +119,7 @@ flowchart LR
 
 `POST /annotations/confirm` 對檢視落點的判斷在 `DbServices.Mcp`，讀的是檢視目錄裡已保存文件的來源表、輸出欄與關聯端點。
 
-### AD-5 — 關聯進檢視的 kind [ASSUMPTION]
+### AD-5 — 關聯進檢視的 kind [ADOPTED]
 
 - **Binds:** prd-2026-11-12:FR-4、FR-7、10-12 AD-15
 - **Prevents:** 一則故事把人寫的關聯存成 `foreign-key`，另一則存成新的 kind 字面
@@ -182,7 +182,6 @@ catalog/annotations.json        # 預設檔名，位於 McpService 內容根
 
 ## Deferred
 
-- AD-4 被接受之前，不實作 `source_annotation`，Discovery 維持父層 AD-2。
-- 說明文件的讀者與用途未定，本脊椎不附帶第二份敘述文件。
 - 第二種 Excel 版型、深色模式、Avalonia 的資料治理入口、AI 輔助建立檢視，仍不在這一層決定。
+- 本輪不另寫給人看的說明。開工契約是這份脊椎。
 ---

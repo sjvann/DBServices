@@ -7,7 +7,7 @@ paradigm: layered clients
 scope: MCP host and later surfaces that share its tool contract
 status: final
 created: 2026-10-11
-updated: 2026-10-11
+updated: 2026-11-13
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 sources:
   - docs/planning/agent-data-plane/brief.md
@@ -49,7 +49,7 @@ flowchart TD
 
 - **Binds:** FR-3、FR-15、FR-16
 - **Prevents:** 把八條 REST 路由包成工具，把寫入與自由 SQL 放進清單，或在沒有已發布視圖時回退成六個表級工具
-- **Rule:** Discovery 的名稱集合等於已發布模組視圖的名稱集合。沒有已發布視圖時清單是空的，不回退成 `tables`、`fields`、`get`、`query`、`count`、`exists`。每一筆有名稱、短述與長解說。說明不承諾接受 SQL，也不要求 Agent 傳入表名。名稱比對不區分大小寫。`insert`、`update`、`delete`、`sql` 先判成 `tool_disabled`，不執行 Session Call。未出現在 Discovery、且不是這四個關閉名稱的呼叫，回 `unknown_tool`。已發布視圖的名稱不是 `unknown_tool`。這兩種拒絕都進入調度器。已發布視圖明示 `ReadOnly` 為 true、`Destructive` 為 false；不沿用 SDK 2.2.0 的相反預設。表級工具不在 Discovery。P0 不註冊 MCP resources、prompts 或 sampling。
+- **Rule:** Discovery 的名稱集合等於已發布模組視圖的名稱集合。沒有已發布視圖時清單是空的，不回退成 `tables`、`fields`、`get`、`query`、`count`、`exists`。每一筆有名稱、短述與長解說。說明不承諾接受 SQL，也不要求 Agent 傳入表名。名稱比對不區分大小寫。`insert`、`update`、`delete`、`sql` 先判成 `tool_disabled`，不執行 Session Call。未出現在 Discovery、且不是這四個關閉名稱的呼叫，回 `unknown_tool`。已發布視圖的名稱不是 `unknown_tool`。這兩種拒絕都進入調度器。已發布視圖明示 `ReadOnly` 為 true、`Destructive` 為 false；不沿用 SDK 2.2.0 的相反預設。表級工具不在 Discovery。P0 不註冊 MCP resources、prompts 或 sampling。唯一例外是資料來源註記的保留名 `source_annotation`，規則在 `architecture-DBServices-2026-11-12` 的 AD-4：只在有啟用中的已確認註記包時加入 Discovery。
 
 ### AD-3 — 單一調度與參數 [ADOPTED]
 
