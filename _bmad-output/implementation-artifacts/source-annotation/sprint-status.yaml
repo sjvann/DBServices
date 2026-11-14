@@ -2,7 +2,7 @@
 # 這份不是資料平面的 sprint-status.yaml。
 # 資料平面「啟動宿主」的 epic-1（故事 1.1–1.7，狀態 review）留在上一層，不在這裡改。
 generated: 11-13-2026 12:01
-last_updated: 11-14-2026 22:40
+last_updated: 11-15-2026 00:40
 project: DBServices
 project_key: NOKEY
 tracking_system: file-system
@@ -16,8 +16,8 @@ development_status:
   1-5-匯出-dbml-並確認成唯一啟用包: review
   1-6-再讀來源-看差異-放棄草稿: review
   epic-1-retrospective: optional
-  epic-2: backlog
-  2-1-設計清單只讀已確認註記包: backlog
+  epic-2: in-progress
+  2-1-設計清單只讀已確認註記包: review
   2-2-多張來源表必須用已聲明關聯: backlog
   2-3-檢視契約維持-已確認包經-mcp-引用: backlog
   epic-2-retrospective: optional

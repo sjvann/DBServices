@@ -205,6 +205,18 @@ button:disabled, .confirm:disabled {
   padding: var(--space-1) var(--space-2);
   font-size: var(--meta);
 }
+.empty-catalog {
+  margin: 0;
+  color: var(--ink-secondary);
+}
+.unmarked-badge {
+  align-self: flex-start;
+  background: var(--surface-sunken);
+  color: var(--caution);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--meta);
+}
 .scrim {
   position: fixed;
   inset: 0;

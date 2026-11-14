@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Workbench.Contracts;
 using Workbench.Core.Ports;
 
@@ -95,6 +96,20 @@ public sealed class AnnotationService
         }
     }
 
+    public async Task<OpResult<AnnotationActiveDto>> DesignCatalogAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Analyst(operatorId) is { } error)
+            return OpResult<AnnotationActiveDto>.Fail(error);
+        try
+        {
+            return OpResult<AnnotationActiveDto>.Success(await _catalog.ActiveAsync(operatorId, cancellationToken));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
+        {
+            return OpResult<AnnotationActiveDto>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+        }
+    }
+
     public async Task<OpResult<string?>> DraftDbmlAsync(string operatorId, CancellationToken cancellationToken)
     {
         if (Closed(operatorId) is { } error)
@@ -167,5 +182,13 @@ public sealed class AnnotationService
         if (profile is null)
             return WorkbenchMessages.Unauthenticated();
         return profile.Has(EntryNames.Governance) ? null : WorkbenchMessages.Forbidden();
+    }
+
+    private ErrorDto? Analyst(string operatorId)
+    {
+        var profile = _profiles.Find(operatorId);
+        if (profile is null)
+            return WorkbenchMessages.Unauthenticated();
+        return profile.Has(EntryNames.Analyst) ? null : WorkbenchMessages.Forbidden();
     }
 }
