@@ -193,6 +193,9 @@ public sealed class ViewCatalog
             return ViewWriteResult.Fail("blank_name", "名稱不可空白。");
 
         incoming.Name = name;
+        if (name.Equals("source_annotation", StringComparison.OrdinalIgnoreCase))
+            return ViewWriteResult.Fail("duplicate_name", "名稱已存在。");
+
         if (existing.Any(document =>
                 !string.Equals(document.Id, incoming.Id, StringComparison.Ordinal)
                 && string.Equals(document.Name, name, StringComparison.OrdinalIgnoreCase)))

@@ -52,8 +52,11 @@ builder.Services
     })
     .WithListToolsHandler((request, _) =>
     {
-        var views = request.Server.Services!.GetRequiredService<ViewCatalog>();
+        var services = request.Server.Services!;
+        var views = services.GetRequiredService<ViewCatalog>();
         var tools = views.Published().Select(ToTool).ToList();
+        if (ActiveAnnotation(services.GetRequiredService<AnnotationCatalog>()) is not null)
+            tools.Add(SourceAnnotationTool());
         return ValueTask.FromResult(new ListToolsResult { Tools = tools });
     })
     .WithCallToolHandler((request, _) =>
@@ -78,6 +81,33 @@ builder.Services
                 name,
                 auditArguments,
                 TableDispatchResult.ToolDisabled()));
+        }
+
+        if (name.Equals("source_annotation", StringComparison.OrdinalIgnoreCase))
+        {
+            var package = ActiveAnnotation(services.GetRequiredService<AnnotationCatalog>());
+            if (package is null)
+            {
+                return ValueTask.FromResult(Finish(
+                    environment,
+                    configuration,
+                    http,
+                    directory.Catalog,
+                    requestedConnection,
+                    name,
+                    auditArguments,
+                    TableDispatchResult.UnknownTool()));
+            }
+
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                "",
+                "source_annotation",
+                [],
+                TableDispatchResult.Scalar(AnnotationCitation(package))));
         }
 
         var views = services.GetRequiredService<ViewCatalog>();
@@ -503,6 +533,92 @@ static IResult? RejectWrite(HttpContext http, IConfiguration configuration)
         return Results.Json(new { code = "forbidden", message = "目錄金鑰不符。" }, statusCode: 403);
 
     return null;
+}
+
+static AnnotationPackage? ActiveAnnotation(AnnotationCatalog annotations)
+{
+    try
+    {
+        return annotations.Active().Package;
+    }
+    catch (AnnotationReadException)
+    {
+        return null;
+    }
+}
+
+static Tool SourceAnnotationTool()
+    => new()
+    {
+        Name = "source_annotation",
+        Description = "已確認註記包的表、欄、型別、註解與已聲明關聯。",
+        InputSchema = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["properties"] = new Dictionary<string, object?>(),
+            ["required"] = new List<string>(),
+        }),
+        Annotations = new ToolAnnotations
+        {
+            ReadOnlyHint = true,
+            DestructiveHint = false,
+        },
+    };
+
+static Dictionary<string, object?> AnnotationCitation(AnnotationPackage package)
+{
+    var tables = new List<Dictionary<string, object?>>();
+    foreach (var table in package.Tables ?? [])
+    {
+        if (table is null)
+            continue;
+
+        var columns = new List<Dictionary<string, string>>();
+        foreach (var column in table.Columns ?? [])
+        {
+            if (column is null)
+                continue;
+            columns.Add(new Dictionary<string, string>
+            {
+                ["name"] = column.Name ?? "",
+                ["type"] = column.Type ?? "",
+                ["note"] = column.Note ?? "",
+            });
+        }
+
+        tables.Add(new Dictionary<string, object?>
+        {
+            ["name"] = table.Name ?? "",
+            ["note"] = table.Note ?? "",
+            ["columns"] = columns,
+        });
+    }
+
+    var links = new List<Dictionary<string, string>>();
+    foreach (var link in package.Links ?? [])
+    {
+        if (link is null || link.Origin is not ("foreign-key" or "declared"))
+            continue;
+        if (string.IsNullOrWhiteSpace(link.From) || string.IsNullOrWhiteSpace(link.FromColumn)
+            || string.IsNullOrWhiteSpace(link.To) || string.IsNullOrWhiteSpace(link.ToColumn))
+            continue;
+
+        links.Add(new Dictionary<string, string>
+        {
+            ["from"] = link.From ?? "",
+            ["fromColumn"] = link.FromColumn ?? "",
+            ["to"] = link.To ?? "",
+            ["toColumn"] = link.ToColumn ?? "",
+            ["origin"] = link.Origin ?? "",
+            ["note"] = link.Note ?? "",
+        });
+    }
+
+    return new Dictionary<string, object?>
+    {
+        ["tables"] = tables,
+        ["links"] = links,
+    };
 }
 
 static Tool ToTool(ViewDocument view)
