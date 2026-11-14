@@ -33,16 +33,20 @@ else
         <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
         @if (_shown?.Status == "draft")
         {
-            <button type="button" id="annotation-save" @onclick="OnSave" disabled="@(_busy || _saving || _forking)">保存</button>
+            <button type="button" id="annotation-save" @onclick="OnSave" disabled="@(_forking || FieldsBusy)">保存</button>
         }
         <button type="button" id="annotation-export" @onclick="OnExport" disabled="@(_shown is null)">匯出</button>
+        @if (_draft is not null)
+        {
+            <button type="button" id="annotation-abandon" class="secondary" @onclick="AskAbandon" disabled="@(_busy || _saving || _forking || _confirming || _abandoning)">放棄草稿</button>
+        }
         <button type="button" id="annotation-confirm" @onclick="AskConfirm" disabled="@(!CanConfirm)">確認</button>
     </div>
     @if (_shown is not null)
     {
         <label>
             整包功能說明
-            <textarea class="purpose-field" aria-label="整包功能說明" rows="2" disabled="@(!CanEdit || _saving)" value="@_shown.Purpose" @oninput="OnPurpose"></textarea>
+            <textarea class="purpose-field" aria-label="整包功能說明" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@_shown.Purpose" @oninput="OnPurpose"></textarea>
         </label>
         <div class="annotation">
             <ul class="table-list">
@@ -61,7 +65,7 @@ else
                     <h2 class="code">@current.Name</h2>
                     <label>
                         表註
-                        <textarea class="table-note purpose-field" aria-label="表註" rows="2" disabled="@(!CanEdit || _saving)" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
+                        <textarea class="table-note purpose-field" aria-label="表註" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
                     </label>
                     <table>
                         <thead>
@@ -84,7 +88,7 @@ else
                                     <td class="code">@column.Type</td>
                                     <td>@(column.NotNull ? "not null" : "")</td>
                                     <td class="@(blank ? "unnoted" : null)">
-                                        <textarea class="purpose-field column-note @(blank ? "unnoted" : null)" aria-label="@($"{column.Name} 欄註")" rows="1" disabled="@(!CanEdit || _saving)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
+                                        <textarea class="purpose-field column-note @(blank ? "unnoted" : null)" aria-label="@($"{column.Name} 欄註")" rows="1" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
                                         @if (blank)
                                         {
                                             <span class="unnoted">尚未註記</span>
@@ -92,7 +96,7 @@ else
                                     </td>
                                     <td>@(column.PrimaryKey ? "主鍵" : "")</td>
                                     <td>
-                                        <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@(!CanEdit || _saving)" value="@column.Pii" @oninput="e => OnPii(column, e)" />
+                                        <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@(!CanEdit || FieldsBusy)" value="@column.Pii" @oninput="e => OnPii(column, e)" />
                                     </td>
                                     <td>
                                         <input type="checkbox" checked="@column.UniqueIndex" disabled aria-label="@($"{column.Name} 唯一索引")" />
@@ -120,43 +124,59 @@ else
                     <span class="code">@link.FromColumn</span>
                     <span class="code">@link.To</span>
                     <span class="code">@link.ToColumn</span>
-                    <input class="purpose-field" aria-label="關聯理由" disabled="@(!CanEdit || _saving)" value="@link.Note" @oninput="e => OnLinkNote(link, e)" />
-                    <button type="button" disabled="@(!CanEdit || _saving)" @onclick="() => RemoveLink(link)">刪除</button>
+                    <input class="purpose-field" aria-label="關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@link.Note" @oninput="e => OnLinkNote(link, e)" />
+                    <button type="button" disabled="@(!CanEdit || FieldsBusy)" @onclick="() => RemoveLink(link)">刪除</button>
                 </li>
             }
             <li>
-                <select aria-label="關聯起表" disabled="@(!CanEdit || _saving)" value="@_fromTable" @onchange="OnFromTable">
+                <select aria-label="關聯起表" disabled="@(!CanEdit || FieldsBusy)" value="@_fromTable" @onchange="OnFromTable">
                     <option value=""></option>
                     @foreach (var table in _shown.Tables)
                     {
                         <option value="@table.Name">@table.Name</option>
                     }
                 </select>
-                <select aria-label="關聯起欄" disabled="@(!CanEdit || _saving)" value="@_fromColumn" @onchange="OnFromColumn">
+                <select aria-label="關聯起欄" disabled="@(!CanEdit || FieldsBusy)" value="@_fromColumn" @onchange="OnFromColumn">
                     <option value=""></option>
                     @foreach (var column in ColumnsOf(_fromTable))
                     {
                         <option value="@column.Name">@column.Name</option>
                     }
                 </select>
-                <select aria-label="關聯迄表" disabled="@(!CanEdit || _saving)" value="@_toTable" @onchange="OnToTable">
+                <select aria-label="關聯迄表" disabled="@(!CanEdit || FieldsBusy)" value="@_toTable" @onchange="OnToTable">
                     <option value=""></option>
                     @foreach (var table in _shown.Tables)
                     {
                         <option value="@table.Name">@table.Name</option>
                     }
                 </select>
-                <select aria-label="關聯迄欄" disabled="@(!CanEdit || _saving)" value="@_toColumn" @onchange="OnToColumn">
+                <select aria-label="關聯迄欄" disabled="@(!CanEdit || FieldsBusy)" value="@_toColumn" @onchange="OnToColumn">
                     <option value=""></option>
                     @foreach (var column in ColumnsOf(_toTable))
                     {
                         <option value="@column.Name">@column.Name</option>
                     }
                 </select>
-                <input class="purpose-field" aria-label="新關聯理由" disabled="@(!CanEdit || _saving)" value="@_linkNote" @oninput="OnNewLinkNote" />
-                <button type="button" disabled="@(!CanEdit || _saving)" @onclick="AddLink">新增</button>
+                <input class="purpose-field" aria-label="新關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@_linkNote" @oninput="OnNewLinkNote" />
+                <button type="button" disabled="@(!CanEdit || FieldsBusy)" @onclick="AddLink">新增</button>
             </li>
         </ul>
+        @if (_shown.Status == "draft" && _shown.Changes is { Count: > 0 })
+        {
+            <ul class="diff-list" tabindex="0" aria-label="差異">
+                @foreach (var change in _shown.Changes)
+                {
+                    <li class="@DiffClass(change.Kind)">
+                        <span class="code">@change.Table</span>
+                        @if (!string.IsNullOrEmpty(change.Column))
+                        {
+                            <span class="code">@change.Column</span>
+                        }
+                        <span>@DiffWord(change.Kind)</span>
+                    </li>
+                }
+            </ul>
+        }
         @if (_dbml is not null)
         {
             <textarea class="dbml-block" aria-label="DBML" readonly rows="12" tabindex="0" data-download="@_download">@_dbml</textarea>
@@ -191,6 +211,18 @@ else
         </div>
     </div>
 }
+@if (_askAbandon)
+{
+    <div class="scrim">
+        <div class="dialog" role="dialog" aria-label="放棄草稿">
+            <p>放棄這份草稿？已確認的包維持原樣。</p>
+            <div class="actions">
+                <button type="button" class="secondary" @onclick="CancelAbandon">取消</button>
+                <button type="button" class="confirm" @onclick="CommitAbandon">確定</button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -218,6 +250,9 @@ else
     private Task? _forkTask;
     private bool _askConfirm;
     private bool _confirming;
+    private bool _askAbandon;
+    private bool _abandoning;
+    private int _abandonDialog;
     private int _dialog;
     private string _askText = "";
     private string? _dbml;
@@ -232,10 +267,12 @@ else
     private bool CanEdit
         => _shown is { Status: "draft" } || (_shown is { Status: "confirmed", Active: true } && _draft is null);
 
-    private bool CanConfirm => _shown?.Status == "draft" && !_busy && !_saving && !_forking && !_confirming;
+    private bool CanConfirm => _shown?.Status == "draft" && !_busy && !_saving && !_forking && !_confirming && !_abandoning;
+
+    private bool FieldsBusy => _saving || _busy || _askAbandon;
 
     private IReadOnlyDictionary<string, object>? BusyAttributes
-        => _busy || _saving || _forking || Retained ? new Dictionary<string, object> { ["disabled"] = true } : null;
+        => _busy || _saving || _forking || _abandoning || Retained ? new Dictionary<string, object> { ["disabled"] = true } : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -268,7 +305,7 @@ else
 
     private async Task OnImport(InputFileChangeEventArgs change)
     {
-        if (_saving || _forking || Retained)
+        if (_saving || _forking || _abandoning || Retained)
             return;
         if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
         {
@@ -329,7 +366,7 @@ else
 
     private async Task OnRead()
     {
-        if (_saving || _forking || Retained)
+        if (_saving || _forking || _abandoning || Retained)
             return;
         if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
         {
@@ -345,16 +382,17 @@ else
         try
         {
             var written = await Annotations.ReadStructureAsync(profile.Id, CancellationToken.None);
-            if (revision != _revision)
-                return;
             if (!written.Ok)
             {
-                _error = WorkbenchMessages.Text(written.Code, written.Message);
+                if (revision == _revision)
+                    _error = WorkbenchMessages.Text(written.Code, written.Message);
                 return;
             }
 
             Remember(written.Package);
-            _selected = _draft?.Tables.FirstOrDefault()?.Name;
+            _selected = _shown?.Tables.FirstOrDefault()?.Name;
+            _dbml = null;
+            _download = "";
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
@@ -373,7 +411,7 @@ else
 
     private async Task OnSave()
     {
-        if (_forking)
+        if (_forking || FieldsBusy)
             return;
         if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
         {
@@ -391,22 +429,24 @@ else
         try
         {
             var written = await Annotations.SaveAsync(Clone(_draft), profile.Id, CancellationToken.None);
+            if (revision != _revision)
+                return;
             if (!written.Ok)
             {
                 _error = WorkbenchMessages.Text(written.Code, written.Message);
-                if (revision == _revision && _saved is not null)
+                if (_saved is not null)
                     RestoreDraft();
                 return;
             }
 
-            if (revision != _revision)
-                return;
             Remember(written.Package);
             if (_shown?.Tables.Any(table => table.Name == _selected) != true)
                 _selected = _shown?.Tables.FirstOrDefault()?.Name;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
+            if (revision != _revision)
+                return;
             _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
             if (_saved is not null)
                 RestoreDraft();
@@ -503,7 +543,7 @@ else
 
     private void OnNewLinkNote(ChangeEventArgs change)
     {
-        if (!CanEdit || _saving)
+        if (!CanEdit || FieldsBusy)
             return;
         if (_shown?.Status == "draft" && !Touch())
             return;
@@ -512,7 +552,7 @@ else
 
     private void OnFromTable(ChangeEventArgs change)
     {
-        if (!CanEdit || _saving)
+        if (!CanEdit || FieldsBusy)
             return;
         if (_shown?.Status == "draft" && !Touch())
             return;
@@ -523,7 +563,7 @@ else
 
     private void OnFromColumn(ChangeEventArgs change)
     {
-        if (!CanEdit || _saving)
+        if (!CanEdit || FieldsBusy)
             return;
         if (_shown?.Status == "draft" && !Touch())
             return;
@@ -532,7 +572,7 @@ else
 
     private void OnToTable(ChangeEventArgs change)
     {
-        if (!CanEdit || _saving)
+        if (!CanEdit || FieldsBusy)
             return;
         if (_shown?.Status == "draft" && !Touch())
             return;
@@ -543,7 +583,7 @@ else
 
     private void OnToColumn(ChangeEventArgs change)
     {
-        if (!CanEdit || _saving)
+        if (!CanEdit || FieldsBusy)
             return;
         if (_shown?.Status == "draft" && !Touch())
             return;
@@ -596,7 +636,7 @@ else
 
     private bool Touch()
     {
-        if (_saving || _forking)
+        if (_saving || _forking || _busy || _askAbandon)
             return false;
         _revision++;
         return true;
@@ -617,7 +657,7 @@ else
 
     private bool EditingDraft()
     {
-        if (_shown?.Status != "draft" || _saving || _forking)
+        if (_shown?.Status != "draft" || FieldsBusy || _forking)
             return false;
         return Touch();
     }
@@ -831,6 +871,110 @@ else
         }
     }
 
+    private void AskAbandon()
+    {
+        if (_draft is null || _askAbandon || _busy || _saving || _forking || _confirming || _abandoning)
+            return;
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
+        {
+            _error = WorkbenchMessages.Forbidden();
+            return;
+        }
+
+        _abandonDialog = DialogHost.Stack.Push(CloseAbandon);
+        _askAbandon = true;
+    }
+
+    private void CloseAbandon()
+    {
+        _askAbandon = false;
+        _abandonDialog = 0;
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException)
+        {
+        }
+    }
+
+    private void CancelAbandon()
+    {
+        _askAbandon = false;
+        var id = _abandonDialog;
+        _abandonDialog = 0;
+        DialogHost.Stack.Dismiss(id);
+    }
+
+    private async Task CommitAbandon()
+    {
+        if (_abandoning || !_askAbandon)
+            return;
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
+        {
+            _error = WorkbenchMessages.Forbidden();
+            CancelAbandon();
+            return;
+        }
+
+        _revision++;
+        _abandoning = true;
+        CancelAbandon();
+        try
+        {
+            var written = await Annotations.AbandonAsync(profile.Id, CancellationToken.None);
+            if (!written.Ok)
+            {
+                _error = WorkbenchMessages.Text(written.Code, written.Message);
+                return;
+            }
+
+            _error = null;
+            _result = null;
+            _draft = null;
+            _saved = null;
+            _dbml = null;
+            _download = "";
+            _fromTable = "";
+            _fromColumn = "";
+            _toTable = "";
+            _toColumn = "";
+            _linkNote = "";
+            if (_active is not null)
+            {
+                _shown = Clone(_active);
+                _selected = _shown.Tables.FirstOrDefault()?.Name;
+            }
+            else
+            {
+                _shown = null;
+                _selected = null;
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+        }
+        finally
+        {
+            _abandoning = false;
+        }
+    }
+
+    private static string DiffClass(string? kind) => kind switch
+    {
+        "added" => "added",
+        "removed" => "removed",
+        _ => "changed",
+    };
+
+    private static string DiffWord(string? kind) => kind switch
+    {
+        "added" => "新增",
+        "removed" => "刪除",
+        _ => "已改變",
+    };
+
     private void AskConfirm()
     {
         if (!CanConfirm || _askConfirm)
@@ -998,5 +1142,7 @@ else
     {
         if (_dialog != 0)
             DialogHost.Stack.Dismiss(_dialog);
+        if (_abandonDialog != 0)
+            DialogHost.Stack.Dismiss(_abandonDialog);
     }
 }

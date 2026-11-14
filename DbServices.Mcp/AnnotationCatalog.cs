@@ -14,6 +14,7 @@ public sealed class AnnotationPackage
     public List<AnnotationTable> Tables { get; set; } = [];
     public List<AnnotationLink> Links { get; set; } = [];
     public string Dbml { get; set; } = "";
+    public List<AnnotationChange> Changes { get; set; } = [];
 }
 
 public sealed class AnnotationTable
@@ -58,6 +59,13 @@ public sealed class AnnotationLink
     public string ToColumn { get; set; } = "";
     public string Origin { get; set; } = "";
     public string Note { get; set; } = "";
+}
+
+public sealed class AnnotationChange
+{
+    public string Kind { get; set; } = "";
+    public string Table { get; set; } = "";
+    public string Column { get; set; } = "";
 }
 
 public sealed class AnnotationReadException : Exception;
@@ -114,18 +122,14 @@ public sealed class AnnotationCatalog
         lock (_gate)
         {
             var packages = Load();
-            if (packages.Any(package => string.Equals(package.Status, "draft", StringComparison.Ordinal)))
-                return AnnotationWriteResult.Fail("draft_exists", "已有工作中的草稿，沒有改。");
+            var copy = Prepare(incoming);
+            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            if (index >= 0)
+                return Merge(packages, packages[index], copy);
 
-            var copy = Clone(incoming);
-            copy.Status = "draft";
-            copy.Active = false;
-            if (string.IsNullOrWhiteSpace(copy.Id))
-                copy.Id = Guid.NewGuid().ToString("N");
-            copy.Purpose ??= "";
-            copy.Dbml ??= "";
-            copy.Tables ??= [];
-            copy.Links ??= [];
+            var active = ActiveOf(packages);
+            if (active is not null)
+                Seed(copy, active);
             packages.Add(copy);
             if (!TryFlush(packages))
             {
@@ -196,11 +200,16 @@ public sealed class AnnotationCatalog
         lock (_gate)
         {
             var packages = Load();
-            if (packages.Any(package => string.Equals(package.Status, "draft", StringComparison.Ordinal)))
-                return AnnotationWriteResult.Fail("draft_exists", "已有工作中的草稿，沒有改。");
             if (cancellationToken.IsCancellationRequested)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
 
+            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            if (index >= 0)
+                return Merge(packages, packages[index], copy);
+
+            var active = ActiveOf(packages);
+            if (active is not null)
+                Seed(copy, active);
             packages.Add(copy);
             if (!TryFlush(packages))
             {
@@ -209,6 +218,27 @@ public sealed class AnnotationCatalog
             }
 
             return AnnotationWriteResult.Success(Clone(copy));
+        }
+    }
+
+    /// <summary>只刪工作中的草稿。已確認包留在檔內。</summary>
+    public AnnotationWriteResult Abandon()
+    {
+        lock (_gate)
+        {
+            var packages = Load();
+            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            if (index < 0)
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+
+            packages.RemoveAt(index);
+            if (!TryFlush(packages))
+            {
+                Reload();
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+            }
+
+            return new AnnotationWriteResult { Ok = true };
         }
     }
 
@@ -371,6 +401,7 @@ public sealed class AnnotationCatalog
 
             stored.Status = "confirmed";
             stored.Dbml = Render(stored);
+            stored.Changes = [];
             foreach (var package in packages)
             {
                 if (!ReferenceEquals(package, stored))
@@ -645,9 +676,9 @@ public sealed class AnnotationCatalog
 
         foreach (var column in view.Columns ?? [])
         {
-            if (column is null || (string.IsNullOrEmpty(column.Source) && string.IsNullOrEmpty(column.Name)))
+            if (column is null || (string.IsNullOrWhiteSpace(column.Source) && string.IsNullOrWhiteSpace(column.Name)))
                 continue;
-            if (!Inside(package, column.Source, column.Name))
+            if (!ColumnInside(package, view, column))
                 return true;
         }
 
@@ -718,6 +749,9 @@ public sealed class AnnotationCatalog
         return "'" + text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("'", "\\'", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal) + "'";
     }
 
+    private static bool ColumnInside(AnnotationPackage package, ViewDocument view, ViewColumn column)
+        => Inside(package, column.Source, column.Name);
+
     private static bool Inside(AnnotationPackage package, string? table, string? column)
     {
         if (string.IsNullOrEmpty(table) || string.IsNullOrEmpty(column))
@@ -767,6 +801,378 @@ public sealed class AnnotationCatalog
             && string.Equals(left.To, right.From, StringComparison.Ordinal)
             && string.Equals(left.ToColumn, right.FromColumn, StringComparison.Ordinal);
         return straight || swapped;
+    }
+
+    private AnnotationWriteResult Merge(List<AnnotationPackage> packages, AnnotationPackage stored, AnnotationPackage source)
+    {
+        var changes = Diff(stored, source);
+        var tables = Project(source, stored, ActiveOf(packages));
+        var links = Relate(stored, source, tables);
+        stored.Tables = tables;
+        stored.Links = links;
+        stored.Changes = changes;
+        stored.Status = "draft";
+        stored.Active = false;
+        if (!TryFlush(packages))
+        {
+            Reload();
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        }
+
+        return AnnotationWriteResult.Success(Clone(stored));
+    }
+
+    private static void Seed(AnnotationPackage draft, AnnotationPackage active)
+    {
+        var tables = Project(draft, null, active);
+        var links = Relate(active, draft, tables);
+        draft.Changes = Diff(active, draft);
+        draft.Tables = tables;
+        draft.Links = links;
+    }
+
+    private static AnnotationPackage Prepare(AnnotationPackage incoming)
+    {
+        var copy = Clone(incoming);
+        copy.Status = "draft";
+        copy.Active = false;
+        if (string.IsNullOrWhiteSpace(copy.Id))
+            copy.Id = Guid.NewGuid().ToString("N");
+        copy.Purpose ??= "";
+        copy.Dbml ??= "";
+        copy.Tables ??= [];
+        copy.Links ??= [];
+        copy.Changes = [];
+        return copy;
+    }
+
+    private static AnnotationPackage? ActiveOf(List<AnnotationPackage> packages)
+        => packages.FirstOrDefault(package => package.Active && string.Equals(package.Status, "confirmed", StringComparison.Ordinal));
+
+    /// <summary>
+    /// 註記先取草稿同鍵，再取啟用包同鍵，最後才用來來源。形狀一律用來來源。
+    /// </summary>
+    private static List<AnnotationTable> Project(AnnotationPackage source, AnnotationPackage? draft, AnnotationPackage? active)
+    {
+        var draftColumns = IndexColumns(draft);
+        var activeColumns = IndexColumns(active);
+        var draftNotes = TableNotes(draft);
+        var activeNotes = TableNotes(active);
+        var tables = new List<AnnotationTable>();
+        foreach (var table in source.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            var name = table.Name ?? "";
+            var key = name.Trim();
+            string note;
+            if (draft is not null && draftNotes.TryGetValue(key, out var draftNote))
+                note = draftNote;
+            else if (activeNotes.TryGetValue(key, out var activeNote))
+                note = activeNote;
+            else
+                note = table.Note ?? "";
+
+            var columns = new List<AnnotationColumn>();
+            foreach (var column in table.Columns ?? [])
+            {
+                if (column is null)
+                    continue;
+                var copy = CopyColumn(column);
+                var columnKey = Key(name, column.Name);
+                if (draft is not null && draftColumns.TryGetValue(columnKey, out var fromDraft))
+                {
+                    copy.Note = fromDraft.Note ?? "";
+                    copy.Pii = fromDraft.Pii ?? "";
+                }
+                else if (activeColumns.TryGetValue(columnKey, out var fromActive))
+                {
+                    copy.Note = fromActive.Note ?? "";
+                    copy.Pii = fromActive.Pii ?? "";
+                }
+
+                columns.Add(copy);
+            }
+
+            tables.Add(new AnnotationTable
+            {
+                Name = name,
+                Note = note,
+                Columns = columns,
+                Indexes = CopyIndexes(table.Indexes),
+            });
+        }
+
+        return tables;
+    }
+
+    private static List<AnnotationLink> Relate(AnnotationPackage annotations, AnnotationPackage source, List<AnnotationTable> shape)
+    {
+        var links = new List<AnnotationLink>();
+        foreach (var link in source.Links ?? [])
+        {
+            if (link is null || !string.Equals(link.Origin, "foreign-key", StringComparison.Ordinal) || !EndsIn(shape, link))
+                continue;
+            if (links.Any(item => SameEnds(item, link)))
+                continue;
+            var prior = (annotations.Links ?? []).FirstOrDefault(item =>
+                item is not null
+                && string.Equals(item.Origin, "foreign-key", StringComparison.Ordinal)
+                && SameEnds(item, link));
+            links.Add(Placed(shape, link, "foreign-key", prior?.Note ?? link.Note ?? ""));
+        }
+
+        foreach (var link in annotations.Links ?? [])
+        {
+            if (link is null || !string.Equals(link.Origin, "declared", StringComparison.Ordinal) || !EndsIn(shape, link))
+                continue;
+            if (links.Any(item => string.Equals(item.Origin, "declared", StringComparison.Ordinal) && SameEnds(item, link)))
+                continue;
+            links.Add(Placed(shape, link, "declared", link.Note ?? ""));
+        }
+
+        return links;
+    }
+
+    private static List<AnnotationChange> Diff(AnnotationPackage previous, AnnotationPackage source)
+    {
+        var changes = new List<AnnotationChange>();
+        var oldColumns = IndexColumns(previous);
+        var newColumns = IndexColumns(source);
+        var oldFk = FkMap(previous);
+        var newFk = FkMap(source);
+        var oldNames = TableNames(previous);
+        var newNames = TableNames(source);
+        foreach (var table in previous.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            var columns = table.Columns ?? [];
+            if (columns.Count == 0)
+            {
+                if (!newNames.Contains((table.Name ?? "").Trim()))
+                    changes.Add(Change("removed", table.Name, ""));
+                continue;
+            }
+
+            foreach (var column in columns)
+            {
+                if (column is null || newColumns.ContainsKey(Key(table.Name, column.Name)))
+                    continue;
+                changes.Add(Change("removed", table.Name, column.Name));
+            }
+        }
+
+        foreach (var table in source.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            var columns = table.Columns ?? [];
+            if (columns.Count == 0)
+            {
+                if (!oldNames.Contains((table.Name ?? "").Trim()))
+                    changes.Add(Change("added", table.Name, ""));
+                continue;
+            }
+
+            foreach (var column in columns)
+            {
+                if (column is null)
+                    continue;
+                var key = Key(table.Name, column.Name);
+                if (!oldColumns.TryGetValue(key, out var prior))
+                {
+                    changes.Add(Change("added", table.Name, column.Name));
+                    continue;
+                }
+
+                if (ShapeChanged(prior, column, FkOf(oldFk, key), FkOf(newFk, key)))
+                    changes.Add(Change("changed", table.Name, column.Name));
+            }
+        }
+
+        return changes;
+    }
+
+    private static bool ShapeChanged(AnnotationColumn prior, AnnotationColumn next, string oldFk, string newFk)
+        => !string.Equals(prior.Type ?? "", next.Type ?? "", StringComparison.Ordinal)
+            || prior.NotNull != next.NotNull
+            || prior.PrimaryKey != next.PrimaryKey
+            || prior.UniqueIndex != next.UniqueIndex
+            || !string.Equals(oldFk, newFk, StringComparison.Ordinal);
+
+    private static Dictionary<string, AnnotationColumn> IndexColumns(AnnotationPackage? package)
+    {
+        var map = new Dictionary<string, AnnotationColumn>(StringComparer.Ordinal);
+        foreach (var table in package?.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            foreach (var column in table.Columns ?? [])
+            {
+                if (column is null)
+                    continue;
+                map[Key(table.Name, column.Name)] = column;
+            }
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, string> TableNotes(AnnotationPackage? package)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var table in package?.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            var key = (table.Name ?? "").Trim();
+            if (!map.ContainsKey(key))
+                map[key] = table.Note ?? "";
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, string> FkMap(AnnotationPackage package)
+    {
+        var shape = new List<AnnotationTable>();
+        foreach (var table in package.Tables ?? [])
+        {
+            if (table is not null)
+                shape.Add(table);
+        }
+
+        var sets = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        foreach (var link in package.Links ?? [])
+        {
+            if (link is null || !string.Equals(link.Origin, "foreign-key", StringComparison.Ordinal) || !EndsIn(shape, link))
+                continue;
+            var from = Key(link.From, link.FromColumn);
+            var to = Key(link.To, link.ToColumn);
+            AddEnd(sets, from, to);
+            AddEnd(sets, to, from);
+        }
+
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in sets)
+            map[pair.Key] = string.Join("\u001e", pair.Value);
+        return map;
+    }
+
+    private static void AddEnd(Dictionary<string, SortedSet<string>> sets, string column, string other)
+    {
+        if (!sets.TryGetValue(column, out var ends))
+        {
+            ends = new SortedSet<string>(StringComparer.Ordinal);
+            sets[column] = ends;
+        }
+
+        ends.Add(other);
+    }
+
+    private static string FkOf(Dictionary<string, string> map, string key)
+        => map.TryGetValue(key, out var value) ? value : "";
+
+    private static HashSet<string> TableNames(AnnotationPackage package)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var table in package.Tables ?? [])
+        {
+            if (table is not null)
+                names.Add((table.Name ?? "").Trim());
+        }
+
+        return names;
+    }
+
+    private static AnnotationLink Placed(List<AnnotationTable> shape, AnnotationLink link, string origin, string note)
+    {
+        var (from, fromColumn) = StoredEnd(shape, link.From, link.FromColumn);
+        var (to, toColumn) = StoredEnd(shape, link.To, link.ToColumn);
+        return new AnnotationLink
+        {
+            From = from,
+            FromColumn = fromColumn,
+            To = to,
+            ToColumn = toColumn,
+            Origin = origin,
+            Note = note,
+        };
+    }
+
+    private static (string Table, string Column) StoredEnd(List<AnnotationTable> shape, string? table, string? column)
+    {
+        var tableName = (table ?? "").Trim();
+        var columnName = (column ?? "").Trim();
+        var found = shape.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), tableName, StringComparison.Ordinal));
+        var foundColumn = found?.Columns?.FirstOrDefault(item => item is not null && string.Equals((item.Name ?? "").Trim(), columnName, StringComparison.Ordinal));
+        return (found?.Name ?? table ?? "", foundColumn?.Name ?? column ?? "");
+    }
+
+    private static bool EndsIn(List<AnnotationTable> tables, AnnotationLink link)
+        => HasColumn(tables, link.From, link.FromColumn) && HasColumn(tables, link.To, link.ToColumn);
+
+    private static bool HasColumn(List<AnnotationTable> tables, string? table, string? column)
+    {
+        var tableName = (table ?? "").Trim();
+        var columnName = (column ?? "").Trim();
+        if (tableName.Length == 0 || columnName.Length == 0)
+            return false;
+        var found = tables.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), tableName, StringComparison.Ordinal));
+        return found?.Columns?.Any(item => string.Equals((item.Name ?? "").Trim(), columnName, StringComparison.Ordinal)) == true;
+    }
+
+    private static bool SameEnds(AnnotationLink left, AnnotationLink right)
+    {
+        var straight = string.Equals(Key(left.From, left.FromColumn), Key(right.From, right.FromColumn), StringComparison.Ordinal)
+            && string.Equals(Key(left.To, left.ToColumn), Key(right.To, right.ToColumn), StringComparison.Ordinal);
+        var swapped = string.Equals(Key(left.From, left.FromColumn), Key(right.To, right.ToColumn), StringComparison.Ordinal)
+            && string.Equals(Key(left.To, left.ToColumn), Key(right.From, right.FromColumn), StringComparison.Ordinal);
+        return straight || swapped;
+    }
+
+    private static string Key(string? table, string? column)
+        => (table ?? "").Trim() + "\u001f" + (column ?? "").Trim();
+
+    private static AnnotationChange Change(string kind, string? table, string? column)
+        => new() { Kind = kind, Table = table ?? "", Column = column ?? "" };
+
+    private static AnnotationColumn CopyColumn(AnnotationColumn column) => new()
+    {
+        Name = column.Name ?? "",
+        Type = column.Type ?? "",
+        NotNull = column.NotNull,
+        Note = column.Note ?? "",
+        HName = column.HName ?? "",
+        SName = column.SName ?? "",
+        HType = column.HType ?? "",
+        SType = column.SType ?? "",
+        SLength = column.SLength ?? "",
+        Pii = column.Pii ?? "",
+        PrimaryKey = column.PrimaryKey,
+        UniqueIndex = column.UniqueIndex,
+        SourceFile = column.SourceFile ?? "",
+        HOrdinal = column.HOrdinal ?? "",
+        SOrdinal = column.SOrdinal ?? "",
+    };
+
+    private static List<AnnotationIndex> CopyIndexes(List<AnnotationIndex>? indexes)
+    {
+        var copy = new List<AnnotationIndex>();
+        foreach (var index in indexes ?? [])
+        {
+            if (index is null)
+                continue;
+            copy.Add(new AnnotationIndex
+            {
+                Name = index.Name ?? "",
+                Note = index.Note ?? "",
+                Columns = [..(index.Columns ?? [])],
+            });
+        }
+
+        return copy;
     }
 
     private static AnnotationPackage Clone(AnnotationPackage package)

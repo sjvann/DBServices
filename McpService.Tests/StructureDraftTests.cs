@@ -111,18 +111,23 @@ public class StructureDraftTests
             Assert.IsFalse(saved.Body.Contains("missing", StringComparison.Ordinal));
 
             var path = Path.Combine(root, "catalog", "annotations.json");
-            var bytes = await File.ReadAllBytesAsync(path);
             Assert.IsFalse(File.Exists(Path.Combine(root, "audit", "mcp.jsonl")));
             var kept = package.GetProperty("id").GetString();
 
             var again = await SendAsync(client, HttpMethod.Post, "/annotations/read-structure", "方晴", "unit-catalog-key");
-            Assert.AreEqual(HttpStatusCode.BadRequest, again.Status, again.Body);
-            Assert.Contains("draft_exists", again.Body, StringComparison.Ordinal);
-            Assert.Contains("已有工作中的草稿，沒有改。", again.Body, StringComparison.Ordinal);
-            CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(path));
-            using var stored = JsonDocument.Parse(bytes);
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            Assert.IsFalse(again.Body.Contains(Marker, StringComparison.Ordinal));
+            using (var againDocument = JsonDocument.Parse(again.Body))
+            {
+                Assert.AreEqual(kept, againDocument.RootElement.GetProperty("id").GetString());
+                Assert.AreEqual("PlatformDB", againDocument.RootElement.GetProperty("title").GetString());
+                Assert.AreEqual(0, againDocument.RootElement.GetProperty("changes").GetArrayLength());
+            }
+
+            using var stored = JsonDocument.Parse(await File.ReadAllTextAsync(path));
             Assert.AreEqual(1, stored.RootElement.GetArrayLength());
             Assert.AreEqual(kept, stored.RootElement[0].GetProperty("id").GetString());
+            Assert.IsFalse(stored.RootElement.ToString().Contains(Marker, StringComparison.Ordinal));
 
             var titled = new AnnotationCatalog(Path.Combine(root, "titled.json"));
             var special = titled.ReadStructure(new ToolCatalog(new Dictionary<string, ConnectionSetting>
@@ -359,8 +364,8 @@ public class StructureDraftTests
             var bytes = await File.ReadAllBytesAsync(path);
             var again = await SendAsync(client, HttpMethod.Post, "/annotations/read-structure", "方晴", "unit-catalog-key");
             Assert.AreEqual(HttpStatusCode.BadRequest, again.Status, again.Body);
-            Assert.Contains("draft_exists", again.Body, StringComparison.Ordinal);
-            Assert.Contains("已有工作中的草稿，沒有改。", again.Body, StringComparison.Ordinal);
+            Assert.Contains("execution_failed", again.Body, StringComparison.Ordinal);
+            Assert.Contains("讀取資料表結構失敗。", again.Body, StringComparison.Ordinal);
             CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(path));
         }
         finally

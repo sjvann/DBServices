@@ -122,6 +122,7 @@ public interface IAnnotationCatalog
     Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken);
 }
 
 public interface IViewCatalog

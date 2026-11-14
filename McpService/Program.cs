@@ -299,6 +299,22 @@ app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog anno
         return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
     }
 });
+app.MapDelete("/annotations/draft", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var result = annotations.Abandon();
+        return result.Ok
+            ? Results.NoContent()
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
 app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog annotations, ConnectionDirectory directory, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
@@ -306,9 +322,6 @@ app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog 
 
     try
     {
-        if (annotations.Draft() is not null)
-            return Results.Json(new { code = "draft_exists", message = "已有工作中的草稿，沒有改。" }, statusCode: 400);
-
         if (RejectPlatform(directory, configuration, out var name) is { } blocked)
             return blocked;
 

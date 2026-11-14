@@ -238,6 +238,7 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
     public int SaveAttempts { get; private set; }
     public int ConfirmAttempts { get; private set; }
     public int DbmlAttempts { get; private set; }
+    public int AbandonAttempts { get; private set; }
     public string? DraftDbml { get; set; }
     public Task? ReadGate { get; set; }
     public AnnotationWriteResult? StructureFailure { get; set; }
@@ -281,6 +282,7 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
         var confirmed = Clone(Draft);
         confirmed.Status = "confirmed";
         confirmed.Active = true;
+        confirmed.Changes = [];
         if (string.IsNullOrEmpty(confirmed.Dbml))
             confirmed.Dbml = DraftDbml ?? "";
         Draft = null;
@@ -292,10 +294,18 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
     {
         Attempts++;
         if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
-            return Task.FromResult(AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists));
-        Draft = Clone(package);
+        {
+            Draft = Adopt(Draft!, package);
+            Commits++;
+            return Task.FromResult(AnnotationWriteResult.Success(Clone(Draft)));
+        }
+
+        var created = Clone(package);
+        created.Status = "draft";
+        created.Active = false;
+        Draft = created;
         Commits++;
-        return Task.FromResult(AnnotationWriteResult.Success(Clone(package)));
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(created)));
     }
 
     public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
@@ -353,17 +363,55 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
         StructureAttempts++;
         if (ReadGate is not null)
             await ReadGate.WaitAsync(cancellationToken);
-        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
-            return AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists);
         if (StructureFailure is not null)
             return StructureFailure;
 
         var package = Clone(StructurePackage ?? new AnnotationPackageDto { Id = "structure", Title = "平台" });
         package.Status = "draft";
         package.Active = false;
+        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
+            package = Adopt(Draft!, package);
         Draft = Clone(package);
         Commits++;
         return AnnotationWriteResult.Success(Clone(package));
+    }
+
+    public Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+    {
+        AbandonAttempts++;
+        if (Draft is null)
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+        Draft = null;
+        return Task.FromResult(new AnnotationWriteResult { Ok = true });
+    }
+
+    private static AnnotationPackageDto Adopt(AnnotationPackageDto draft, AnnotationPackageDto incoming)
+    {
+        var merged = Clone(incoming);
+        merged.Id = draft.Id;
+        merged.Title = draft.Title ?? "";
+        merged.Purpose = draft.Purpose ?? "";
+        merged.Status = "draft";
+        merged.Active = false;
+        merged.Dbml = draft.Dbml ?? "";
+        foreach (var table in merged.Tables ?? [])
+        {
+            var prior = draft.Tables?.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), (table.Name ?? "").Trim(), StringComparison.Ordinal));
+            if (prior is null)
+                continue;
+            table.Note = prior.Note ?? "";
+            foreach (var column in table.Columns ?? [])
+            {
+                var noted = prior.Columns?.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), (column.Name ?? "").Trim(), StringComparison.Ordinal));
+                if (noted is null)
+                    continue;
+                column.Note = noted.Note ?? "";
+                column.Pii = noted.Pii ?? "";
+            }
+        }
+
+        merged.Changes = draft.Changes ?? [];
+        return merged;
     }
 
     private static AnnotationPackageDto Clone(AnnotationPackageDto package)

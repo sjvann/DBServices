@@ -464,6 +464,9 @@ public class NoteEditTests
 
         public Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
             => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
     }
 
     private sealed class Operators : IOperatorStore

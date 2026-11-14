@@ -114,6 +114,17 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         }
     }
 
+    public async Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Delete, "annotations/draft", callerId, null, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NoContent)
+            return new AnnotationWriteResult { Ok = true };
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return ReadFailure(text);
+        return new AnnotationWriteResult { Ok = true };
+    }
+
     public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Post, "annotations/read-structure", callerId, null, cancellationToken);

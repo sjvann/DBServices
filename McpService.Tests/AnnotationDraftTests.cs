@@ -64,15 +64,21 @@ public class AnnotationDraftTests
                 Assert.AreEqual("Samples", document.RootElement.GetProperty("title").GetString());
             }
 
-            var bytes = await File.ReadAllBytesAsync(path);
             var again = await SendAsync(client, HttpMethod.Put, "/annotations/draft", "林可", "unit-catalog-key",
                 """
                 {"id":"draft-2","title":"Other","purpose":"","status":"draft","active":false,"tables":[],"links":[],"dbml":""}
                 """);
-            Assert.AreEqual(HttpStatusCode.BadRequest, again.Status, again.Body);
-            Assert.Contains("draft_exists", again.Body, StringComparison.Ordinal);
-            Assert.Contains("已有工作中的草稿，沒有改。", again.Body, StringComparison.Ordinal);
-            CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(path));
+            Assert.AreEqual(HttpStatusCode.OK, again.Status, again.Body);
+            using (var document = JsonDocument.Parse(again.Body))
+            {
+                Assert.AreEqual("draft-1", document.RootElement.GetProperty("id").GetString());
+                Assert.AreEqual("Samples", document.RootElement.GetProperty("title").GetString());
+                Assert.AreEqual("draft", document.RootElement.GetProperty("status").GetString());
+            }
+
+            using var storedAgain = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.AreEqual(1, storedAgain.RootElement.GetArrayLength());
+            Assert.AreEqual("draft-1", storedAgain.RootElement[0].GetProperty("id").GetString());
         }
         finally
         {

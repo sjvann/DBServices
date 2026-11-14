@@ -247,6 +247,13 @@ public sealed class AnnotationLinkDto
     public string Note { get; set; } = "";
 }
 
+public sealed class AnnotationChangeDto
+{
+    public string Kind { get; set; } = "";
+    public string Table { get; set; } = "";
+    public string Column { get; set; } = "";
+}
+
 public sealed class AnnotationPackageDto
 {
     public string Id { get; set; } = "";
@@ -257,4 +264,5 @@ public sealed class AnnotationPackageDto
     public List<AnnotationTableDto> Tables { get; set; } = [];
     public List<AnnotationLinkDto> Links { get; set; } = [];
     public string Dbml { get; set; } = "";
+    public List<AnnotationChangeDto> Changes { get; set; } = [];
 }

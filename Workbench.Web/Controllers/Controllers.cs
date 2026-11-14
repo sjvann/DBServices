@@ -293,6 +293,15 @@ public sealed class AnnotationsController : ControllerBase
     public Task<IActionResult> ReadStructure(CancellationToken cancellationToken)
         => ApiResults.FromAsync(_annotations.ReadStructureAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
 
+    [HttpDelete("draft")]
+    public async Task<IActionResult> Abandon(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.AbandonAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return NoContent();
+    }
+
     [HttpGet("active")]
     public async Task<IActionResult> Active(CancellationToken cancellationToken)
     {

@@ -510,6 +510,61 @@ public class DbmlConfirmTests
     }
 
     [TestMethod]
+    public async Task Dbml_confirm_rejects_blank_source_when_the_column_name_is_on_a_view_source()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mcp-blank-source-" + Guid.NewGuid().ToString("N"));
+        var dbPath = Path.Combine(Path.GetTempPath(), "ann-blank-source-" + Guid.NewGuid().ToString("N") + ".db");
+        Directory.CreateDirectory(root);
+        var connectionString = "Data Source=" + dbPath;
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, "Sqlite");
+            try
+            {
+                service!.ExecuteSQL("CREATE TABLE parent (Id INTEGER PRIMARY KEY, Name TEXT)");
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+
+            var viewPath = Path.Combine(root, "catalog", "views.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(viewPath)!);
+            var views = new ViewCatalog(viewPath);
+            Assert.IsTrue(views.Save(Document("好檢視", ["parent"],
+            [
+                new ViewColumn { Name = "Name", Source = "" },
+                new ViewColumn { Name = "Id", Source = " " },
+            ], [])).Ok);
+            Assert.IsTrue(views.Save(Document("壞欄", ["parent"], [new ViewColumn { Name = "Missing", Source = "" }], [])).Ok);
+
+            await using var factory = Factory(root,
+            [
+                new("Annotation:PlatformConnection", "PlatformDB"),
+                new("Connections:PlatformDB:ServerType", "Sqlite"),
+                new("Connections:PlatformDB:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = factory.CreateClient();
+            var ready = await SendAsync(client, HttpMethod.Put, "/annotations/draft", "方晴", "unit-catalog-key", Package("parent", "有說明", "Id", "Name"));
+            Assert.AreEqual(HttpStatusCode.OK, ready.Status, ready.Body);
+            var blocked = await SendAsync(client, HttpMethod.Post, "/annotations/confirm", "方晴", "unit-catalog-key");
+            Assert.AreEqual(HttpStatusCode.BadRequest, blocked.Status, blocked.Body);
+            using var document = JsonDocument.Parse(blocked.Body);
+            Assert.AreEqual("confirm_blocked", document.RootElement.GetProperty("code").GetString());
+            Assert.AreEqual("無法確認。這些檢視會落到新包之外：好檢視、壞欄。", document.RootElement.GetProperty("message").GetString());
+        }
+        finally
+        {
+            ReleaseSqlite();
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public async Task Dbml_confirm_forks_once_and_forbidden_callers_do_not_write()
     {
         var root = Path.Combine(Path.GetTempPath(), "mcp-fork-" + Guid.NewGuid().ToString("N"));

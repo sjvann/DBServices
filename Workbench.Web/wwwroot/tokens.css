@@ -383,6 +383,25 @@ label:has(> .purpose-field) {
   min-height: 36px;
   align-items: center;
 }
+.diff-list {
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.diff-list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  text-decoration: none;
+}
+.diff-list .added { background: var(--action-soft); }
+.diff-list .removed { color: var(--danger); text-decoration: none; }
+.diff-list .changed { color: var(--caution); }
 .dbml-block {
   font-family: var(--code);
   font-size: var(--code-size);

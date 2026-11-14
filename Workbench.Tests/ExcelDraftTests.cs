@@ -19,7 +19,6 @@ namespace Workbench.Tests;
 public class ExcelDraftTests
 {
     private const string ImportRejected = "無法匯入。這份活頁簿對不上字典契約。既有草稿沒有改。";
-    private const string DraftExists = "已有工作中的草稿，沒有改。";
 
     [TestMethod]
     public async Task Excel_draft_sample_matches_without_reading_rows()
@@ -103,12 +102,11 @@ public class ExcelDraftTests
             var kept = annotations.Draft!.Id;
 
             cut.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(bytes, "Samples.xlsx"));
-            cut.WaitForAssertion(() => Assert.AreEqual(1, cut.FindAll(".status-message").Count));
-            var alert = cut.Find(".status-message");
-            Assert.AreEqual("alert", alert.GetAttribute("role"));
-            Assert.IsTrue(alert.InnerHtml.IndexOf(DraftExists, StringComparison.Ordinal) < alert.InnerHtml.IndexOf("draft_exists", StringComparison.Ordinal));
-            Assert.AreEqual(1, annotations.Commits);
+            cut.WaitForAssertion(() => Assert.AreEqual(2, annotations.Commits));
+            Assert.AreEqual(0, cut.FindAll(".status-message").Count);
             Assert.AreEqual(kept, annotations.Draft.Id);
+            Assert.AreEqual("Samples", annotations.Draft.Title);
+            Assert.IsTrue(cut.Find(".package-bar").TextContent.Contains("草稿", StringComparison.Ordinal));
             Assert.AreEqual(0, caller.Count);
         }
 
@@ -251,12 +249,26 @@ public class ExcelDraftTests
             }
 
             Assert.IsFalse(text.Contains("connectionString", StringComparison.OrdinalIgnoreCase));
-            var bytes = await File.ReadAllBytesAsync(path);
             var second = catalog.Import(new DbServices.Mcp.AnnotationPackage { Id = "other", Title = "Other" });
-            Assert.IsFalse(second.Ok);
-            Assert.AreEqual("draft_exists", second.Code);
-            Assert.AreEqual(DraftExists, second.Message);
-            CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(path));
+            Assert.IsTrue(second.Ok, second.Message);
+            Assert.AreEqual("new", second.Package!.Id);
+            Assert.AreEqual("Samples", second.Package.Title);
+            Assert.AreEqual("draft", second.Package.Status);
+            Assert.IsFalse(second.Package.Active);
+            var merged = await File.ReadAllTextAsync(path);
+            using (var saved = JsonDocument.Parse(merged))
+            {
+                var packages = saved.RootElement.EnumerateArray().ToList();
+                Assert.AreEqual(2, packages.Count);
+                var old = packages.Single(item => item.GetProperty("id").GetString() == "old");
+                Assert.AreEqual("confirmed", old.GetProperty("status").GetString());
+                Assert.IsTrue(old.GetProperty("active").GetBoolean());
+                Assert.AreEqual("已確認", old.GetProperty("purpose").GetString());
+                var fresh = packages.Single(item => item.GetProperty("id").GetString() == "new");
+                Assert.AreEqual("draft", fresh.GetProperty("status").GetString());
+                Assert.AreEqual("Samples", fresh.GetProperty("title").GetString());
+            }
+
             Assert.IsFalse(File.Exists(path + ".tmp"));
         }
         finally
@@ -269,11 +281,12 @@ public class ExcelDraftTests
         host.Annotations.Draft = new AnnotationPackageDto { Id = "kept", Title = "Kept", Status = "draft" };
         var person = await PersonAsync(host, "方晴", EntryNames.Governance);
         var again = await PostAsync(person, File.ReadAllBytes(Sample("Samples.xlsx")), "Samples.xlsx");
-        Assert.AreEqual(400, again.Status, again.Text);
-        Assert.AreEqual("draft_exists", again.Body.GetProperty("code").GetString());
-        Assert.AreEqual(DraftExists, again.Body.GetProperty("message").GetString());
+        Assert.AreEqual(200, again.Status, again.Text);
+        Assert.AreEqual("kept", again.Body.GetProperty("id").GetString());
+        Assert.AreEqual("Kept", again.Body.GetProperty("title").GetString());
+        Assert.AreEqual("draft", again.Body.GetProperty("status").GetString());
         Assert.AreEqual("kept", host.Annotations.Draft.Id);
-        Assert.AreEqual(0, host.Annotations.Commits);
+        Assert.AreEqual(1, host.Annotations.Commits);
         Assert.AreEqual(1, host.Annotations.Attempts);
         Assert.AreEqual(0, host.Caller.Count);
     }

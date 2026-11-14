@@ -409,13 +409,26 @@ public class NoteEditTests
             Assert.AreEqual("keep-me", old.GetProperty("dbml").GetString());
             CollectionAssert.AreEqual(viewBytes, await File.ReadAllBytesAsync(views));
 
-            var bytes = await File.ReadAllBytesAsync(annotations);
-            var rejected = await SendAsync(client, HttpMethod.Put, "/annotations/draft", "方晴", "unit-catalog-key",
+            var merged = await SendAsync(client, HttpMethod.Put, "/annotations/draft", "方晴", "unit-catalog-key",
                 """{"id":"other","title":"Other","purpose":"新的一份","status":"draft","active":false,"tables":[],"links":[],"dbml":""}""");
-            Assert.AreEqual(HttpStatusCode.BadRequest, rejected.Status, rejected.Body);
-            Assert.Contains("draft_exists", rejected.Body, StringComparison.Ordinal);
-            Assert.Contains("已有工作中的草稿，沒有改。", rejected.Body, StringComparison.Ordinal);
-            CollectionAssert.AreEqual(bytes, await File.ReadAllBytesAsync(annotations));
+            Assert.AreEqual(HttpStatusCode.OK, merged.Status, merged.Body);
+            using (var document = JsonDocument.Parse(merged.Body))
+            {
+                Assert.AreEqual("pkg", document.RootElement.GetProperty("id").GetString());
+                Assert.AreEqual("註記包", document.RootElement.GetProperty("title").GetString());
+                Assert.AreEqual("重開說明", document.RootElement.GetProperty("purpose").GetString());
+                Assert.AreEqual(0, document.RootElement.GetProperty("tables").GetArrayLength());
+            }
+
+            using var after = JsonDocument.Parse(await File.ReadAllTextAsync(annotations));
+            var afterPackages = after.RootElement.EnumerateArray().ToList();
+            var kept = afterPackages.Single(item => item.GetProperty("id").GetString() == "old");
+            Assert.AreEqual("confirmed", kept.GetProperty("status").GetString());
+            Assert.IsTrue(kept.GetProperty("active").GetBoolean());
+            Assert.AreEqual("已確認", kept.GetProperty("purpose").GetString());
+            Assert.AreEqual("keep-me", kept.GetProperty("dbml").GetString());
+            var same = afterPackages.Single(item => item.GetProperty("id").GetString() == "pkg");
+            Assert.AreEqual("重開說明", same.GetProperty("purpose").GetString());
             CollectionAssert.AreEqual(viewBytes, await File.ReadAllBytesAsync(views));
         }
         finally
