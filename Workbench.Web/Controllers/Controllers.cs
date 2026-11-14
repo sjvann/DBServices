@@ -284,4 +284,8 @@ public sealed class AnnotationsController : ControllerBase
             content,
             cancellationToken));
     }
+
+    [HttpPost("read-structure")]
+    public Task<IActionResult> ReadStructure(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.ReadStructureAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
 }

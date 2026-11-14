@@ -215,6 +215,7 @@ public sealed class AnnotationColumnDto
     public string SType { get; set; } = "";
     public string SLength { get; set; } = "";
     public string Pii { get; set; } = "";
+    public bool PrimaryKey { get; set; }
     public bool UniqueIndex { get; set; }
     public string SourceFile { get; set; } = "";
     public string HOrdinal { get; set; } = "";

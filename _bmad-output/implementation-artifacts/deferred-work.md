@@ -25,3 +25,6 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-1-指派資料治理入口並打開註記站.md`
   summary: 指派若丟出例外，勾選不會回到保存前，也沒有兩行錯誤。
   evidence: 畫面只處理回傳的 `ErrorDto`。例外沒有既有代碼；規格不准新造代碼。其他站的保存也沒有把儲存例外收成畫面錯誤。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-3-從二代平台讀出結構草稿.md`
+  summary: 指向尚未存在的 Sqlite 檔時，讀結構會先把空資料庫建出來。
+  evidence: 這是既有 `SchemaGraph.Read` 與 Sqlite 提供者的行為。這一則不准改 `SchemaGraph.Read`。平台連線平常已存在，空檔測試才會走到建立檔案。

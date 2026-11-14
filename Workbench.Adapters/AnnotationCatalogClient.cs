@@ -52,6 +52,25 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         }
     }
 
+    public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "annotations/read-structure", callerId, null, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound || !response.IsSuccessStatusCode)
+            return ReadFailure(text);
+        try
+        {
+            var saved = JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json);
+            return saved is null
+                ? AnnotationWriteResult.Fail("execution_failed", "沒有保存。")
+                : AnnotationWriteResult.Success(saved);
+        }
+        catch (JsonException)
+        {
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        }
+    }
+
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string callerId, object? body, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(method, url);

@@ -18,6 +18,11 @@ public static class WorkbenchMessages
     public const string ImportRejected = "無法匯入。這份活頁簿對不上字典契約。既有草稿沒有改。";
     public const string DraftExists = "已有工作中的草稿，沒有改。";
     public const string Importing = "正在匯入。";
+    public const string ReadingStructure = "正在讀取結構。";
+    public const string NoConnection = "沒有讀取結構。";
+    public const string ConnectionUnselectable = "註記站不能選擇連線，沒有讀取結構。";
+
+    public static string NotPlatformSource(string name) => "不能用" + name + "讀結構或確認。";
     public const string ReportUnavailable = "這份報表現在產生不了。";
     public const string UnreadableStyle = "不能讀取這個樣式。";
     public const string FrozenStructure = "這個檢視已被樣式引用，不能變更結構。";

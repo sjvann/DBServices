@@ -232,6 +232,10 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
     public AnnotationPackageDto? Draft { get; set; }
     public int Attempts { get; private set; }
     public int Commits { get; private set; }
+    public int StructureAttempts { get; private set; }
+    public Task? ReadGate { get; set; }
+    public AnnotationWriteResult? StructureFailure { get; set; }
+    public AnnotationPackageDto? StructurePackage { get; set; }
 
     public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
         => Task.FromResult(Draft is null ? null : Clone(Draft));
@@ -244,6 +248,24 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
         Draft = Clone(package);
         Commits++;
         return Task.FromResult(AnnotationWriteResult.Success(Clone(package)));
+    }
+
+    public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+    {
+        StructureAttempts++;
+        if (ReadGate is not null)
+            await ReadGate.WaitAsync(cancellationToken);
+        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
+            return AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists);
+        if (StructureFailure is not null)
+            return StructureFailure;
+
+        var package = Clone(StructurePackage ?? new AnnotationPackageDto { Id = "structure", Title = "平台" });
+        package.Status = "draft";
+        package.Active = false;
+        Draft = Clone(package);
+        Commits++;
+        return AnnotationWriteResult.Success(Clone(package));
     }
 
     private static AnnotationPackageDto Clone(AnnotationPackageDto package)

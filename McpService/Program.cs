@@ -292,6 +292,43 @@ app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog anno
         return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
     }
 });
+app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog annotations, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+
+    try
+    {
+        if (annotations.Draft() is not null)
+            return Results.Json(new { code = "draft_exists", message = "已有工作中的草稿，沒有改。" }, statusCode: 400);
+
+        var available = new List<string>();
+        foreach (var pair in directory.Catalog.Connections)
+        {
+            if (pair.Value.Available)
+                available.Add(pair.Key);
+        }
+
+        if (available.Count == 0)
+            return Results.Json(new { code = "no_connection", message = "沒有讀取結構。" }, statusCode: 400);
+        if (available.Count > 1)
+            return Results.Json(new { code = "connection_unselectable", message = "註記站不能選擇連線，沒有讀取結構。" }, statusCode: 400);
+
+        var name = available[0];
+        var expected = configuration["Annotation:PlatformConnection"];
+        if (!string.Equals(name, expected, StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { code = "not_platform_source", message = "不能用" + name + "讀結構或確認。" }, statusCode: 400);
+
+        var result = annotations.ReadStructure(directory.Catalog, name, http.RequestAborted);
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
 
 app.MapGet("/schema/graph", (string? connectionId, HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
 {

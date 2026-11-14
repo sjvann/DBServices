@@ -35,6 +35,7 @@ public sealed class AnnotationColumn
     public string SType { get; set; } = "";
     public string SLength { get; set; } = "";
     public string Pii { get; set; } = "";
+    public bool PrimaryKey { get; set; }
     public bool UniqueIndex { get; set; }
     public string SourceFile { get; set; } = "";
     public string HOrdinal { get; set; } = "";
@@ -127,6 +128,116 @@ public sealed class AnnotationCatalog
 
             return AnnotationWriteResult.Success(Clone(copy));
         }
+    }
+
+    /// <summary>
+    /// 先讀結構，再在鎖內確認仍無草稿且要求未中止，才寫成草稿。
+    /// </summary>
+    public AnnotationWriteResult ReadStructure(ToolCatalog catalog, string connectionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        SchemaGraphResult read;
+        try
+        {
+            read = SchemaGraph.Read(catalog, connectionId);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return AnnotationWriteResult.Fail("execution_failed", "讀取資料表結構失敗。");
+        }
+
+        if (!read.Ok)
+            return AnnotationWriteResult.Fail(read.Code, read.Message);
+
+        var copy = FromSchema(read, connectionId);
+        lock (_gate)
+        {
+            var packages = Load();
+            if (packages.Any(package => string.Equals(package.Status, "draft", StringComparison.Ordinal)))
+                return AnnotationWriteResult.Fail("draft_exists", "已有工作中的草稿，沒有改。");
+            if (cancellationToken.IsCancellationRequested)
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+
+            packages.Add(copy);
+            if (!TryFlush(packages))
+            {
+                Reload();
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+            }
+
+            return AnnotationWriteResult.Success(Clone(copy));
+        }
+    }
+
+    private static AnnotationPackage FromSchema(SchemaGraphResult read, string title)
+    {
+        var known = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var table in read.Tables)
+        {
+            var columns = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var column in table.Columns)
+                columns.Add(column.Name);
+            known[table.Name] = columns;
+        }
+
+        var links = new List<AnnotationLink>();
+        var tables = new List<AnnotationTable>();
+        foreach (var table in read.Tables)
+        {
+            var columns = new List<AnnotationColumn>();
+            foreach (var column in table.Columns)
+            {
+                columns.Add(new AnnotationColumn
+                {
+                    Name = column.Name,
+                    Type = column.Type ?? "",
+                    NotNull = false,
+                    PrimaryKey = column.PrimaryKey,
+                    Note = "",
+                    Pii = "",
+                    UniqueIndex = false,
+                });
+
+                var referencedTable = column.ReferencesTable ?? "";
+                var referencedColumn = column.ReferencesColumn ?? "";
+                if (referencedTable.Length == 0 || referencedColumn.Length == 0)
+                    continue;
+                if (!known.TryGetValue(referencedTable, out var target) || !target.Contains(referencedColumn))
+                    continue;
+                if (!known.TryGetValue(table.Name, out var source) || !source.Contains(column.Name))
+                    continue;
+
+                links.Add(new AnnotationLink
+                {
+                    From = table.Name,
+                    FromColumn = column.Name,
+                    To = referencedTable,
+                    ToColumn = referencedColumn,
+                    Origin = "foreign-key",
+                    Note = "",
+                });
+            }
+
+            tables.Add(new AnnotationTable
+            {
+                Name = table.Name,
+                Note = "",
+                Columns = columns,
+                Indexes = [],
+            });
+        }
+
+        return new AnnotationPackage
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Title = title ?? "",
+            Purpose = "",
+            Status = "draft",
+            Active = false,
+            Dbml = "",
+            Tables = tables,
+            Links = links,
+        };
     }
 
     private List<AnnotationPackage> Load()

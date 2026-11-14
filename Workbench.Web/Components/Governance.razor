@@ -42,6 +42,7 @@ else
                                 <th>型別</th>
                                 <th>not null</th>
                                 <th>欄註</th>
+                                <th>主鍵</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -51,7 +52,8 @@ else
                                     <td class="code">@column.Name</td>
                                     <td class="code">@column.Type</td>
                                     <td>@(column.NotNull ? "not null" : "")</td>
-                                    <td>@column.Note</td>
+                                    <td class="@(string.IsNullOrWhiteSpace(column.Note) ? "unnoted" : null)">@(string.IsNullOrWhiteSpace(column.Note) ? "尚未註記" : column.Note)</td>
+                                    <td>@(column.PrimaryKey ? "主鍵" : "")</td>
                                 </tr>
                             }
                         </tbody>
@@ -67,12 +69,27 @@ else
                 </div>
             }
         </div>
+        @if (_draft.Links.Count > 0)
+        {
+            <ul class="link-editor">
+                @foreach (var link in _draft.Links)
+                {
+                    <li>
+                        <span class="code">@link.From</span>
+                        <span class="code">@link.FromColumn</span>
+                        <span class="code">@link.To</span>
+                        <span class="code">@link.ToColumn</span>
+                    </li>
+                }
+            </ul>
+        }
     }
     <label class="import" for="annotation-import">匯入</label>
     <InputFile id="annotation-import" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
+    <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
     @if (_busy)
     {
-        <p class="progress-line">@WorkbenchMessages.Importing</p>
+        <p class="progress-line">@(_reading ? WorkbenchMessages.ReadingStructure : WorkbenchMessages.Importing)</p>
     }
     @if (_error is not null)
     {
@@ -87,6 +104,7 @@ else
 @code {
     private bool _denied;
     private bool _busy;
+    private bool _reading;
     private int _revision;
     private ErrorDto? _error;
     private AnnotationPackageDto? _draft;
@@ -130,14 +148,17 @@ else
             return;
         }
 
-        _revision++;
+        var revision = ++_revision;
         _busy = true;
+        _reading = false;
         _error = null;
         try
         {
             await using var stream = change.File.OpenReadStream(8_388_608);
             using var memory = new MemoryStream();
             await stream.CopyToAsync(memory);
+            if (revision != _revision)
+                return;
             var parsed = DictionaryWorkbook.Read(change.File.Name, memory.ToArray());
             if (!parsed.Ok)
             {
@@ -146,6 +167,8 @@ else
             }
 
             var written = await Annotations.ImportAsync(parsed.Value!, profile.Id, CancellationToken.None);
+            if (revision != _revision)
+                return;
             if (!written.Ok)
             {
                 _error = WorkbenchMessages.Text(written.Code, written.Message);
@@ -157,15 +180,62 @@ else
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
-            _error = WorkbenchMessages.Text("import_rejected", WorkbenchMessages.ImportRejected);
+            if (revision == _revision)
+                _error = WorkbenchMessages.Text("import_rejected", WorkbenchMessages.ImportRejected);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
-            _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+            if (revision == _revision)
+                _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
         }
         finally
         {
-            _busy = false;
+            if (revision == _revision)
+            {
+                _busy = false;
+                _reading = false;
+            }
+        }
+    }
+
+    private async Task OnRead()
+    {
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
+        {
+            _error = WorkbenchMessages.Forbidden();
+            return;
+        }
+
+        var revision = ++_revision;
+        _busy = true;
+        _reading = true;
+        _error = null;
+        try
+        {
+            var written = await Annotations.ReadStructureAsync(profile.Id, CancellationToken.None);
+            if (revision != _revision)
+                return;
+            if (!written.Ok)
+            {
+                _error = WorkbenchMessages.Text(written.Code, written.Message);
+                return;
+            }
+
+            _draft = written.Package;
+            _selected = _draft?.Tables.FirstOrDefault()?.Name;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            if (revision == _revision)
+                _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+        }
+        finally
+        {
+            if (revision == _revision)
+            {
+                _busy = false;
+                _reading = false;
+            }
         }
     }
 }
