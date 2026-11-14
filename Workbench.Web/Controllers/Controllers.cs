@@ -285,6 +285,10 @@ public sealed class AnnotationsController : ControllerBase
             cancellationToken));
     }
 
+    [HttpPut("draft")]
+    public Task<IActionResult> Save([FromBody] AnnotationPackageDto? package, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.SaveAsync(ApiResults.OperatorId(HttpContext), package, cancellationToken));
+
     [HttpPost("read-structure")]
     public Task<IActionResult> ReadStructure(CancellationToken cancellationToken)
         => ApiResults.FromAsync(_annotations.ReadStructureAsync(ApiResults.OperatorId(HttpContext), cancellationToken));

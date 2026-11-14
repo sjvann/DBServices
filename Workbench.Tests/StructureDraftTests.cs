@@ -62,11 +62,16 @@ public class StructureDraftTests
         Assert.AreEqual("主鍵", keyCells[4].TextContent.Trim());
         var name = cut.Find("tr[data-column='Name']");
         var nameCells = name.QuerySelectorAll("td");
-        Assert.AreEqual("已寫", nameCells[3].TextContent.Trim());
+        Assert.AreEqual("已寫", nameCells[3].QuerySelector("textarea")!.GetAttribute("value"));
         Assert.IsFalse(nameCells[3].ClassList.Contains("unnoted"));
         Assert.AreEqual("", nameCells[4].TextContent.Trim());
         var link = cut.Find(".link-editor");
-        Assert.AreEqual(0, link.QuerySelectorAll("button").Length);
+        Assert.IsTrue(link.QuerySelectorAll("button").Length > 0);
+        foreach (var button in link.QuerySelectorAll("button"))
+        {
+            var text = button.TextContent.Trim();
+            Assert.IsTrue(text is "刪除" or "新增", text);
+        }
         Assert.IsTrue(link.TextContent.Contains("child", StringComparison.Ordinal));
         Assert.IsTrue(link.TextContent.Contains("ParentId", StringComparison.Ordinal));
         Assert.IsTrue(link.TextContent.Contains("parent", StringComparison.Ordinal));

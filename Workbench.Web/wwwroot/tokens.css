@@ -242,7 +242,7 @@ label {
 }
 label.wide { max-width: 48rem; }
 .block label { flex: 1 1 8rem; margin: 0; max-width: none; }
-input, select {
+input, select, textarea {
   font: inherit;
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-sm);
@@ -352,6 +352,25 @@ label.import,
 .unnoted {
   background: var(--surface-sunken);
   color: var(--caution);
+}
+.purpose-field {
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+}
+.purpose-field.unnoted {
+  background: var(--surface-sunken);
+  color: var(--caution);
+  border-color: var(--border-hairline);
+}
+textarea.purpose-field {
+  width: 100%;
+  max-width: none;
+  display: block;
+}
+label:has(> .purpose-field) {
+  max-width: none;
+  width: 100%;
 }
 .link-editor {
   margin: 0 0 var(--space-4);

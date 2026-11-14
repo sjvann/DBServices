@@ -282,7 +282,9 @@ app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog anno
         return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
     try
     {
-        var result = annotations.Import(package);
+        var current = annotations.Draft();
+        var sameDraft = current is not null && string.Equals(current.Id, package.Id, StringComparison.Ordinal);
+        var result = sameDraft ? annotations.Save(package) : annotations.Import(package);
         return result.Ok
             ? Results.Json(result.Package)
             : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);

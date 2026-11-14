@@ -33,7 +33,13 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         return JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json) ?? throw Failure(text);
     }
 
-    public async Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+    public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+        => PutDraftAsync(package, callerId, cancellationToken);
+
+    public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+        => PutDraftAsync(package, callerId, cancellationToken);
+
+    private async Task<AnnotationWriteResult> PutDraftAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Put, "annotations/draft", callerId, package, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);

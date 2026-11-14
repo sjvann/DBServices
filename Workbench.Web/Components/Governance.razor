@@ -1,5 +1,6 @@
 @page "/governance"
 @using System.Net.Http
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Forms
 @inject OperatorGate Gate
 @inject IAnnotationCatalog Annotations
@@ -13,12 +14,26 @@
 else
 {
     <h1>註記</h1>
-    @if (_draft is not null)
-    {
-        <div class="package-bar">
+    <div class="package-bar">
+        @if (_draft is not null)
+        {
             <span class="code">@_draft.Title</span>
             <span>草稿</span>
-        </div>
+        }
+        <label class="import" for="annotation-import">匯入</label>
+        <InputFile id="annotation-import" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
+        <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
+        @if (_draft is not null)
+        {
+            <button type="button" id="annotation-save" @onclick="OnSave" disabled="@(_busy || _saving)">保存</button>
+        }
+    </div>
+    @if (_draft is not null)
+    {
+        <label>
+            整包功能說明
+            <textarea class="purpose-field" aria-label="整包功能說明" rows="2" disabled="@_saving" value="@_draft.Purpose" @oninput="OnPurpose"></textarea>
+        </label>
         <div class="annotation">
             <ul class="table-list">
                 @foreach (var table in _draft.Tables)
@@ -32,9 +47,12 @@ else
             </ul>
             @if (Selected is { } current)
             {
-                <div>
+                <div @key="current.Name">
                     <h2 class="code">@current.Name</h2>
-                    <p class="table-note">@current.Note</p>
+                    <label>
+                        表註
+                        <textarea class="table-note purpose-field" aria-label="表註" rows="2" disabled="@_saving" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
+                    </label>
                     <table>
                         <thead>
                             <tr>
@@ -43,17 +61,32 @@ else
                                 <th>not null</th>
                                 <th>欄註</th>
                                 <th>主鍵</th>
+                                <th>個資</th>
+                                <th>唯一索引</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var column in current.Columns)
                             {
-                                <tr data-column="@column.Name">
+                                var blank = string.IsNullOrWhiteSpace(column.Note);
+                                <tr @key="column.Name" data-column="@column.Name">
                                     <td class="code">@column.Name</td>
                                     <td class="code">@column.Type</td>
                                     <td>@(column.NotNull ? "not null" : "")</td>
-                                    <td class="@(string.IsNullOrWhiteSpace(column.Note) ? "unnoted" : null)">@(string.IsNullOrWhiteSpace(column.Note) ? "尚未註記" : column.Note)</td>
+                                    <td class="@(blank ? "unnoted" : null)">
+                                        <textarea class="purpose-field column-note @(blank ? "unnoted" : null)" aria-label="@($"{column.Name} 欄註")" rows="1" disabled="@_saving" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
+                                        @if (blank)
+                                        {
+                                            <span class="unnoted">尚未註記</span>
+                                        }
+                                    </td>
                                     <td>@(column.PrimaryKey ? "主鍵" : "")</td>
+                                    <td>
+                                        <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@_saving" value="@column.Pii" @oninput="e => OnPii(column, e)" />
+                                    </td>
+                                    <td>
+                                        <input type="checkbox" checked="@column.UniqueIndex" disabled aria-label="@($"{column.Name} 唯一索引")" />
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -69,24 +102,52 @@ else
                 </div>
             }
         </div>
-        @if (_draft.Links.Count > 0)
-        {
-            <ul class="link-editor">
-                @foreach (var link in _draft.Links)
-                {
-                    <li>
-                        <span class="code">@link.From</span>
-                        <span class="code">@link.FromColumn</span>
-                        <span class="code">@link.To</span>
-                        <span class="code">@link.ToColumn</span>
-                    </li>
-                }
-            </ul>
-        }
+        <ul class="link-editor">
+            @foreach (var link in _draft.Links)
+            {
+                <li @key="@($"{link.From}.{link.FromColumn}>{link.To}.{link.ToColumn}")">
+                    <span class="code">@link.From</span>
+                    <span class="code">@link.FromColumn</span>
+                    <span class="code">@link.To</span>
+                    <span class="code">@link.ToColumn</span>
+                    <input class="purpose-field" aria-label="關聯理由" disabled="@_saving" value="@link.Note" @oninput="e => OnLinkNote(link, e)" />
+                    <button type="button" disabled="@_saving" @onclick="() => RemoveLink(link)">刪除</button>
+                </li>
+            }
+            <li>
+                <select aria-label="關聯起表" disabled="@_saving" value="@_fromTable" @onchange="OnFromTable">
+                    <option value=""></option>
+                    @foreach (var table in _draft.Tables)
+                    {
+                        <option value="@table.Name">@table.Name</option>
+                    }
+                </select>
+                <select aria-label="關聯起欄" disabled="@_saving" value="@_fromColumn" @onchange="OnFromColumn">
+                    <option value=""></option>
+                    @foreach (var column in ColumnsOf(_fromTable))
+                    {
+                        <option value="@column.Name">@column.Name</option>
+                    }
+                </select>
+                <select aria-label="關聯迄表" disabled="@_saving" value="@_toTable" @onchange="OnToTable">
+                    <option value=""></option>
+                    @foreach (var table in _draft.Tables)
+                    {
+                        <option value="@table.Name">@table.Name</option>
+                    }
+                </select>
+                <select aria-label="關聯迄欄" disabled="@_saving" value="@_toColumn" @onchange="OnToColumn">
+                    <option value=""></option>
+                    @foreach (var column in ColumnsOf(_toTable))
+                    {
+                        <option value="@column.Name">@column.Name</option>
+                    }
+                </select>
+                <input class="purpose-field" aria-label="新關聯理由" disabled="@_saving" value="@_linkNote" @oninput="OnNewLinkNote" />
+                <button type="button" disabled="@_saving" @onclick="AddLink">新增</button>
+            </li>
+        </ul>
     }
-    <label class="import" for="annotation-import">匯入</label>
-    <InputFile id="annotation-import" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
-    <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
     @if (_busy)
     {
         <p class="progress-line">@(_reading ? WorkbenchMessages.ReadingStructure : WorkbenchMessages.Importing)</p>
@@ -102,19 +163,29 @@ else
 </div>
 
 @code {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private bool _denied;
     private bool _busy;
     private bool _reading;
+    private bool _saving;
     private int _revision;
+    private int _operation;
+    private int _saveGeneration;
     private ErrorDto? _error;
     private AnnotationPackageDto? _draft;
+    private AnnotationPackageDto? _saved;
     private string? _selected;
+    private string _fromTable = "";
+    private string _fromColumn = "";
+    private string _toTable = "";
+    private string _toColumn = "";
+    private string _linkNote = "";
 
     private AnnotationTableDto? Selected
         => _draft?.Tables.FirstOrDefault(table => table.Name == _selected) ?? _draft?.Tables.FirstOrDefault();
 
     private IReadOnlyDictionary<string, object>? BusyAttributes
-        => _busy ? new Dictionary<string, object> { ["disabled"] = true } : null;
+        => _busy || _saving ? new Dictionary<string, object> { ["disabled"] = true } : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,7 +200,7 @@ else
             var draft = await Annotations.DraftAsync(profile.Id, CancellationToken.None);
             if (revision != _revision)
                 return;
-            _draft = draft;
+            Remember(draft);
             _selected = _draft?.Tables.FirstOrDefault()?.Name;
         }
         catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
@@ -142,6 +213,8 @@ else
 
     private async Task OnImport(InputFileChangeEventArgs change)
     {
+        if (_saving)
+            return;
         if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
         {
             _error = WorkbenchMessages.Forbidden();
@@ -149,6 +222,7 @@ else
         }
 
         var revision = ++_revision;
+        var operation = ++_operation;
         _busy = true;
         _reading = false;
         _error = null;
@@ -175,7 +249,7 @@ else
                 return;
             }
 
-            _draft = written.Package;
+            Remember(written.Package);
             _selected = _draft?.Tables.FirstOrDefault()?.Name;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
@@ -190,7 +264,7 @@ else
         }
         finally
         {
-            if (revision == _revision)
+            if (operation == _operation)
             {
                 _busy = false;
                 _reading = false;
@@ -200,6 +274,8 @@ else
 
     private async Task OnRead()
     {
+        if (_saving)
+            return;
         if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
         {
             _error = WorkbenchMessages.Forbidden();
@@ -207,6 +283,7 @@ else
         }
 
         var revision = ++_revision;
+        var operation = ++_operation;
         _busy = true;
         _reading = true;
         _error = null;
@@ -221,7 +298,7 @@ else
                 return;
             }
 
-            _draft = written.Package;
+            Remember(written.Package);
             _selected = _draft?.Tables.FirstOrDefault()?.Name;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
@@ -231,11 +308,199 @@ else
         }
         finally
         {
-            if (revision == _revision)
+            if (operation == _operation)
             {
                 _busy = false;
                 _reading = false;
             }
         }
     }
+
+    private async Task OnSave()
+    {
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
+        {
+            _error = WorkbenchMessages.Forbidden();
+            return;
+        }
+
+        if (_draft is null)
+            return;
+
+        var revision = ++_revision;
+        var save = ++_saveGeneration;
+        _saving = true;
+        _error = null;
+        try
+        {
+            var written = await Annotations.SaveAsync(Clone(_draft), profile.Id, CancellationToken.None);
+            if (!written.Ok)
+            {
+                _error = WorkbenchMessages.Text(written.Code, written.Message);
+                if (revision == _revision && _saved is not null)
+                    _draft = Clone(_saved);
+                return;
+            }
+
+            if (revision != _revision)
+                return;
+            Remember(written.Package);
+            if (_draft?.Tables.Any(table => table.Name == _selected) != true)
+                _selected = _draft?.Tables.FirstOrDefault()?.Name;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+            if (_saved is not null)
+                _draft = Clone(_saved);
+        }
+        finally
+        {
+            if (save == _saveGeneration)
+                _saving = false;
+        }
+    }
+
+    private void OnPurpose(ChangeEventArgs change)
+    {
+        if (_draft is null || !Touch())
+            return;
+        _draft.Purpose = change.Value?.ToString() ?? "";
+    }
+
+    private void OnTableNote(AnnotationTableDto table, ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        table.Note = change.Value?.ToString() ?? "";
+    }
+
+    private void OnColumnNote(AnnotationColumnDto column, ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        var note = change.Value?.ToString() ?? "";
+        column.Note = string.IsNullOrWhiteSpace(note) ? "" : note;
+    }
+
+    private void OnPii(AnnotationColumnDto column, ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        column.Pii = change.Value?.ToString() ?? "";
+    }
+
+    private void OnLinkNote(AnnotationLinkDto link, ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        link.Note = change.Value?.ToString() ?? "";
+    }
+
+    private void OnNewLinkNote(ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        _linkNote = change.Value?.ToString() ?? "";
+    }
+
+    private void OnFromTable(ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        _fromTable = change.Value?.ToString() ?? "";
+        if (ColumnsOf(_fromTable).All(column => column.Name != _fromColumn))
+            _fromColumn = "";
+    }
+
+    private void OnFromColumn(ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        _fromColumn = change.Value?.ToString() ?? "";
+    }
+
+    private void OnToTable(ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        _toTable = change.Value?.ToString() ?? "";
+        if (ColumnsOf(_toTable).All(column => column.Name != _toColumn))
+            _toColumn = "";
+    }
+
+    private void OnToColumn(ChangeEventArgs change)
+    {
+        if (!Touch())
+            return;
+        _toColumn = change.Value?.ToString() ?? "";
+    }
+
+    private void AddLink()
+    {
+        if (_draft is null || !InPackage(_fromTable, _fromColumn) || !InPackage(_toTable, _toColumn) || !Touch())
+            return;
+        var note = _linkNote ?? "";
+        var existing = _draft.Links.FirstOrDefault(link => SameEnds(link, _fromTable, _fromColumn, _toTable, _toColumn));
+        if (existing is not null)
+        {
+            existing.Note = note;
+            _linkNote = "";
+            return;
+        }
+
+        _draft.Links.Add(new AnnotationLinkDto
+        {
+            From = _fromTable,
+            FromColumn = _fromColumn,
+            To = _toTable,
+            ToColumn = _toColumn,
+            Origin = "declared",
+            Note = note,
+        });
+        _linkNote = "";
+    }
+
+    private void RemoveLink(AnnotationLinkDto link)
+    {
+        if (_draft is null || !Touch())
+            return;
+        _draft.Links.Remove(link);
+    }
+
+    private bool Touch()
+    {
+        if (_saving)
+            return false;
+        _revision++;
+        return true;
+    }
+
+    private static bool SameEnds(AnnotationLinkDto link, string from, string fromColumn, string to, string toColumn)
+    {
+        var straight = string.Equals(link.From, from, StringComparison.Ordinal)
+            && string.Equals(link.FromColumn, fromColumn, StringComparison.Ordinal)
+            && string.Equals(link.To, to, StringComparison.Ordinal)
+            && string.Equals(link.ToColumn, toColumn, StringComparison.Ordinal);
+        var swapped = string.Equals(link.From, to, StringComparison.Ordinal)
+            && string.Equals(link.FromColumn, toColumn, StringComparison.Ordinal)
+            && string.Equals(link.To, from, StringComparison.Ordinal)
+            && string.Equals(link.ToColumn, fromColumn, StringComparison.Ordinal);
+        return straight || swapped;
+    }
+
+    private void Remember(AnnotationPackageDto? package)
+    {
+        _draft = package;
+        _saved = package is null ? null : Clone(package);
+    }
+
+    private List<AnnotationColumnDto> ColumnsOf(string name)
+        => _draft?.Tables.FirstOrDefault(table => table.Name == name)?.Columns ?? [];
+
+    private bool InPackage(string table, string column)
+        => ColumnsOf(table).Any(item => item.Name == column);
+
+    private static AnnotationPackageDto Clone(AnnotationPackageDto package)
+        => JsonSerializer.Deserialize<AnnotationPackageDto>(JsonSerializer.Serialize(package, Json), Json)!;
 }

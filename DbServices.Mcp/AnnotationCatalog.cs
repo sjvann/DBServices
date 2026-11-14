@@ -131,6 +131,62 @@ public sealed class AnnotationCatalog
     }
 
     /// <summary>
+    /// 只改目前這份草稿的說明、表註、欄註、個資與關聯。沒有草稿不建立。
+    /// </summary>
+    public AnnotationWriteResult Save(AnnotationPackage incoming)
+    {
+        ArgumentNullException.ThrowIfNull(incoming);
+        lock (_gate)
+        {
+            var packages = Load();
+            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            if (index < 0 || !string.Equals(packages[index].Id, incoming.Id ?? "", StringComparison.Ordinal))
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+
+            var stored = packages[index];
+            var links = incoming.Links ?? [];
+            foreach (var link in links)
+            {
+                if (link is null
+                    || !Inside(stored, link.From, link.FromColumn)
+                    || !Inside(stored, link.To, link.ToColumn))
+                    return AnnotationWriteResult.Fail("link_outside", "關聯的一端不在這份註記包裡。");
+            }
+
+            stored.Purpose = incoming.Purpose ?? "";
+            stored.Status = "draft";
+            stored.Active = false;
+            var requestTables = incoming.Tables ?? [];
+            foreach (var table in stored.Tables ?? [])
+            {
+                var match = requestTables.FirstOrDefault(item => string.Equals(item?.Name, table.Name, StringComparison.Ordinal));
+                if (match is null)
+                    continue;
+                table.Note = match.Note ?? "";
+                table.Columns ??= [];
+                foreach (var column in table.Columns)
+                {
+                    var noted = match.Columns?.FirstOrDefault(item => string.Equals(item?.Name, column.Name, StringComparison.Ordinal));
+                    if (noted is null)
+                        continue;
+                    var note = noted.Note ?? "";
+                    column.Note = string.IsNullOrWhiteSpace(note) ? "" : note;
+                    column.Pii = noted.Pii ?? "";
+                }
+            }
+
+            stored.Links = MergeLinks(stored.Links, links);
+            if (!TryFlush(packages))
+            {
+                Reload();
+                return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+            }
+
+            return AnnotationWriteResult.Success(Clone(stored));
+        }
+    }
+
+    /// <summary>
     /// 先讀結構，再在鎖內確認仍無草稿且要求未中止，才寫成草稿。
     /// </summary>
     public AnnotationWriteResult ReadStructure(ToolCatalog catalog, string connectionId, CancellationToken cancellationToken = default)
@@ -267,12 +323,12 @@ public sealed class AnnotationCatalog
 
     private bool TryFlush(List<AnnotationPackage> packages)
     {
+        var temp = _path + ".tmp";
         try
         {
             var directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
-            var temp = _path + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(packages, Json));
             File.Move(temp, _path, overwrite: true);
             _packages = packages;
@@ -280,8 +336,68 @@ public sealed class AnnotationCatalog
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            try
+            {
+                if (File.Exists(temp))
+                    File.Delete(temp);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+            }
+
             return false;
         }
+    }
+
+    private static bool Inside(AnnotationPackage package, string? table, string? column)
+    {
+        if (string.IsNullOrEmpty(table) || string.IsNullOrEmpty(column))
+            return false;
+        var found = package.Tables?.FirstOrDefault(item => string.Equals(item.Name, table, StringComparison.Ordinal));
+        return found?.Columns?.Any(item => string.Equals(item.Name, column, StringComparison.Ordinal)) == true;
+    }
+
+    private static List<AnnotationLink> MergeLinks(List<AnnotationLink>? existing, List<AnnotationLink> incoming)
+    {
+        var prior = existing ?? [];
+        var merged = new List<AnnotationLink>();
+        foreach (var link in incoming)
+        {
+            var duplicate = merged.FirstOrDefault(item => SameLink(item, link));
+            if (duplicate is not null)
+            {
+                duplicate.Note = link.Note ?? "";
+                continue;
+            }
+
+            var origin = prior.FirstOrDefault(item => SameLink(item, link))?.Origin;
+            if (string.IsNullOrWhiteSpace(origin))
+                origin = "declared";
+            merged.Add(new AnnotationLink
+            {
+                From = link.From ?? "",
+                FromColumn = link.FromColumn ?? "",
+                To = link.To ?? "",
+                ToColumn = link.ToColumn ?? "",
+                Origin = origin,
+                Note = link.Note ?? "",
+            });
+        }
+
+        return merged;
+    }
+
+    private static bool SameLink(AnnotationLink left, AnnotationLink right)
+    {
+        var straight = string.Equals(left.From, right.From, StringComparison.Ordinal)
+            && string.Equals(left.FromColumn, right.FromColumn, StringComparison.Ordinal)
+            && string.Equals(left.To, right.To, StringComparison.Ordinal)
+            && string.Equals(left.ToColumn, right.ToColumn, StringComparison.Ordinal);
+        var swapped = string.Equals(left.From, right.To, StringComparison.Ordinal)
+            && string.Equals(left.FromColumn, right.ToColumn, StringComparison.Ordinal)
+            && string.Equals(left.To, right.From, StringComparison.Ordinal)
+            && string.Equals(left.ToColumn, right.FromColumn, StringComparison.Ordinal);
+        return straight || swapped;
     }
 
     private static AnnotationPackage Clone(AnnotationPackage package)

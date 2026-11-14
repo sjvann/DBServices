@@ -54,6 +54,33 @@ public sealed class AnnotationService
         }
     }
 
+    public async Task<OpResult<AnnotationPackageDto>> SaveAsync(
+        string operatorId,
+        AnnotationPackageDto? package,
+        CancellationToken cancellationToken)
+    {
+        if (Closed(operatorId) is { } error)
+            return OpResult<AnnotationPackageDto>.Fail(error);
+        if (package is null)
+            return OpResult<AnnotationPackageDto>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+
+        try
+        {
+            var written = await _catalog.SaveAsync(package, operatorId, cancellationToken);
+            if (!written.Ok)
+            {
+                var message = written.Code == "link_outside" ? WorkbenchMessages.LinkOutside : written.Message;
+                return OpResult<AnnotationPackageDto>.Fail(WorkbenchMessages.Text(written.Code, message));
+            }
+
+            return OpResult<AnnotationPackageDto>.Success(written.Package!);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return OpResult<AnnotationPackageDto>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+        }
+    }
+
     public async Task<OpResult<AnnotationPackageDto>> ReadStructureAsync(string operatorId, CancellationToken cancellationToken)
     {
         if (Closed(operatorId) is { } error)

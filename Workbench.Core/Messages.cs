@@ -17,6 +17,7 @@ public static class WorkbenchMessages
     public const string UndecidedConnectionText = "無法決定連線，沒有讀取資料。";
     public const string ImportRejected = "無法匯入。這份活頁簿對不上字典契約。既有草稿沒有改。";
     public const string DraftExists = "已有工作中的草稿，沒有改。";
+    public const string LinkOutside = "關聯的一端不在這份註記包裡。";
     public const string Importing = "正在匯入。";
     public const string ReadingStructure = "正在讀取結構。";
     public const string NoConnection = "沒有讀取結構。";

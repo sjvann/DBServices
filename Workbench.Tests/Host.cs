@@ -233,8 +233,10 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
     public int Attempts { get; private set; }
     public int Commits { get; private set; }
     public int StructureAttempts { get; private set; }
+    public int SaveAttempts { get; private set; }
     public Task? ReadGate { get; set; }
     public AnnotationWriteResult? StructureFailure { get; set; }
+    public AnnotationWriteResult? SaveFailure { get; set; }
     public AnnotationPackageDto? StructurePackage { get; set; }
 
     public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
@@ -248,6 +250,24 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
         Draft = Clone(package);
         Commits++;
         return Task.FromResult(AnnotationWriteResult.Success(Clone(package)));
+    }
+
+    public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+    {
+        SaveAttempts++;
+        if (SaveFailure is not null)
+            return Task.FromResult(SaveFailure);
+        if (Draft is null
+            || !string.Equals(Draft.Status, "draft", StringComparison.Ordinal)
+            || !string.Equals(Draft.Id, package.Id, StringComparison.Ordinal))
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        var copy = Clone(package);
+        copy.Status = "draft";
+        copy.Active = false;
+        Draft = Clone(copy);
+        Commits++;
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(copy)));
     }
 
     public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)

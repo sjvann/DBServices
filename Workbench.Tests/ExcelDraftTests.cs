@@ -76,7 +76,7 @@ public class ExcelDraftTests
             cut.WaitForAssertion(() => Assert.IsTrue(cut.Find(".package-bar").TextContent.Contains("Samples", StringComparison.Ordinal)));
             Assert.IsTrue(cut.Find(".package-bar").TextContent.Contains("草稿", StringComparison.Ordinal));
             Assert.AreEqual("LH_TXN_MLST", cut.Find(".table-list .code").TextContent.Trim());
-            Assert.AreEqual(expected.Note, cut.Find(".table-note").TextContent.Trim());
+            Assert.AreEqual(expected.Note, Shown(cut.Find(".table-note")));
             foreach (var column in expected.Columns)
             {
                 var row = cut.Find($"tr[data-column='{column.Name}']");
@@ -84,7 +84,7 @@ public class ExcelDraftTests
                 Assert.AreEqual(column.Name, cells[0].TextContent.Trim());
                 Assert.AreEqual(column.Type, cells[1].TextContent.Trim());
                 Assert.AreEqual(column.NotNull ? "not null" : "", cells[2].TextContent.Trim());
-                Assert.AreEqual(column.Note, cells[3].TextContent.Trim());
+                Assert.AreEqual(column.Note, Shown(cells[3].QuerySelector("textarea")!));
             }
 
             var index = cut.Find($"[data-index='{expected.IndexName}']");
@@ -341,6 +341,12 @@ public class ExcelDraftTests
         context.Services.AddSingleton<IAnnotationCatalog>(annotations);
         context.Services.AddSingleton<IViewCaller>(caller);
         return context;
+    }
+
+    private static string Shown(AngleSharp.Dom.IElement element)
+    {
+        var value = element.GetAttribute("value");
+        return string.IsNullOrEmpty(value) ? element.TextContent.Trim() : value;
     }
 
     private static string Sample(string name)
