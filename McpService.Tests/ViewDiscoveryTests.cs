@@ -166,6 +166,14 @@ public class ViewDiscoveryTests
             using var client = factory.CreateClient();
             client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
             client.DefaultRequestHeaders.Accept.ParseAdd("text/event-stream");
+            SeedDeclared(root, new AnnotationLink
+            {
+                From = "orders",
+                FromColumn = "CustomerId",
+                To = "customers",
+                ToColumn = "Id",
+                Origin = "foreign-key",
+            });
             var saved = await SendAsync(client, HttpMethod.Put, "/views/join-1", "林可", "unit-catalog-key",
                 """
                 {"id":"join-1","name":"關聯","purpose":"訂單客戶","confirmed":true,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"}],"parameters":[{"name":"標題","column":"Title","source":"orders"}],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
@@ -584,6 +592,24 @@ public class ViewDiscoveryTests
                 new("Workbench:CatalogKey", "unit-catalog-key"),
             ]);
             using var client = Client(factory);
+            SeedDeclared(
+                root,
+                new AnnotationLink
+                {
+                    From = "orders",
+                    FromColumn = "CustomerId",
+                    To = "customers",
+                    ToColumn = "Id",
+                    Origin = "foreign-key",
+                },
+                new AnnotationLink
+                {
+                    From = "orders",
+                    FromColumn = "RegionId",
+                    To = "customers",
+                    ToColumn = "RegionId",
+                    Origin = "declared",
+                });
             var saved = await SendAsync(client, HttpMethod.Put, "/views/keys-1", "林可", "unit-catalog-key",
                 """
                 {"id":"keys-1","name":"雙鍵","purpose":"兩條都要中","confirmed":true,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"CustomerId","to":"customers","toColumn":"Id"},{"kind":"accepted","from":"orders","fromColumn":"RegionId","to":"customers","toColumn":"RegionId"}],"parameters":[],"columns":[{"name":"Title","source":"orders"},{"name":"Name","source":"customers"}]}
@@ -900,6 +926,26 @@ public class ViewDiscoveryTests
         {
             (service as IDisposable)?.Dispose();
         }
+    }
+
+    private static void SeedDeclared(string root, params AnnotationLink[] links)
+    {
+        Directory.CreateDirectory(Path.Combine(root, "catalog"));
+        var package = new AnnotationPackage
+        {
+            Id = "active",
+            Title = "啟用",
+            Purpose = "說明",
+            Status = "confirmed",
+            Active = true,
+            Links = links.ToList(),
+        };
+        File.WriteAllText(
+            Path.Combine(root, "catalog", "annotations.json"),
+            JsonSerializer.Serialize(new List<AnnotationPackage> { package }, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            }));
     }
 
     private static HttpClient Client(WebApplicationFactory<Program> factory)

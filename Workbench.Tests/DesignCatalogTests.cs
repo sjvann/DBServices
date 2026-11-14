@@ -366,6 +366,247 @@ public class DesignCatalogTests
         Assert.AreEqual(1, annotations.SaveAttempts);
     }
 
+    [TestMethod]
+    public async Task Declared_link_reversed_direction_saves_accepted_kind()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        await cut.FindAll(".chip").Single(chip => chip.TextContent.Contains("accounts", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        var link = Field<List<ViewLinkDto>>(cut, "_links").Single();
+        Assert.AreEqual("accepted", link.Kind);
+        var from = link.From;
+        var fromColumn = link.FromColumn;
+        link.From = link.To;
+        link.FromColumn = link.ToColumn;
+        link.To = from;
+        link.ToColumn = fromColumn;
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        var saved = views.Documents.Single();
+        Assert.AreEqual("accepted", saved.Links.Single().Kind);
+        Assert.AreEqual("accounts", saved.Links.Single().From);
+        Assert.AreEqual("id", saved.Links.Single().FromColumn);
+        Assert.AreEqual("orders", saved.Links.Single().To);
+        Assert.AreEqual("customerId", saved.Links.Single().ToColumn);
+        CollectionAssert.AreEquivalent(
+            new[] { "Columns", "Confirmed", "Id", "Links", "Name", "Parameters", "Published", "Purpose", "Sources" },
+            typeof(ViewDocumentDto).GetProperties().Select(property => property.Name).ToArray());
+        Assert.IsFalse(JsonSerializer.Serialize(saved).Contains("不該出現的理由", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+        Assert.AreEqual(0, browser.GraphCalls);
+        Assert.AreEqual(0, browser.RowReads);
+    }
+
+    [TestMethod]
+    public async Task Declared_link_foreign_key_keeps_kind()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        await cut.FindAll(".chip").Single(chip => chip.TextContent.Contains("customers", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        Assert.AreEqual("foreign-key", Field<List<ViewLinkDto>>(cut, "_links").Single().Kind);
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        var saved = views.Documents.Single();
+        Assert.AreEqual("foreign-key", saved.Links.Single().Kind);
+        Assert.AreEqual("orders", saved.Links.Single().From);
+        Assert.AreEqual("customerId", saved.Links.Single().FromColumn);
+        Assert.AreEqual("customers", saved.Links.Single().To);
+        Assert.AreEqual("id", saved.Links.Single().ToColumn);
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+        Assert.AreEqual(0, browser.GraphCalls);
+        Assert.AreEqual(0, browser.RowReads);
+    }
+
+    [TestMethod]
+    public async Task Declared_link_one_table_is_not_rejected()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        var saved = views.Documents.Single();
+        CollectionAssert.AreEqual(new[] { "orders" }, saved.Sources.ToArray());
+        Assert.AreEqual(0, saved.Links.Count);
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Declared_link_one_segment_rejects_without_writing()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        await cut.FindAll(".chip").Single(chip => chip.TextContent.Contains("customers", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await cut.FindAll(".chip").Single(chip => chip.TextContent.Contains("accounts", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        var links = Field<List<ViewLinkDto>>(cut, "_links");
+        Assert.AreEqual(2, links.Count);
+        links.Single(link => link.To == "accounts").ToColumn = "missing";
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual(0, views.Documents.Count);
+        Assert.AreEqual(0, annotations.SaveAttempts);
+        Assert.AreEqual(2, Field<List<ViewLinkDto>>(cut, "_links").Count);
+        var shown = cut.Find("[aria-label='表怎麼相連']").QuerySelectorAll("li").Select(item => item.TextContent.Trim()).ToArray();
+        CollectionAssert.AreEquivalent(
+            new[] { "orders.customerId → customers.id", "orders.customerId → accounts.missing" },
+            shown);
+        var alert = cut.Find("section.board .status-message");
+        Assert.AreEqual("alert", alert.GetAttribute("role"));
+        var lines = alert.QuerySelectorAll("span");
+        Assert.AreEqual(2, lines.Length);
+        Assert.AreEqual("這段關聯不在註記包裡。", lines[0].TextContent.Trim());
+        Assert.AreEqual("link_undeclared", lines[1].TextContent.Trim());
+        Assert.IsTrue(lines[1].ClassList.Contains("code"));
+        Assert.IsTrue(alert.InnerHtml.IndexOf("這段關聯不在註記包裡。", StringComparison.Ordinal) < alert.InnerHtml.IndexOf("link_undeclared", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("Data Source=", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("Password=", StringComparison.Ordinal));
+        Assert.AreEqual(0, browser.GraphCalls);
+        Assert.AreEqual(0, browser.RowReads);
+    }
+
+    [TestMethod]
+    public async Task Declared_link_without_active_package_does_not_read_live_schema()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Draft = DraftPackage("草稿表"), Others = { ExitedPackage("已退出表") } };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        views.Remember(new ViewDocumentDto
+        {
+            Id = "kept",
+            Name = "訂單",
+            Purpose = "訂單",
+            Sources = ["orders", "customers"],
+            Links = [new ViewLinkDto { Kind = "foreign-key", From = "orders", FromColumn = "customerId", To = "customers", ToColumn = "id" }],
+        });
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+        var before = JsonSerializer.Serialize(views.Documents.Single());
+
+        await cut.FindAll(".index-item").Single(button => button.TextContent.Contains("訂單", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual(before, JsonSerializer.Serialize(views.Documents.Single()));
+        Assert.AreEqual(0, annotations.SaveAttempts);
+        Assert.IsTrue(cut.Find("[aria-label='表怎麼相連']").TextContent.Contains("orders.customerId → customers.id", StringComparison.Ordinal));
+        var alert = cut.Find("section.board .status-message");
+        Assert.AreEqual("alert", alert.GetAttribute("role"));
+        Assert.AreEqual("這段關聯不在註記包裡。", alert.QuerySelectorAll("span")[0].TextContent.Trim());
+        Assert.AreEqual("link_undeclared", alert.QuerySelectorAll("span")[1].TextContent.Trim());
+        Assert.IsFalse(cut.Markup.Contains("活庫表", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("Data Source=", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("Password=", StringComparison.Ordinal));
+        Assert.AreEqual(0, browser.GraphCalls);
+        Assert.AreEqual(0, browser.RowReads);
+    }
+
+    [TestMethod]
+    public async Task Declared_link_without_any_link_stays_disconnected()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        Field<List<string>>(cut, "_sources").Add("customers");
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual(0, views.Documents.Count);
+        var alert = cut.Find("section.board .error");
+        Assert.AreEqual("disconnected", alert.QuerySelector(".code")!.TextContent.Trim());
+        Assert.AreEqual("來源連不起來。", alert.QuerySelectorAll("span")[1].TextContent.Trim());
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Declared_link_outside_table_saves_accepted_kind()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        views.Remember(new ViewDocumentDto
+        {
+            Id = "kept",
+            Name = "外部",
+            Purpose = "外部",
+            Sources = ["orders", "外部表"],
+            Links = [new ViewLinkDto { Kind = "foreign-key", From = "orders", FromColumn = "customerId", To = "外部表", ToColumn = "id" }],
+            Columns = [new ViewColumnDto { Name = "customerId", Source = "orders" }],
+        });
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".index-item").Single(button => button.TextContent.Contains("外部", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        var saved = views.Documents.Single();
+        Assert.AreEqual("accepted", saved.Links.Single().Kind);
+        Assert.AreEqual("orders", saved.Links.Single().From);
+        Assert.AreEqual("customerId", saved.Links.Single().FromColumn);
+        Assert.AreEqual("外部表", saved.Links.Single().To);
+        Assert.AreEqual("id", saved.Links.Single().ToColumn);
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Declared_link_blank_column_does_not_show_undeclared()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+
+        await cut.FindAll(".table-pick").Single(button => button.QuerySelector("span")!.TextContent.Trim() == "orders").ClickAsync(new MouseEventArgs());
+        Field<List<string>>(cut, "_sources").Add("customers");
+        Field<List<ViewLinkDto>>(cut, "_links").Add(new ViewLinkDto
+        {
+            Kind = "foreign-key",
+            From = "orders",
+            FromColumn = " ",
+            To = "customers",
+            ToColumn = "id",
+        });
+        Field<List<ViewColumnDto>>(cut, "_columns").Add(new ViewColumnDto { Name = "qty", Source = "orders" });
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual(0, views.Documents.Count);
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+        Assert.AreEqual("來源連不起來。", cut.Find("section.board .error").QuerySelectorAll("span")[1].TextContent.Trim());
+    }
+
+    private static T Field<T>(IRenderedComponent<Workbench.Web.Components.Views> cut, string name)
+        => (T)cut.Instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cut.Instance)!;
+
     private static async Task AssertEmpty(Catalog annotations, string hidden)
     {
         await using var context = new BunitContext();
@@ -532,6 +773,8 @@ public class DesignCatalogTests
         private readonly List<ViewDocumentDto> _documents = [];
 
         public IReadOnlyList<ViewDocumentDto> Documents => _documents.Select(Clone).ToList();
+
+        public void Remember(ViewDocumentDto document) => _documents.Add(Clone(document));
 
         public Task<IReadOnlyList<ViewDocumentDto>> ListAsync(string callerId, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ViewDocumentDto>>(_documents.Select(Clone).ToList());

@@ -230,12 +230,32 @@ app.MapGet("/views/{id}", (string id, HttpContext http, ViewCatalog views, IConf
     var document = views.Find(id);
     return document is null ? Results.NotFound(new { code = "not_found", message = "找不到檢視。" }) : Results.Json(document);
 });
-app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
+app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, AnnotationCatalog annotations, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
         return rejected;
     var document = await http.Request.ReadFromJsonAsync<ViewDocument>() ?? new ViewDocument();
     document.Id = id;
+    DeclaredLinks.TrimEnds(document);
+    var shaped = ViewCatalog.Check(document, views.List());
+    if (shaped is not null)
+        return Results.Json(new { code = shaped.Code, message = shaped.Message }, statusCode: 400);
+    if (DeclaredLinks.Applies(document))
+    {
+        AnnotationPackage? package;
+        try
+        {
+            package = annotations.Active().Package;
+        }
+        catch (AnnotationReadException)
+        {
+            return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+        }
+
+        if (!DeclaredLinks.TryPrepare(document, package))
+            return Results.Json(new { code = DeclaredLinks.Code, message = DeclaredLinks.Message }, statusCode: 400);
+    }
+
     var result = views.Save(document);
     return result.Ok ? Results.Json(result.Document) : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
 });

@@ -129,7 +129,14 @@ else
             }
         </aside>
         <section class="board" aria-labelledby="view-editor-title">
-            @if (_error is not null)
+            @if (_error?.Code == "link_undeclared")
+            {
+                <div class="status-message" role="alert">
+                    <span>@_error.Message</span>
+                    <span class="code">@_error.Code</span>
+                </div>
+            }
+            else if (_error is not null)
             {
                 <div class="error" role="alert">
                     @if (!string.IsNullOrEmpty(_error.Code))
@@ -401,6 +408,7 @@ else
     private List<ViewDocumentDto> _documents = [];
     private List<SchemaTableDto> _tables = [];
     private List<AnnotationLinkDto> _declared = [];
+    private List<AnnotationLinkDto> _eligible = [];
     private readonly Dictionary<string, string> _tableNotes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _columnNotes = new(StringComparer.OrdinalIgnoreCase);
     private List<string> _sources = [];
@@ -451,6 +459,7 @@ else
                 _schemaError = result.Error;
                 _tables = [];
                 _declared = [];
+                _eligible = [];
                 _tableNotes.Clear();
                 _columnNotes.Clear();
                 return;
@@ -591,7 +600,7 @@ else
         {
             _links.Add(new ViewLinkDto
             {
-                Kind = "foreign-key",
+                Kind = KindFor(suggestion),
                 From = suggestion.From,
                 FromColumn = suggestion.FromColumn,
                 To = suggestion.To,
@@ -962,9 +971,27 @@ else
                 }
             }
 
-            var saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
+            var previousKinds = (document.Links ?? []).Select(link => link.Kind).ToArray();
+            if (RefuseUndeclared(document) is { } refused)
+            {
+                _error = refused;
+                return;
+            }
+
+            OpResult<ViewDocumentDto> saved;
+            try
+            {
+                saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
+            }
+            catch
+            {
+                RestoreKinds(document.Links, previousKinds);
+                throw;
+            }
+
             if (!saved.Ok)
             {
+                RestoreKinds(document.Links, previousKinds);
                 _error = saved.Error;
                 return;
             }
@@ -1087,6 +1114,101 @@ else
         return found?.Name ?? text;
     }
 
+    private string KindFor(SchemaNeighborhood.Suggestion suggestion)
+    {
+        var origin = DeclaredOrigin(suggestion.From, suggestion.FromColumn, suggestion.To, suggestion.ToColumn);
+        return origin == "declared" ? "accepted" : "foreign-key";
+    }
+
+    private ErrorDto? RefuseUndeclared(ViewDocumentDto document)
+    {
+        var sources = (document.Sources ?? [])
+            .Select(source => source?.Trim() ?? "")
+            .Where(source => source.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var links = document.Links ?? [];
+        if (sources <= 1 || links.Count == 0)
+            return null;
+
+        var names = new HashSet<string>(
+            (document.Sources ?? []).Select(source => source?.Trim() ?? "").Where(source => source.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var link in links)
+        {
+            if (link.Kind is not ("foreign-key" or "accepted")
+                || string.IsNullOrWhiteSpace(link.FromColumn)
+                || string.IsNullOrWhiteSpace(link.ToColumn)
+                || !names.Contains(link.From ?? "")
+                || !names.Contains(link.To ?? ""))
+                return null;
+        }
+
+        var kinds = new string[links.Count];
+        for (var index = 0; index < links.Count; index++)
+        {
+            var origin = DeclaredOrigin(links[index].From, links[index].FromColumn, links[index].To, links[index].ToColumn);
+            if (origin is null)
+                return new ErrorDto { Code = "link_undeclared", Message = "這段關聯不在註記包裡。" };
+            kinds[index] = origin == "foreign-key" ? "foreign-key" : "accepted";
+        }
+
+        for (var index = 0; index < links.Count; index++)
+            links[index].Kind = kinds[index];
+        return null;
+    }
+
+    private static void RestoreKinds(IList<ViewLinkDto>? links, string[] kinds)
+    {
+        if (links is null)
+            return;
+        for (var index = 0; index < links.Count && index < kinds.Length; index++)
+            links[index].Kind = kinds[index];
+    }
+
+    private string? DeclaredOrigin(string? from, string? fromColumn, string? to, string? toColumn)
+    {
+        var left = from?.Trim() ?? "";
+        var leftColumn = fromColumn?.Trim() ?? "";
+        var right = to?.Trim() ?? "";
+        var rightColumn = toColumn?.Trim() ?? "";
+        foreach (var link in _eligible)
+        {
+            var origin = link.Origin?.Trim() ?? "";
+            if (origin is not ("foreign-key" or "declared"))
+                continue;
+            if (SameDeclared(link.From, link.FromColumn, link.To, link.ToColumn, left, leftColumn, right, rightColumn))
+                return origin;
+        }
+
+        return null;
+    }
+
+    private static bool SameDeclared(
+        string? from,
+        string? fromColumn,
+        string? to,
+        string? toColumn,
+        string otherFrom,
+        string otherFromColumn,
+        string otherTo,
+        string otherToColumn)
+    {
+        var left = from?.Trim() ?? "";
+        var leftColumn = fromColumn?.Trim() ?? "";
+        var right = to?.Trim() ?? "";
+        var rightColumn = toColumn?.Trim() ?? "";
+        var straight = string.Equals(left, otherFrom, StringComparison.Ordinal)
+            && string.Equals(leftColumn, otherFromColumn, StringComparison.Ordinal)
+            && string.Equals(right, otherTo, StringComparison.Ordinal)
+            && string.Equals(rightColumn, otherToColumn, StringComparison.Ordinal);
+        var swapped = string.Equals(left, otherTo, StringComparison.Ordinal)
+            && string.Equals(leftColumn, otherToColumn, StringComparison.Ordinal)
+            && string.Equals(right, otherFrom, StringComparison.Ordinal)
+            && string.Equals(rightColumn, otherFromColumn, StringComparison.Ordinal);
+        return straight || swapped;
+    }
+
     private static bool SameLink(ViewLinkDto link, SchemaNeighborhood.Suggestion suggestion)
         => string.Equals(link.From, suggestion.From, StringComparison.OrdinalIgnoreCase)
            && string.Equals(link.FromColumn, suggestion.FromColumn, StringComparison.OrdinalIgnoreCase)
@@ -1122,6 +1244,7 @@ else
         _tableNotes.Clear();
         _columnNotes.Clear();
         _declared = [];
+        _eligible = [];
         var package = active?.Package;
         if (package is not { Active: true } || string.Equals(package.Status, "draft", StringComparison.Ordinal))
         {
@@ -1159,16 +1282,19 @@ else
 
         foreach (var link in package.Links ?? [])
         {
-            if (!Declared(link, included))
+            if (!Eligible(link))
                 continue;
-            _declared.Add(new AnnotationLinkDto
+            var copy = new AnnotationLinkDto
             {
                 From = link.From.Trim(),
                 FromColumn = link.FromColumn.Trim(),
                 To = link.To.Trim(),
                 ToColumn = link.ToColumn.Trim(),
                 Origin = link.Origin,
-            });
+            };
+            _eligible.Add(copy);
+            if (Declared(link, included))
+                _declared.Add(copy);
         }
 
         foreach (var table in tables)
@@ -1186,6 +1312,18 @@ else
         }
 
         _tables = tables;
+    }
+
+    private static bool Eligible(AnnotationLinkDto link)
+    {
+        if (!string.Equals(link.Origin?.Trim(), "foreign-key", StringComparison.Ordinal)
+            && !string.Equals(link.Origin?.Trim(), "declared", StringComparison.Ordinal))
+            return false;
+        var from = link.From?.Trim() ?? "";
+        var to = link.To?.Trim() ?? "";
+        var fromColumn = link.FromColumn?.Trim() ?? "";
+        var toColumn = link.ToColumn?.Trim() ?? "";
+        return from.Length > 0 && to.Length > 0 && fromColumn.Length > 0 && toColumn.Length > 0;
     }
 
     private static bool Declared(AnnotationLinkDto link, HashSet<string> tables)
