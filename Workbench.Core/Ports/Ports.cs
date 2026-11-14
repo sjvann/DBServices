@@ -107,12 +107,21 @@ public sealed class AnnotationWriteResult
     public static AnnotationWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class AnnotationActiveDto
+{
+    public AnnotationPackageDto? Package { get; set; }
+    public List<AnnotationPackageDto> Others { get; set; } = [];
+}
+
 public interface IAnnotationCatalog
 {
     Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken);
+    Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken);
 }
 
 public interface IViewCatalog

@@ -231,8 +231,6 @@ public class StructureDraftTests
         foreach (var button in buttons)
         {
             var text = button.TextContent.Trim();
-            Assert.AreNotEqual("確認", text);
-            Assert.AreNotEqual("匯出", text);
             Assert.AreNotEqual("放棄", text);
         }
     }

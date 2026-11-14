@@ -292,4 +292,26 @@ public sealed class AnnotationsController : ControllerBase
     [HttpPost("read-structure")]
     public Task<IActionResult> ReadStructure(CancellationToken cancellationToken)
         => ApiResults.FromAsync(_annotations.ReadStructureAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
+
+    [HttpGet("active")]
+    public async Task<IActionResult> Active(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.ActiveAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return result.Value?.Package is null ? NoContent() : Ok(result.Value);
+    }
+
+    [HttpGet("draft/dbml")]
+    public async Task<IActionResult> DraftDbml(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.DraftDbmlAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return result.Value is null ? NoContent() : Content(result.Value, "text/plain; charset=utf-8");
+    }
+
+    [HttpPost("confirm")]
+    public Task<IActionResult> Confirm(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.ConfirmAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
 }

@@ -230,17 +230,63 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public AnnotationPackageDto? Draft { get; set; }
+    public AnnotationPackageDto? Active { get; set; }
+    public List<AnnotationPackageDto> Others { get; } = [];
     public int Attempts { get; private set; }
     public int Commits { get; private set; }
     public int StructureAttempts { get; private set; }
     public int SaveAttempts { get; private set; }
+    public int ConfirmAttempts { get; private set; }
+    public int DbmlAttempts { get; private set; }
+    public string? DraftDbml { get; set; }
     public Task? ReadGate { get; set; }
     public AnnotationWriteResult? StructureFailure { get; set; }
     public AnnotationWriteResult? SaveFailure { get; set; }
+    public AnnotationWriteResult? ConfirmFailure { get; set; }
     public AnnotationPackageDto? StructurePackage { get; set; }
 
     public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
         => Task.FromResult(Draft is null ? null : Clone(Draft));
+
+    public Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(new AnnotationActiveDto
+        {
+            Package = Active is null ? null : Clone(Active),
+            Others = Others.Select(Clone).ToList(),
+        });
+
+    public Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+    {
+        DbmlAttempts++;
+        return Task.FromResult(Draft is null ? null : DraftDbml ?? "");
+    }
+
+    public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+    {
+        ConfirmAttempts++;
+        if (ConfirmFailure is not null)
+            return Task.FromResult(ConfirmFailure);
+        if (Draft is null)
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        if (Active is not null)
+        {
+            var old = Clone(Active);
+            old.Status = "confirmed";
+            old.Active = false;
+            Others.RemoveAll(item => item.Id == old.Id);
+            Others.Add(old);
+        }
+
+        var confirmed = Clone(Draft);
+        confirmed.Status = "confirmed";
+        confirmed.Active = true;
+        if (string.IsNullOrEmpty(confirmed.Dbml))
+            confirmed.Dbml = DraftDbml ?? "";
+        Draft = null;
+        Active = Clone(confirmed);
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(confirmed)));
+    }
 
     public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
     {
@@ -257,6 +303,38 @@ internal sealed class RecordingAnnotations : IAnnotationCatalog
         SaveAttempts++;
         if (SaveFailure is not null)
             return Task.FromResult(SaveFailure);
+        if (Draft is null && Active is not null && string.Equals(Active.Id, package.Id, StringComparison.Ordinal))
+        {
+            var forked = Clone(Active);
+            forked.Id = Guid.NewGuid().ToString("N");
+            forked.Status = "draft";
+            forked.Active = false;
+            forked.Dbml = "";
+            forked.Purpose = package.Purpose ?? "";
+            foreach (var table in forked.Tables)
+            {
+                var match = package.Tables?.FirstOrDefault(item => item.Name == table.Name);
+                if (match is null)
+                    continue;
+                table.Note = match.Note ?? "";
+                foreach (var column in table.Columns)
+                {
+                    var noted = match.Columns?.FirstOrDefault(item => item.Name == column.Name);
+                    if (noted is null)
+                        continue;
+                    column.Note = string.IsNullOrWhiteSpace(noted.Note) ? "" : noted.Note;
+                    column.Pii = noted.Pii ?? "";
+                }
+            }
+
+            forked.Links = package.Links ?? [];
+            Draft = Clone(forked);
+            Commits++;
+            return Task.FromResult(AnnotationWriteResult.Success(Clone(forked)));
+        }
+
+        if (Draft is not null && Active is not null && string.Equals(Active.Id, package.Id, StringComparison.Ordinal))
+            return Task.FromResult(AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists));
         if (Draft is null
             || !string.Equals(Draft.Status, "draft", StringComparison.Ordinal)
             || !string.Equals(Draft.Id, package.Id, StringComparison.Ordinal))

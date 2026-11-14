@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DbServices.Mcp;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -284,7 +285,11 @@ app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog anno
     {
         var current = annotations.Draft();
         var sameDraft = current is not null && string.Equals(current.Id, package.Id, StringComparison.Ordinal);
-        var result = sameDraft ? annotations.Save(package) : annotations.Import(package);
+        var result = sameDraft
+            ? annotations.Save(package)
+            : annotations.IsActiveId(package.Id)
+                ? annotations.ForkFromActive(package)
+                : annotations.Import(package);
         return result.Ok
             ? Results.Json(result.Package)
             : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
@@ -304,24 +309,66 @@ app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog 
         if (annotations.Draft() is not null)
             return Results.Json(new { code = "draft_exists", message = "已有工作中的草稿，沒有改。" }, statusCode: 400);
 
-        var available = new List<string>();
-        foreach (var pair in directory.Catalog.Connections)
-        {
-            if (pair.Value.Available)
-                available.Add(pair.Key);
-        }
-
-        if (available.Count == 0)
-            return Results.Json(new { code = "no_connection", message = "沒有讀取結構。" }, statusCode: 400);
-        if (available.Count > 1)
-            return Results.Json(new { code = "connection_unselectable", message = "註記站不能選擇連線，沒有讀取結構。" }, statusCode: 400);
-
-        var name = available[0];
-        var expected = configuration["Annotation:PlatformConnection"];
-        if (!string.Equals(name, expected, StringComparison.OrdinalIgnoreCase))
-            return Results.Json(new { code = "not_platform_source", message = "不能用" + name + "讀結構或確認。" }, statusCode: 400);
+        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
+            return blocked;
 
         var result = annotations.ReadStructure(directory.Catalog, name, http.RequestAborted);
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapGet("/annotations/draft/dbml", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var text = annotations.DraftDbml();
+        return text is null ? Results.NoContent() : Results.Text(text, "text/plain; charset=utf-8");
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapGet("/annotations/active", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var active = annotations.Active();
+        if (active.Package is null)
+            return Results.NoContent();
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var node = JsonSerializer.SerializeToNode(active.Package, options)!.AsObject();
+        node["others"] = JsonSerializer.SerializeToNode(active.Others, options);
+        return Results.Json(node);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapPost("/annotations/confirm", (HttpContext http, AnnotationCatalog annotations, ViewCatalog views, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+
+    try
+    {
+        if (annotations.RefuseConfirm() is { } refused)
+            return Results.Json(new { code = refused.Code, message = refused.Message }, statusCode: 400);
+        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
+            return blocked;
+
+        var result = annotations.Confirm(directory.Catalog, name, views.List());
         return result.Ok
             ? Results.Json(result.Package)
             : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
@@ -387,6 +434,28 @@ static List<Dictionary<string, string>> ConnectionPayload(ToolCatalog catalog)
     }
 
     return payload;
+}
+
+static IResult? RejectPlatform(ConnectionDirectory directory, IConfiguration configuration, out string name)
+{
+    name = "";
+    var available = new List<string>();
+    foreach (var pair in directory.Catalog.Connections)
+    {
+        if (pair.Value.Available)
+            available.Add(pair.Key);
+    }
+
+    if (available.Count == 0)
+        return Results.Json(new { code = "no_connection", message = "沒有讀取結構。" }, statusCode: 400);
+    if (available.Count > 1)
+        return Results.Json(new { code = "connection_unselectable", message = "註記站不能選擇連線，沒有讀取結構。" }, statusCode: 400);
+
+    name = available[0];
+    var expected = configuration["Annotation:PlatformConnection"];
+    if (!string.Equals(name, expected, StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { code = "not_platform_source", message = "不能用" + name + "讀結構或確認。" }, statusCode: 400);
+    return null;
 }
 
 static IResult? RejectWrite(HttpContext http, IConfiguration configuration)

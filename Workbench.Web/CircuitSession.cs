@@ -42,14 +42,15 @@ public static class DialogHost
 
 public sealed class DialogStack
 {
-    private readonly List<int> _open = [];
+    private readonly List<DialogLayer> _open = [];
+    private int _next = 1;
 
     public int Count => _open.Count;
 
-    public int Push()
+    public int Push(Action? closed = null)
     {
-        var id = _open.Count == 0 ? 1 : _open[^1] + 1;
-        _open.Add(id);
+        var id = _next++;
+        _open.Add(new DialogLayer(id, closed));
         return id;
     }
 
@@ -57,7 +58,28 @@ public sealed class DialogStack
     {
         if (_open.Count == 0)
             return false;
+        var closed = _open[^1].Closed;
         _open.RemoveAt(_open.Count - 1);
+        closed?.Invoke();
         return true;
+    }
+
+    public void Dismiss(int id)
+    {
+        var index = _open.FindIndex(layer => layer.Id == id);
+        if (index >= 0)
+            _open.RemoveAt(index);
+    }
+
+    private sealed class DialogLayer
+    {
+        public DialogLayer(int id, Action? closed)
+        {
+            Id = id;
+            Closed = closed;
+        }
+
+        public int Id { get; }
+        public Action? Closed { get; }
     }
 }

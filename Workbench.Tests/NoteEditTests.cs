@@ -447,6 +447,15 @@ public class NoteEditTests
         public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
             => Task.FromResult(Draft);
 
+        public Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(new AnnotationActiveDto());
+
+        public Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(null);
+
+        public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
         public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
             => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
 

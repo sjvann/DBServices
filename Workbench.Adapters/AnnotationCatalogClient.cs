@@ -33,6 +33,62 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         return JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json) ?? throw Failure(text);
     }
 
+    public async Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, "annotations/active", callerId, null, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NoContent)
+            return new AnnotationActiveDto();
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw Failure(text);
+        var package = JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json) ?? throw Failure(text);
+        var others = new List<AnnotationPackageDto>();
+        using (var document = JsonDocument.Parse(text))
+        {
+            if (document.RootElement.TryGetProperty("others", out var extra) && extra.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in extra.EnumerateArray())
+                {
+                    var other = JsonSerializer.Deserialize<AnnotationPackageDto>(item.GetRawText(), Json);
+                    if (other is not null)
+                        others.Add(other);
+                }
+            }
+        }
+
+        return new AnnotationActiveDto { Package = package, Others = others };
+    }
+
+    public async Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, "annotations/draft/dbml", callerId, null, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NoContent)
+            return null;
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw Failure(text);
+        return text;
+    }
+
+    public async Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "annotations/confirm", callerId, null, cancellationToken);
+        var text = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return ReadFailure(text);
+        try
+        {
+            var saved = JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json);
+            return saved is null
+                ? AnnotationWriteResult.Fail("execution_failed", "沒有保存。")
+                : AnnotationWriteResult.Success(saved);
+        }
+        catch (JsonException)
+        {
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        }
+    }
+
     public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
         => PutDraftAsync(package, callerId, cancellationToken);
 

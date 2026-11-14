@@ -81,6 +81,51 @@ public sealed class AnnotationService
         }
     }
 
+    public async Task<OpResult<AnnotationActiveDto>> ActiveAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Closed(operatorId) is { } error)
+            return OpResult<AnnotationActiveDto>.Fail(error);
+        try
+        {
+            return OpResult<AnnotationActiveDto>.Success(await _catalog.ActiveAsync(operatorId, cancellationToken));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return OpResult<AnnotationActiveDto>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+        }
+    }
+
+    public async Task<OpResult<string?>> DraftDbmlAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Closed(operatorId) is { } error)
+            return OpResult<string?>.Fail(error);
+        try
+        {
+            return OpResult<string?>.Success(await _catalog.DraftDbmlAsync(operatorId, cancellationToken));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return OpResult<string?>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+        }
+    }
+
+    public async Task<OpResult<AnnotationPackageDto>> ConfirmAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Closed(operatorId) is { } error)
+            return OpResult<AnnotationPackageDto>.Fail(error);
+        try
+        {
+            var written = await _catalog.ConfirmAsync(operatorId, cancellationToken);
+            if (!written.Ok)
+                return OpResult<AnnotationPackageDto>.Fail(WorkbenchMessages.Text(written.Code, written.Message));
+            return OpResult<AnnotationPackageDto>.Success(written.Package!);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return OpResult<AnnotationPackageDto>.Fail(WorkbenchMessages.Text("execution_failed", "沒有保存。"));
+        }
+    }
+
     public async Task<OpResult<AnnotationPackageDto>> ReadStructureAsync(string operatorId, CancellationToken cancellationToken)
     {
         if (Closed(operatorId) is { } error)

@@ -383,6 +383,29 @@ label:has(> .purpose-field) {
   min-height: 36px;
   align-items: center;
 }
+.dbml-block {
+  font-family: var(--code);
+  font-size: var(--code-size);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-4);
+  overflow-x: auto;
+  white-space: pre;
+  width: 100%;
+  max-width: none;
+  display: block;
+}
+.result-line {
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
 .annotation {
   display: grid;
   grid-template-columns: var(--rail) minmax(0, 1fr);
