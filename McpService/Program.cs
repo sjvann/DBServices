@@ -28,6 +28,17 @@ builder.Services.AddSingleton(sp =>
         : Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
     return new ViewCatalog(path);
 });
+builder.Services.AddSingleton(sp =>
+{
+    var environment = sp.GetRequiredService<IWebHostEnvironment>();
+    var relative = sp.GetRequiredService<IConfiguration>()["Catalog:AnnotationsPath"];
+    if (string.IsNullOrWhiteSpace(relative))
+        relative = Path.Combine("catalog", "annotations.json");
+    var path = Path.IsPathRooted(relative)
+        ? relative
+        : Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
+    return new AnnotationCatalog(path);
+});
 
 builder.Services
     .AddMcpServer()
@@ -238,6 +249,49 @@ app.MapPost("/views/{id}/publish", (string id, HttpContext http, ViewCatalog vie
     SetPublished(id, true, http, views, configuration));
 app.MapPost("/views/{id}/unpublish", (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
     SetPublished(id, false, http, views, configuration));
+
+app.MapGet("/annotations/draft", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var draft = annotations.Draft();
+        return draft is null ? Results.NoContent() : Results.Json(draft);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    AnnotationPackage? package;
+    try
+    {
+        package = await http.Request.ReadFromJsonAsync<AnnotationPackage>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+
+    if (package is null)
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    try
+    {
+        var result = annotations.Import(package);
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
 
 app.MapGet("/schema/graph", (string? connectionId, HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
 {

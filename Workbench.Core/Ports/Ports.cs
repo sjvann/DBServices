@@ -95,6 +95,24 @@ public sealed class CatalogWriteResult
     public static CatalogWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class AnnotationWriteResult
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public AnnotationPackageDto? Package { get; init; }
+
+    public static AnnotationWriteResult Success(AnnotationPackageDto package) => new() { Ok = true, Package = package };
+
+    public static AnnotationWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public interface IAnnotationCatalog
+{
+    Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
+}
+
 public interface IViewCatalog
 {
     Task<IReadOnlyList<ViewDocumentDto>> ListAsync(string callerId, CancellationToken cancellationToken);

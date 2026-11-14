@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Workbench.Contracts;
+using Workbench.Core;
 using Workbench.Core.Ports;
 
 namespace Workbench.Tests;
@@ -26,6 +27,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         _root = options.ContentRoot ?? Path.Combine(Path.GetTempPath(), "wb-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         Catalog = options.Catalog ?? new RecordingCatalog();
+        Annotations = options.Annotations ?? new RecordingAnnotations();
         Caller = options.Caller ?? new RecordingCaller();
         Connections = options.Connections ?? new RecordingConnections();
         ModelReady = options.ModelReady;
@@ -39,6 +41,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
 
     public HostOptions Options { get; }
     public RecordingCatalog Catalog { get; }
+    public RecordingAnnotations Annotations { get; }
     public RecordingCaller Caller { get; }
     public RecordingConnections Connections { get; }
     public bool ModelReady { get; }
@@ -87,6 +90,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IViewCatalog>(Catalog);
+            services.AddSingleton<IAnnotationCatalog>(Annotations);
             services.AddSingleton<IViewCaller>(Caller);
             services.AddSingleton<IConnectionCount>(Connections);
             services.AddSingleton<IConnectionAdmin>(new RecordingConnectionAdmin());
@@ -139,6 +143,7 @@ internal sealed class HostOptions
     public string? ContentRoot { get; set; }
     public bool PreserveRoot { get; set; }
     public RecordingCatalog? Catalog { get; set; }
+    public RecordingAnnotations? Annotations { get; set; }
     public RecordingCaller? Caller { get; set; }
     public RecordingConnections? Connections { get; set; }
     public bool ModelReady { get; set; } = true;
@@ -218,6 +223,31 @@ internal sealed class RecordingCatalog : IViewCatalog
 
     private static ViewDocumentDto Clone(ViewDocumentDto document)
         => JsonSerializer.Deserialize<ViewDocumentDto>(JsonSerializer.Serialize(document))!;
+}
+
+internal sealed class RecordingAnnotations : IAnnotationCatalog
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public AnnotationPackageDto? Draft { get; set; }
+    public int Attempts { get; private set; }
+    public int Commits { get; private set; }
+
+    public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(Draft is null ? null : Clone(Draft));
+
+    public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+    {
+        Attempts++;
+        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
+            return Task.FromResult(AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists));
+        Draft = Clone(package);
+        Commits++;
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(package)));
+    }
+
+    private static AnnotationPackageDto Clone(AnnotationPackageDto package)
+        => JsonSerializer.Deserialize<AnnotationPackageDto>(JsonSerializer.Serialize(package, Json), Json)!;
 }
 
 internal sealed class RecordingCaller : IViewCaller

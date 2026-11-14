@@ -252,3 +252,36 @@ public sealed class ExportController : ControllerBase
         return File(result.Value!, "application/pdf");
     }
 }
+
+[ApiController]
+[Route("api/annotations")]
+public sealed class AnnotationsController : ControllerBase
+{
+    private readonly AnnotationService _annotations;
+
+    public AnnotationsController(AnnotationService annotations) => _annotations = annotations;
+
+    [HttpGet("draft")]
+    public Task<IActionResult> Draft(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.DraftAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
+
+    [HttpPost("draft")]
+    [RequestSizeLimit(8_388_608)]
+    public async Task<IActionResult> Import(IFormFile? file, CancellationToken cancellationToken)
+    {
+        var content = Array.Empty<byte>();
+        if (file is not null)
+        {
+            await using var stream = file.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, cancellationToken);
+            content = memory.ToArray();
+        }
+
+        return ApiResults.From(await _annotations.ImportAsync(
+            ApiResults.OperatorId(HttpContext),
+            file?.FileName,
+            content,
+            cancellationToken));
+    }
+}

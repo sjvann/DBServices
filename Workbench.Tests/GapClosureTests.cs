@@ -171,7 +171,9 @@ public class GapClosureTests
         var cut = context.Render<Workbench.Web.Components.Governance>();
         Assert.AreEqual("註記", cut.Find("h1").TextContent.Trim());
         Assert.AreEqual(0, cut.FindAll("[role='alert']").Count);
-        Assert.AreEqual(0, cut.FindAll("input, select, textarea, table").Count);
+        Assert.AreEqual(1, cut.FindAll("input").Count);
+        Assert.AreEqual("file", cut.Find("input").GetAttribute("type"));
+        Assert.AreEqual(0, cut.FindAll("select, textarea, table").Count);
         Assert.IsFalse(cut.Markup.Contains("沒有權限", StringComparison.Ordinal));
         Assert.IsFalse(cut.Markup.Contains("Data Source=", StringComparison.Ordinal));
         Assert.IsFalse(cut.Markup.Contains("Password=", StringComparison.Ordinal));
@@ -283,6 +285,7 @@ public class GapClosureTests
         context.Services.AddSingleton(new OperatorService(store, hasher, profiles));
         if (caller is not null)
             context.Services.AddSingleton<IViewCaller>(caller);
+        context.Services.AddSingleton<IAnnotationCatalog>(new RecordingAnnotations());
         return context;
     }
 

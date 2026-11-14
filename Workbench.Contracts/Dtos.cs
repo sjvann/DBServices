@@ -202,3 +202,58 @@ public sealed class SchemaPreviewDto
     public List<List<string>> Rows { get; set; } = [];
     public bool Truncated { get; set; }
 }
+
+public sealed class AnnotationColumnDto
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public bool NotNull { get; set; }
+    public string Note { get; set; } = "";
+    public string HName { get; set; } = "";
+    public string SName { get; set; } = "";
+    public string HType { get; set; } = "";
+    public string SType { get; set; } = "";
+    public string SLength { get; set; } = "";
+    public string Pii { get; set; } = "";
+    public bool UniqueIndex { get; set; }
+    public string SourceFile { get; set; } = "";
+    public string HOrdinal { get; set; } = "";
+    public string SOrdinal { get; set; } = "";
+}
+
+public sealed class AnnotationIndexDto
+{
+    public string Name { get; set; } = "";
+    public string Note { get; set; } = "";
+    public List<string> Columns { get; set; } = [];
+}
+
+public sealed class AnnotationTableDto
+{
+    public string Name { get; set; } = "";
+    public string Note { get; set; } = "";
+    public List<AnnotationColumnDto> Columns { get; set; } = [];
+    public List<AnnotationIndexDto> Indexes { get; set; } = [];
+}
+
+public sealed class AnnotationLinkDto
+{
+    public string From { get; set; } = "";
+    public string FromColumn { get; set; } = "";
+    public string To { get; set; } = "";
+    public string ToColumn { get; set; } = "";
+    public string Origin { get; set; } = "";
+    public string Note { get; set; } = "";
+}
+
+public sealed class AnnotationPackageDto
+{
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Purpose { get; set; } = "";
+    public string Status { get; set; } = "";
+    public bool Active { get; set; }
+    public List<AnnotationTableDto> Tables { get; set; } = [];
+    public List<AnnotationLinkDto> Links { get; set; } = [];
+    public string Dbml { get; set; } = "";
+}

@@ -1,8 +1,11 @@
 @page "/governance"
+@using System.Net.Http
+@using Microsoft.AspNetCore.Components.Forms
 @inject OperatorGate Gate
+@inject IAnnotationCatalog Annotations
 @layout WorkbenchLayout
 
-<div class="page">
+<div class="page @(_draft is null ? "" : "wide")">
 @if (_denied)
 {
     <p role="alert">沒有權限。</p>
@@ -10,15 +13,159 @@
 else
 {
     <h1>註記</h1>
+    @if (_draft is not null)
+    {
+        <div class="package-bar">
+            <span class="code">@_draft.Title</span>
+            <span>草稿</span>
+        </div>
+        <div class="annotation">
+            <ul class="table-list">
+                @foreach (var table in _draft.Tables)
+                {
+                    <li>
+                        <button type="button" class="secondary" aria-current="@(_selected == table.Name)" @onclick="() => _selected = table.Name">
+                            <span class="code">@table.Name</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (Selected is { } current)
+            {
+                <div>
+                    <h2 class="code">@current.Name</h2>
+                    <p class="table-note">@current.Note</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>欄</th>
+                                <th>型別</th>
+                                <th>not null</th>
+                                <th>欄註</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var column in current.Columns)
+                            {
+                                <tr data-column="@column.Name">
+                                    <td class="code">@column.Name</td>
+                                    <td class="code">@column.Type</td>
+                                    <td>@(column.NotNull ? "not null" : "")</td>
+                                    <td>@column.Note</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @foreach (var index in current.Indexes)
+                    {
+                        <div data-index="@index.Name">
+                            <p class="code">@index.Name</p>
+                            <p class="code">@string.Join("、", index.Columns)</p>
+                            <p>@index.Note</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    <label class="import" for="annotation-import">匯入</label>
+    <InputFile id="annotation-import" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
+    @if (_busy)
+    {
+        <p class="progress-line">@WorkbenchMessages.Importing</p>
+    }
+    @if (_error is not null)
+    {
+        <div class="status-message" role="alert">
+            <span>@_error.Message</span>
+            <span class="code">@_error.Code</span>
+        </div>
+    }
 }
 </div>
 
 @code {
     private bool _denied;
+    private bool _busy;
+    private int _revision;
+    private ErrorDto? _error;
+    private AnnotationPackageDto? _draft;
+    private string? _selected;
 
-    protected override void OnInitialized()
+    private AnnotationTableDto? Selected
+        => _draft?.Tables.FirstOrDefault(table => table.Name == _selected) ?? _draft?.Tables.FirstOrDefault();
+
+    private IReadOnlyDictionary<string, object>? BusyAttributes
+        => _busy ? new Dictionary<string, object> { ["disabled"] = true } : null;
+
+    protected override async Task OnInitializedAsync()
     {
         var profile = Gate.Current;
         _denied = profile is null || !profile.Has(EntryNames.Governance);
+        if (_denied || profile is null)
+            return;
+
+        var revision = _revision;
+        try
+        {
+            var draft = await Annotations.DraftAsync(profile.Id, CancellationToken.None);
+            if (revision != _revision)
+                return;
+            _draft = draft;
+            _selected = _draft?.Tables.FirstOrDefault()?.Name;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            if (revision != _revision)
+                return;
+            _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+        }
+    }
+
+    private async Task OnImport(InputFileChangeEventArgs change)
+    {
+        if (Gate.Current is not { } profile || !profile.Has(EntryNames.Governance))
+        {
+            _error = WorkbenchMessages.Forbidden();
+            return;
+        }
+
+        _revision++;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await using var stream = change.File.OpenReadStream(8_388_608);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            var parsed = DictionaryWorkbook.Read(change.File.Name, memory.ToArray());
+            if (!parsed.Ok)
+            {
+                _error = parsed.Error;
+                return;
+            }
+
+            var written = await Annotations.ImportAsync(parsed.Value!, profile.Id, CancellationToken.None);
+            if (!written.Ok)
+            {
+                _error = WorkbenchMessages.Text(written.Code, written.Message);
+                return;
+            }
+
+            _draft = written.Package;
+            _selected = _draft?.Tables.FirstOrDefault()?.Name;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _error = WorkbenchMessages.Text("import_rejected", WorkbenchMessages.ImportRejected);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 }

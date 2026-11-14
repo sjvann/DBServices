@@ -15,6 +15,9 @@ public static class WorkbenchMessages
     public static ErrorDto Text(string code, string message) => new() { Code = code, Message = message };
 
     public const string UndecidedConnectionText = "無法決定連線，沒有讀取資料。";
+    public const string ImportRejected = "無法匯入。這份活頁簿對不上字典契約。既有草稿沒有改。";
+    public const string DraftExists = "已有工作中的草稿，沒有改。";
+    public const string Importing = "正在匯入。";
     public const string ReportUnavailable = "這份報表現在產生不了。";
     public const string UnreadableStyle = "不能讀取這個樣式。";
     public const string FrozenStructure = "這個檢視已被樣式引用，不能變更結構。";
