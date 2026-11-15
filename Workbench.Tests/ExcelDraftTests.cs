@@ -93,6 +93,9 @@ public class ExcelDraftTests
             Assert.AreEqual(expected.IndexNote, Shown(index.QuerySelector("textarea")!));
             foreach (var name in expected.IndexColumns)
                 Assert.IsTrue(index.TextContent.Contains(name, StringComparison.Ordinal));
+            Assert.IsTrue(cut.Find("[data-column='OFFICE_CODE'] .hint").TextContent.Contains("畫面欄是 H 側", StringComparison.Ordinal));
+            Assert.IsTrue(cut.Find("[data-column='OFFICE_CODE'] .hint").TextContent.Contains("實體欄是 S 側", StringComparison.Ordinal));
+            Assert.IsTrue(cut.Find("[data-column='OFFICE_CODE'] .hint").TextContent.Contains("個資處理保存去識別化註記", StringComparison.Ordinal));
             Assert.AreEqual(0, cut.FindAll(".progress-line").Count);
             Assert.IsFalse(cut.Find("input").HasAttribute("disabled"));
             Assert.IsFalse(cut.Markup.Contains("啟用", StringComparison.Ordinal));

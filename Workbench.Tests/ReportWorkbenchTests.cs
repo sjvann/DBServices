@@ -69,6 +69,42 @@ public class ReportWorkbenchTests
     }
 
     [TestMethod]
+    public async Task Login_form_signs_in_on_the_first_submit()
+    {
+        await using var host = new WorkbenchHost();
+        using var client = host.CreateClient(new() { AllowAutoRedirect = false });
+
+        var page = await client.GetStringAsync("/");
+        var form = page[page.IndexOf("<form", StringComparison.Ordinal)..page.IndexOf("</form>", StringComparison.Ordinal)];
+        Assert.Contains("method=\"post\"", form, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("action=\"/login\"", form, StringComparison.Ordinal);
+        Assert.Contains("name=\"displayName\"", form, StringComparison.Ordinal);
+        Assert.Contains("name=\"secret\"", form, StringComparison.Ordinal);
+        Assert.DoesNotContain("action=\"/\"", form, StringComparison.Ordinal);
+
+        var accepted = await client.PostAsync("/login", Fields("管理者", Password));
+        Assert.AreEqual(HttpStatusCode.Redirect, accepted.StatusCode);
+        Assert.AreEqual("/operators", accepted.Headers.Location?.OriginalString);
+        Assert.Contains("wb_session=", SetCookie(accepted), StringComparison.Ordinal);
+
+        using var anonymous = host.CreateClient(new() { AllowAutoRedirect = false });
+        var rejected = await anonymous.PostAsync("/login", Fields("管理者", "other-secret"));
+        Assert.AreEqual(HttpStatusCode.Redirect, rejected.StatusCode);
+        Assert.AreEqual("/?error=unauthenticated", rejected.Headers.Location?.OriginalString);
+        Assert.IsFalse(SetCookie(rejected).Contains("wb_session=", StringComparison.Ordinal));
+
+        var again = System.Net.WebUtility.HtmlDecode(await anonymous.GetStringAsync("/?error=unauthenticated"));
+        Assert.Contains("尚未登入。", again, StringComparison.Ordinal);
+        Assert.Contains(">登入</a>", again, StringComparison.Ordinal);
+    }
+
+    private static FormUrlEncodedContent Fields(string name, string secret)
+        => new(new Dictionary<string, string> { ["displayName"] = name, ["secret"] = secret });
+
+    private static string SetCookie(HttpResponseMessage response)
+        => response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(";", values) : "";
+
+    [TestMethod]
     public async Task Missing_password_does_not_offer_an_entry()
     {
         await using var host = new WorkbenchHost(options => options.SeedAdmin = false);

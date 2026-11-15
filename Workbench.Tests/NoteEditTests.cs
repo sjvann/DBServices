@@ -146,6 +146,20 @@ public class NoteEditTests
     }
 
     [TestMethod]
+    public async Task Note_edit_column_opens_before_the_note()
+    {
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations { Draft = Sample() });
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsTrue(cut.Find("[data-column='甲'] .column-editor").HasAttribute("hidden")));
+        Assert.AreEqual("false", cut.Find("[data-column='甲'] .tree-toggle").GetAttribute("aria-expanded"));
+        await cut.Find("[data-column='甲'] .tree-toggle").ClickAsync(new MouseEventArgs());
+        Assert.IsFalse(cut.Find("[data-column='甲'] .column-editor").HasAttribute("hidden"));
+        Assert.AreEqual("true", cut.Find("[data-column='甲'] .tree-toggle").GetAttribute("aria-expanded"));
+        await cut.Find("[aria-label='甲 欄註']").InputAsync(new ChangeEventArgs { Value = "展開後才寫" });
+        Assert.AreEqual("展開後才寫", Field(cut.Find("[aria-label='甲 欄註']")));
+    }
+
+    [TestMethod]
     public async Task Note_edit_blank_fields_save_without_danger()
     {
         var annotations = new RecordingAnnotations { Draft = Sample() };

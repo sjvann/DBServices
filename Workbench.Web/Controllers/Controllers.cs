@@ -35,8 +35,13 @@ public static class ApiResults
 public sealed class SessionsController : ControllerBase
 {
     private readonly SessionService _sessions;
+    private readonly Profiles _profiles;
 
-    public SessionsController(SessionService sessions) => _sessions = sessions;
+    public SessionsController(SessionService sessions, Profiles profiles)
+    {
+        _sessions = sessions;
+        _profiles = profiles;
+    }
 
     [HttpPost]
     public IActionResult Create([FromBody] LoginRequest request)
@@ -44,9 +49,25 @@ public sealed class SessionsController : ControllerBase
         var result = _sessions.Login(request.DisplayName, request.Secret);
         if (!result.Ok)
             return ApiResults.Error(result.Error!);
-        Response.Cookies.Append("wb_session", result.Value!.SessionId, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" });
+        AppendSession(result.Value!.SessionId);
         return Ok(result.Value);
     }
+
+    [HttpPost("/login")]
+    public IActionResult LoginForm([FromForm] LoginRequest request)
+    {
+        var result = _sessions.Login(request.DisplayName, request.Secret);
+        if (!result.Ok)
+            return Redirect("/?error=" + Uri.EscapeDataString(result.Error!.Code));
+
+        AppendSession(result.Value!.SessionId);
+        var profile = _profiles.Find(_sessions.OperatorId(result.Value.SessionId));
+        var destination = profile is null ? "/" : OperatorService.ToMe(profile).Destination;
+        return Redirect(destination);
+    }
+
+    private void AppendSession(string sessionId)
+        => Response.Cookies.Append("wb_session", sessionId, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" });
 
     [HttpDelete]
     public IActionResult Delete()

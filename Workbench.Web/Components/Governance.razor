@@ -106,110 +106,131 @@ else
     </div>
     @if (_shown is not null)
     {
-        <div class="annotation">
-            <ul class="table-list">
-                @foreach (var table in _shown.Tables)
-                {
-                    <li>
-                        <button type="button" class="secondary index-item" aria-current="@(_selected == table.Name ? "true" : "false")" @onclick="() => SelectTable(table.Name)">
+        <div class="station-body">
+        <ul class="schema-tree table-list">
+            @foreach (var table in _shown.Tables)
+            {
+                var open = _selected == table.Name;
+                <li class="tree-node @(open ? "open" : null)">
+                    <div class="tree-row">
+                        <button type="button" class="secondary index-item" aria-expanded="@(open ? "true" : "false")" aria-current="@(open ? "true" : "false")" @onclick="() => SelectTable(table.Name)">
                             <span class="code">@table.Name</span>
                         </button>
                         <p class="meta">@TableSummary(table)</p>
-                    </li>
-                }
-            </ul>
-            @if (Selected is { } current)
-            {
-                <div @key="current.Name">
-                    <h2 class="code">@current.Name</h2>
-                    <label>
-                        表註
-                        <textarea class="table-note purpose-field" aria-label="表註" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
-                    </label>
-                    <div class="column-tools">
-                        <input type="search" aria-label="搜尋欄名" value="@_query" @oninput="OnQuery" />
-                        <button type="button" aria-pressed="@(_columnFilter == "all" ? "true" : "false")" @onclick='() => SetFilter("all")'>全部</button>
-                        <button type="button" aria-pressed="@(_columnFilter == "blank" ? "true" : "false")" @onclick='() => SetFilter("blank")'>尚未註記</button>
-                        <button type="button" aria-pressed="@(_columnFilter == "pii" ? "true" : "false")" @onclick='() => SetFilter("pii")'>有個資</button>
-                        <button type="button" aria-pressed="@(_columnFilter == "changed" ? "true" : "false")" @onclick='() => SetFilter("changed")'>這次有差異</button>
-                        <button type="button" id="annotation-next-blank" class="secondary" @onclick="NextUnnoted" disabled="@(UnnotedTotal == 0 || !CanEdit || FieldsBusy)">下一個尚未註記</button>
                     </div>
-                    <div class="column-list">
-                        @foreach (var column in VisibleColumns(current))
-                        {
-                            var blank = string.IsNullOrWhiteSpace(column.Note);
-                            <article class="column-record @(_markedColumn == column.Name ? "marked" : null)" data-column="@column.Name" @key="column.Name">
-                                <header>
-                                    <span class="code">@column.Name</span>
-                                    <span class="code">@column.Type</span>
-                                    @if (column.PrimaryKey)
-                                    {
-                                        <span class="badge">主鍵</span>
-                                    }
-                                    @if (column.NotNull)
-                                    {
-                                        <span class="badge">不可空白</span>
-                                    }
-                                    @if (column.UniqueIndex)
-                                    {
-                                        <span class="badge">唯一索引</span>
-                                        <input type="checkbox" class="check-keep" checked disabled aria-label="@($"{column.Name} 唯一索引")" />
-                                    }
-                                    @if (blank)
-                                    {
-                                        <span class="unnoted">尚未註記</span>
-                                    }
-                                    @if (ColumnChanged(current.Name, column.Name))
-                                    {
-                                        <span class="badge">有差異</span>
-                                    }
-                                </header>
-                                <label>
-                                    欄註
-                                    <textarea class="purpose-field column-note" aria-label="@($"{column.Name} 欄註")" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
-                                </label>
-                                <details open="@RevealSides(column)">
-                                    <summary>欄位對照</summary>
-                                    <label>
-                                        個資處理
-                                        <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@(!CanEdit || FieldsBusy)" value="@column.Pii" @oninput="e => OnPii(column, e)" />
-                                    </label>
-                                    @if (!string.IsNullOrWhiteSpace(column.HName) || !string.IsNullOrWhiteSpace(column.HType))
-                                    {
-                                        <p class="meta">畫面欄 @column.HName @column.HType</p>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(column.SName) || !string.IsNullOrWhiteSpace(column.SLength) || !string.IsNullOrWhiteSpace(column.SOrdinal))
-                                    {
-                                        <p class="meta">實體欄 @column.SName 長度 @column.SLength 序號 @column.SOrdinal</p>
-                                    }
-                                </details>
-                            </article>
-                        }
-                        @if (!VisibleColumns(current).Any())
-                        {
-                            <p class="meta">沒有符合的欄。</p>
-                        }
-                    </div>
-                    @if (current.Indexes.Count > 0)
+                    @if (open)
                     {
-                        <h3>索引</h3>
-                        @foreach (var index in current.Indexes)
-                        {
-                            <div data-index="@index.Name">
-                                <p class="code">@index.Name</p>
-                                <p class="code">@string.Join("、", index.Columns)</p>
-                                <label>
-                                    索引說明
-                                    <textarea class="purpose-field" aria-label="@($"{index.Name} 索引說明")" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@index.Note" @oninput="e => OnIndexNote(current, index, e)"></textarea>
-                                </label>
+                        <div class="tree-children">
+                            <label>
+                                表註
+                                <textarea class="table-note purpose-field" aria-label="表註" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@table.Note" @oninput="e => OnTableNote(table, e)"></textarea>
+                            </label>
+                            <div class="column-tools">
+                                <input type="search" aria-label="搜尋欄名" value="@_query" @oninput="OnQuery" />
+                                <button type="button" aria-pressed="@(_columnFilter == "all" ? "true" : "false")" @onclick='() => SetFilter("all")'>全部</button>
+                                <button type="button" aria-pressed="@(_columnFilter == "blank" ? "true" : "false")" @onclick='() => SetFilter("blank")'>尚未註記</button>
+                                <button type="button" aria-pressed="@(_columnFilter == "pii" ? "true" : "false")" @onclick='() => SetFilter("pii")'>有個資</button>
+                                <button type="button" aria-pressed="@(_columnFilter == "changed" ? "true" : "false")" @onclick='() => SetFilter("changed")'>這次有差異</button>
+                                <button type="button" id="annotation-next-blank" class="secondary" @onclick="NextUnnoted" disabled="@(UnnotedTotal == 0 || !CanEdit || FieldsBusy)">下一個尚未註記</button>
                             </div>
-                        }
+                            <ul class="column-list">
+                                @foreach (var column in VisibleColumns(table))
+                                {
+                                    var blank = string.IsNullOrWhiteSpace(column.Note);
+                                    var columnOpen = ColumnOpen(column.Name);
+                                    <li>
+                                        <article class="column-record @(columnOpen ? "open" : null) @(_markedColumn == column.Name ? "marked" : null)" data-column="@column.Name" @key="column.Name">
+                                            <header>
+                                                <button type="button" class="tree-toggle" aria-expanded="@(columnOpen ? "true" : "false")" @onclick="() => ToggleColumn(column.Name)">
+                                                    <span class="code">@column.Name</span>
+                                                    <span class="code">@column.Type</span>
+                                                    @if (column.PrimaryKey)
+                                                    {
+                                                        <span class="badge">主鍵</span>
+                                                    }
+                                                    @if (column.NotNull)
+                                                    {
+                                                        <span class="badge">不可空白</span>
+                                                    }
+                                                    @if (column.UniqueIndex)
+                                                    {
+                                                        <span class="badge">唯一索引</span>
+                                                    }
+                                                    @if (blank)
+                                                    {
+                                                        <span class="unnoted">尚未註記</span>
+                                                    }
+                                                    @if (ColumnChanged(table.Name, column.Name))
+                                                    {
+                                                        <span class="badge">有差異</span>
+                                                    }
+                                                    @if (!blank)
+                                                    {
+                                                        <span class="note-preview">@column.Note</span>
+                                                    }
+                                                </button>
+                                                @if (column.UniqueIndex)
+                                                {
+                                                    <input type="checkbox" class="check-keep" checked disabled aria-label="@($"{column.Name} 唯一索引")" />
+                                                }
+                                            </header>
+                                            <div class="column-editor" hidden="@(!columnOpen)">
+                                                <label>
+                                                    欄註
+                                                    <textarea class="purpose-field column-note" aria-label="@($"{column.Name} 欄註")" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
+                                                </label>
+                                                <details open="@RevealSides(column)">
+                                                    <summary>欄位對照</summary>
+                                                    <p class="hint">對照 Excel 字典的畫面欄與實體欄。畫面欄是 H 側的欄名與型別；實體欄是 S 側的欄名、長度與序號。個資處理保存去識別化註記，這一輪不執行遮罩。畫面格式與資料描述寫在欄註。</p>
+                                                    <label>
+                                                        個資處理
+                                                        <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@(!CanEdit || FieldsBusy)" value="@column.Pii" @oninput="e => OnPii(column, e)" />
+                                                    </label>
+                                                    @if (!string.IsNullOrWhiteSpace(column.HName) || !string.IsNullOrWhiteSpace(column.HType))
+                                                    {
+                                                        <p class="meta">畫面欄 @column.HName @column.HType</p>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(column.SName) || !string.IsNullOrWhiteSpace(column.SLength) || !string.IsNullOrWhiteSpace(column.SOrdinal))
+                                                    {
+                                                        <p class="meta">實體欄 @column.SName 長度 @column.SLength 序號 @column.SOrdinal</p>
+                                                    }
+                                                </details>
+                                            </div>
+                                        </article>
+                                    </li>
+                                }
+                            </ul>
+                            @if (!VisibleColumns(table).Any())
+                            {
+                                <p class="meta">沒有符合的欄。</p>
+                            }
+                            @if (table.Indexes.Count > 0)
+                            {
+                                <div class="tree-node @(_indexesOpen ? "open" : null)">
+                                    <button type="button" class="secondary tree-branch" aria-expanded="@(_indexesOpen ? "true" : "false")" @onclick="ToggleIndexes">索引</button>
+                                    <div class="tree-children" hidden="@(!_indexesOpen)">
+                                        @foreach (var index in table.Indexes)
+                                        {
+                                            <div data-index="@index.Name">
+                                                <p class="code">@index.Name</p>
+                                                <p class="code">@string.Join("、", index.Columns)</p>
+                                                <label>
+                                                    索引說明
+                                                    <textarea class="purpose-field" aria-label="@($"{index.Name} 索引說明")" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@index.Note" @oninput="e => OnIndexNote(table, index, e)"></textarea>
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
                     }
-                </div>
+                </li>
             }
-        </div>
-        <h2>關聯</h2>
-        <ul class="link-editor">
+        </ul>
+        <details class="tree-branch">
+            <summary>關聯</summary>
+            <ul class="link-editor">
             @foreach (var link in _shown.Links)
             {
                 <li @key="@($"{link.From}.{link.FromColumn}>{link.To}.{link.ToColumn}")">
@@ -270,6 +291,7 @@ else
                 <button type="button" disabled="@(!CanEdit || FieldsBusy)" @onclick="AddLink">新增</button>
             </li>
         </ul>
+        </details>
         @if (_shown.Status == "draft" && _shown.Changes is { Count: > 0 })
         {
             <ul class="diff-list" tabindex="0" aria-label="差異">
@@ -293,6 +315,7 @@ else
             <h2>匯出的 DBML</h2>
             <textarea class="dbml-block" aria-label="DBML" readonly rows="12" tabindex="0" data-download="@_download">@_dbml</textarea>
         }
+        </div>
     }
 }
 </div>
@@ -358,11 +381,10 @@ else
     private string _query = "";
     private string _columnFilter = "all";
     private string? _markedColumn;
+    private string? _openColumn;
+    private bool _indexesOpen;
     private string? _announced;
     private ElementReference _errorRef;
-
-    private AnnotationTableDto? Selected
-        => _shown?.Tables.FirstOrDefault(table => table.Name == _selected) ?? _shown?.Tables.FirstOrDefault();
 
     private bool Retained => _shown is { Status: "confirmed", Active: false };
 
@@ -1305,13 +1327,31 @@ else
         _query = "";
         _columnFilter = "all";
         _markedColumn = null;
+        _openColumn = null;
+        _indexesOpen = false;
     }
 
     private void SelectTable(string name)
     {
+        if (_selected == name)
+        {
+            _selected = null;
+            _openColumn = null;
+            _indexesOpen = false;
+            return;
+        }
+
         _selected = name;
         _markedColumn = null;
+        _openColumn = null;
+        _indexesOpen = false;
     }
+
+    private void ToggleColumn(string name) => _openColumn = _openColumn == name ? null : name;
+
+    private void ToggleIndexes() => _indexesOpen = !_indexesOpen;
+
+    private bool ColumnOpen(string name) => _openColumn == name;
 
     private void SetFilter(string filter) => _columnFilter = filter;
 
@@ -1332,7 +1372,9 @@ else
         _selected = next;
         _columnFilter = "blank";
         _query = "";
+        _indexesOpen = false;
         _markedColumn = _shown.Tables.First(table => table.Name == next).Columns.First(column => string.IsNullOrWhiteSpace(column.Note)).Name;
+        _openColumn = _markedColumn;
     }
 
     private void GoToChange(AnnotationChangeDto change)
@@ -1342,7 +1384,9 @@ else
         _selected = change.Table;
         _columnFilter = "all";
         _query = "";
+        _indexesOpen = false;
         _markedColumn = string.IsNullOrEmpty(change.Column) ? null : change.Column;
+        _openColumn = _markedColumn;
     }
 
     private IEnumerable<AnnotationColumnDto> VisibleColumns(AnnotationTableDto table)

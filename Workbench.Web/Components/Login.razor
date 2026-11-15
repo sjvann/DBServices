@@ -1,12 +1,7 @@
 @page "/"
-@inject SessionService Sessions
-@inject OperatorGate Gate
-@inject CircuitSession Session
-@inject IJSRuntime Js
-@inject NavigationManager Nav
 @layout WorkbenchLayout
 
-<form class="panel" @onsubmit="Submit" @onsubmit:preventDefault="true">
+<form class="panel" method="post" action="/login" data-enhance="false">
     <h1>登入</h1>
     <p class="meta">用名稱和密碼進入工作台。</p>
     @if (_error is not null)
@@ -17,10 +12,10 @@
         </div>
     }
     <label for="operator-name">名稱
-        <input id="operator-name" autocomplete="username" @bind="_name" @bind:event="oninput" />
+        <input id="operator-name" name="displayName" autocomplete="username" />
     </label>
     <label for="operator-secret">密碼
-        <input id="operator-secret" type="password" autocomplete="current-password" @bind="_secret" @bind:event="oninput" />
+        <input id="operator-secret" name="secret" type="password" autocomplete="current-password" />
     </label>
     <div class="actions">
         <button class="confirm" type="submit">登入</button>
@@ -28,23 +23,18 @@
 </form>
 
 @code {
-    private string _name = "";
-    private string _secret = "";
     private ErrorDto? _error;
 
-    private async Task Submit()
-    {
-        var result = Sessions.Login(_name, _secret);
-        if (!result.Ok)
-        {
-            _error = result.Error;
-            return;
-        }
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorCode { get; set; }
 
-        Session.Adopt(result.Value!.SessionId);
-        await Js.InvokeVoidAsync("wbSetSession", result.Value.SessionId);
-        var profile = Gate.Current;
-        var destination = profile is null ? "/" : OperatorService.ToMe(profile).Destination;
-        Nav.NavigateTo(destination, forceLoad: true);
+    protected override void OnParametersSet()
+    {
+        _error = ErrorCode switch
+        {
+            "workbench_unavailable" => WorkbenchMessages.Unavailable(),
+            "unauthenticated" => WorkbenchMessages.Unauthenticated(),
+            _ => null,
+        };
     }
 }
