@@ -78,16 +78,19 @@ public class ExcelDraftTests
             Assert.AreEqual(expected.Note, Shown(cut.Find(".table-note")));
             foreach (var column in expected.Columns)
             {
-                var row = cut.Find($"tr[data-column='{column.Name}']");
-                var cells = row.QuerySelectorAll("td");
-                Assert.AreEqual(column.Name, cells[0].TextContent.Trim());
-                Assert.AreEqual(column.Type, cells[1].TextContent.Trim());
-                Assert.AreEqual(column.NotNull ? "not null" : "", cells[2].TextContent.Trim());
-                Assert.AreEqual(column.Note, Shown(cells[3].QuerySelector("textarea")!));
+                var row = cut.Find($"[data-column='{column.Name}']");
+                var codes = row.QuerySelector("header")!.QuerySelectorAll(".code");
+                Assert.AreEqual(column.Name, codes[0].TextContent.Trim());
+                Assert.AreEqual(column.Type, codes[1].TextContent.Trim());
+                if (column.NotNull)
+                    Assert.IsTrue(row.TextContent.Contains("不可空白", StringComparison.Ordinal));
+                else
+                    Assert.IsFalse(row.TextContent.Contains("不可空白", StringComparison.Ordinal));
+                Assert.AreEqual(column.Note, Shown(row.QuerySelector("textarea")!));
             }
 
             var index = cut.Find($"[data-index='{expected.IndexName}']");
-            Assert.IsTrue(index.TextContent.Contains(expected.IndexNote, StringComparison.Ordinal));
+            Assert.AreEqual(expected.IndexNote, Shown(index.QuerySelector("textarea")!));
             foreach (var name in expected.IndexColumns)
                 Assert.IsTrue(index.TextContent.Contains(name, StringComparison.Ordinal));
             Assert.AreEqual(0, cut.FindAll(".progress-line").Count);

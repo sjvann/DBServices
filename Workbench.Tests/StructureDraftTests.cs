@@ -54,17 +54,14 @@ public class StructureDraftTests
         Assert.IsTrue(cut.Find(".package-bar").TextContent.Contains("草稿", StringComparison.Ordinal));
         Assert.AreEqual(0, cut.FindAll(".progress-line").Count);
         Assert.IsFalse(cut.Find("#annotation-read").HasAttribute("disabled"));
-        var key = cut.Find("tr[data-column='Id']");
-        var keyCells = key.QuerySelectorAll("td");
-        Assert.AreEqual("", keyCells[2].TextContent.Trim());
-        Assert.AreEqual("尚未註記", keyCells[3].TextContent.Trim());
-        Assert.IsTrue(keyCells[3].ClassList.Contains("unnoted"));
-        Assert.AreEqual("主鍵", keyCells[4].TextContent.Trim());
-        var name = cut.Find("tr[data-column='Name']");
-        var nameCells = name.QuerySelectorAll("td");
-        Assert.AreEqual("已寫", nameCells[3].QuerySelector("textarea")!.GetAttribute("value"));
-        Assert.IsFalse(nameCells[3].ClassList.Contains("unnoted"));
-        Assert.AreEqual("", nameCells[4].TextContent.Trim());
+        var key = cut.Find("[data-column='Id']");
+        Assert.IsFalse(key.TextContent.Contains("不可空白", StringComparison.Ordinal));
+        Assert.AreEqual("尚未註記", key.QuerySelector(".unnoted")!.TextContent.Trim());
+        Assert.IsTrue(key.TextContent.Contains("主鍵", StringComparison.Ordinal));
+        var name = cut.Find("[data-column='Name']");
+        Assert.AreEqual("已寫", name.QuerySelector("textarea")!.GetAttribute("value"));
+        Assert.IsNull(name.QuerySelector(".unnoted"));
+        Assert.IsFalse(name.TextContent.Contains("主鍵", StringComparison.Ordinal));
         var link = cut.Find(".link-editor");
         Assert.IsTrue(link.QuerySelectorAll("button").Length > 0);
         foreach (var button in link.QuerySelectorAll("button"))

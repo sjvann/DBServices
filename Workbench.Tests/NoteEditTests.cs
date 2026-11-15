@@ -57,6 +57,95 @@ public class NoteEditTests
     }
 
     [TestMethod]
+    public async Task Note_edit_empty_station_names_the_next_step()
+    {
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations());
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsTrue(cut.Find(".lead").TextContent.Contains("還沒有註記包", StringComparison.Ordinal)));
+        Assert.AreEqual("註記", cut.Find("h1").TextContent.Trim());
+        Assert.AreEqual(1, cut.FindAll("input").Count);
+        Assert.AreEqual("file", cut.Find("input").GetAttribute("type"));
+        Assert.AreEqual(0, cut.FindAll("select, textarea, table").Count);
+    }
+
+    [TestMethod]
+    public async Task Note_edit_blank_purpose_is_named_beside_confirm()
+    {
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations { Draft = Sample() });
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.AreEqual("整包功能說明還是空白", cut.Find("#confirm-hint").TextContent.Trim()));
+        Assert.IsFalse(cut.Find("#annotation-confirm").HasAttribute("disabled"));
+        await cut.Find("[aria-label='整包功能說明']").InputAsync(new ChangeEventArgs { Value = "有說明" });
+        Assert.AreEqual(0, cut.FindAll("#confirm-hint").Count);
+    }
+
+    [TestMethod]
+    public async Task Note_edit_next_blank_selects_the_table()
+    {
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations { Draft = Sample() });
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsNotNull(cut.Find("#annotation-next-blank")));
+        await cut.FindAll(".table-list button").Single(button => button.TextContent.Contains("第二", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await cut.Find("#annotation-next-blank").ClickAsync(new MouseEventArgs());
+        var first = cut.FindAll(".table-list button").Single(button => button.TextContent.Contains("第一", StringComparison.Ordinal));
+        Assert.AreEqual("true", first.GetAttribute("aria-current"));
+        Assert.AreEqual(1, cut.FindAll("[aria-label='甲 欄註']").Count);
+        Assert.AreEqual("true", cut.FindAll("button").Single(button => button.TextContent.Trim() == "尚未註記").GetAttribute("aria-pressed"));
+    }
+
+    [TestMethod]
+    public async Task Note_edit_index_note_round_trips()
+    {
+        var package = Sample();
+        package.Tables[0].Indexes.Add(new AnnotationIndexDto { Name = "ix_append", Note = "不是真正的唯一鍵", Columns = ["甲"] });
+        var annotations = new RecordingAnnotations { Draft = package };
+        await using var context = Station(new RecordingCaller(), annotations);
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.AreEqual("不是真正的唯一鍵", Field(cut.Find("[aria-label='ix_append 索引說明']"))));
+        await cut.Find("[aria-label='ix_append 索引說明']").InputAsync(new ChangeEventArgs { Value = "異動為 append" });
+        await cut.Find("#annotation-save").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() => Assert.AreEqual(1, annotations.Commits));
+        Assert.AreEqual("異動為 append", annotations.Draft!.Tables[0].Indexes[0].Note);
+    }
+
+    [TestMethod]
+    public async Task Note_edit_link_shows_origin_in_words()
+    {
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations { Draft = Sample() });
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsTrue(cut.Find(".link-editor").TextContent.Contains("外鍵", StringComparison.Ordinal)));
+        Assert.IsFalse(cut.Markup.Contains("foreign-key", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Note_edit_reveals_dictionary_sides_when_names_differ()
+    {
+        var package = Sample();
+        package.Tables[0].Columns[0].HName = "POST_BRH_NO";
+        package.Tables[0].Columns[0].HType = "char(6)";
+        var annotations = new RecordingAnnotations { Draft = package };
+        await using var context = Station(new RecordingCaller(), annotations);
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsTrue(cut.Find("[data-column='甲'] details").HasAttribute("open")));
+        Assert.IsTrue(cut.Find("[data-column='甲']").TextContent.Contains("POST_BRH_NO", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("sourceFile", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public async Task Note_edit_diff_jump_selects_the_column()
+    {
+        var package = Sample();
+        package.Changes.Add(new AnnotationChangeDto { Kind = "changed", Table = "第二", Column = "丙" });
+        await using var context = Station(new RecordingCaller(), new RecordingAnnotations { Draft = package });
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsNotNull(cut.Find(".diff-list .changed button")));
+        await cut.Find(".diff-list .changed button").ClickAsync(new MouseEventArgs());
+        var second = cut.FindAll(".table-list button").Single(button => button.TextContent.Contains("第二", StringComparison.Ordinal));
+        Assert.AreEqual("true", second.GetAttribute("aria-current"));
+        Assert.IsTrue(cut.Find("[data-column='丙']").ClassList.Contains("marked"));
+    }
+
+    [TestMethod]
     public async Task Note_edit_blank_fields_save_without_danger()
     {
         var annotations = new RecordingAnnotations { Draft = Sample() };
@@ -67,7 +156,7 @@ public class NoteEditTests
         await cut.Find("[aria-label='整包功能說明']").InputAsync(new ChangeEventArgs { Value = "" });
         await cut.Find("[aria-label='表註']").InputAsync(new ChangeEventArgs { Value = "" });
         await cut.Find("[aria-label='乙 欄註']").InputAsync(new ChangeEventArgs { Value = "暫時" });
-        Assert.IsFalse(cut.Find("tr[data-column='乙']").TextContent.Contains("尚未註記", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Find("[data-column='乙']").TextContent.Contains("尚未註記", StringComparison.Ordinal));
         await cut.Find("[aria-label='乙 欄註']").InputAsync(new ChangeEventArgs { Value = "   " });
 
         var purpose = cut.Find("[aria-label='整包功能說明']");
@@ -76,9 +165,8 @@ public class NoteEditTests
         Assert.IsTrue(tableNote.ClassList.Contains("purpose-field"));
         Assert.IsFalse(purpose.ClassList.Contains("unnoted"));
         Assert.IsFalse(tableNote.ClassList.Contains("unnoted"));
-        var noteCell = cut.Find("tr[data-column='乙']").QuerySelectorAll("td")[3];
-        Assert.IsTrue(noteCell.ClassList.Contains("unnoted"));
-        Assert.AreEqual("尚未註記", noteCell.TextContent.Trim());
+        var badge = cut.Find("[data-column='乙'] .unnoted");
+        Assert.AreEqual("尚未註記", badge.TextContent.Trim());
         var css = File.ReadAllText(FindUp("Workbench.Web", "wwwroot", "tokens.css"));
         var rule = css.Split(".purpose-field", 2)[1].Split('}', 2)[0];
         Assert.IsTrue(rule.Contains("var(--border-hairline)", StringComparison.Ordinal));
@@ -91,7 +179,7 @@ public class NoteEditTests
         Assert.AreEqual("", annotations.Draft.Tables[0].Note);
         Assert.AreEqual("", annotations.Draft.Tables[0].Columns.Single(column => column.Name == "乙").Note);
         Assert.IsTrue(cut.Find(".package-bar").TextContent.Contains("草稿", StringComparison.Ordinal));
-        Assert.AreEqual("尚未註記", cut.Find("tr[data-column='乙']").QuerySelectorAll("td")[3].TextContent.Trim());
+        Assert.AreEqual("尚未註記", cut.Find("[data-column='乙'] .unnoted").TextContent.Trim());
         Assert.AreEqual("draft", annotations.Draft.Status);
         Assert.IsFalse(annotations.Draft.Active);
     }
@@ -242,7 +330,7 @@ public class NoteEditTests
         Assert.AreEqual("重開說明", Field(again.Find("[aria-label='整包功能說明']")));
         Assert.AreEqual("表還在", Field(again.Find("[aria-label='表註']")));
         Assert.AreEqual("個資原文", Field(again.Find("[aria-label='甲 個資']")));
-        Assert.AreEqual("尚未註記", again.Find("tr[data-column='乙']").QuerySelectorAll("td")[3].TextContent.Trim());
+        Assert.AreEqual("尚未註記", again.Find("[data-column='乙'] .unnoted").TextContent.Trim());
         Assert.IsTrue(again.Find("[aria-label='甲 唯一索引']").HasAttribute("checked"));
         Assert.IsFalse(again.Markup.Contains("啟用", StringComparison.Ordinal));
         Assert.IsFalse(again.Markup.Contains("connectionString", StringComparison.OrdinalIgnoreCase));

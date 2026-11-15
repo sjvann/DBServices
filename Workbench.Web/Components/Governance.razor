@@ -17,45 +17,104 @@
 }
 else
 {
-    <h1>註記</h1>
-    <div class="package-bar">
+    <div class="station-head">
+        <h1>註記</h1>
+        @if (_error is not null)
+        {
+            <div class="status-message" role="alert" tabindex="-1" @ref="_errorRef">
+                <span>@_error.Message</span>
+                <span class="code">@_error.Code</span>
+            </div>
+        }
+        @if (_result is not null)
+        {
+            <p class="result-line" role="status">@_result</p>
+        }
+        @if (_busy)
+        {
+            <p class="progress-line">@(_reading ? WorkbenchMessages.ReadingStructure : WorkbenchMessages.Importing)</p>
+        }
+        <div class="package-bar">
+            @if (_shown is not null)
+            {
+                <div class="package-id">
+                    <span class="code">@_shown.Title</span>
+                    <span>@(_shown.Status == "confirmed" ? "已確認" : "草稿")</span>
+                    @if (_shown.Status == "confirmed" && _shown.Active)
+                    {
+                        <span class="badge">設計端正在用</span>
+                    }
+                    @if (Unsaved)
+                    {
+                        <span class="badge">尚未保存</span>
+                    }
+                </div>
+                @if (NamedPackages().Any())
+                {
+                    <details class="package-switch">
+                        <summary>其他註記包</summary>
+                        @foreach (var item in NamedPackages())
+                        {
+                            <button type="button" class="secondary" @key="item.Id" @onclick="() => OpenPackage(item)">@item.Title</button>
+                        }
+                    </details>
+                }
+            }
+            else
+            {
+                <p class="lead">還沒有註記包。匯入 Excel 字典，或從資料庫讀結構。</p>
+            }
+            <div class="action-group">
+                <label class="import" for="annotation-import">匯入 Excel</label>
+                <InputFile id="annotation-import" class="file-input" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
+                <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
+            </div>
+            <div class="action-group">
+                @if (_shown?.Status == "draft")
+                {
+                    <button type="button" id="annotation-save" class="@(Unsaved ? "confirm" : null)" @onclick="OnSave" disabled="@(_forking || FieldsBusy)">保存</button>
+                }
+                <button type="button" id="annotation-export" @onclick="OnExport" disabled="@(_shown is null)">匯出</button>
+                @if (_draft is not null)
+                {
+                    <button type="button" id="annotation-abandon" class="secondary" @onclick="AskAbandon" disabled="@(_busy || _saving || _forking || _confirming || _abandoning)">放棄草稿</button>
+                }
+                <button type="button" id="annotation-confirm" class="confirm" @onclick="AskConfirm" disabled="@(!CanConfirm)">確認</button>
+                @if (ConfirmHint is { } hint)
+                {
+                    <span class="meta" id="confirm-hint">@hint</span>
+                }
+            </div>
+        </div>
         @if (_shown is not null)
         {
-            <span class="code">@_shown.Title</span>
-            <span>@(_shown.Status == "confirmed" ? "已確認" : "草稿")</span>
+            <label>
+                整包功能說明
+                <textarea class="purpose-field" aria-label="整包功能說明" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@_shown.Purpose" @oninput="OnPurpose"></textarea>
+            </label>
+            <ul class="readiness" aria-label="確認準備">
+                <li>整包功能說明：@(string.IsNullOrWhiteSpace(_shown.Purpose) ? "尚未填寫" : "已填")</li>
+                <li>@_shown.Tables.Count 張表、@ColumnTotal 個欄</li>
+                <li>尚未註記：@UnnotedTotal 欄</li>
+                <li>關聯：@_shown.Links.Count 條</li>
+                @if (_shown.Changes is { Count: > 0 })
+                {
+                    <li>這次差異：@_shown.Changes.Count 處</li>
+                }
+            </ul>
         }
-        @foreach (var item in NamedPackages())
-        {
-            <button type="button" class="secondary" @key="item.Id" @onclick="() => OpenPackage(item)">@item.Title</button>
-        }
-        <label class="import" for="annotation-import">匯入</label>
-        <InputFile id="annotation-import" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
-        <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
-        @if (_shown?.Status == "draft")
-        {
-            <button type="button" id="annotation-save" @onclick="OnSave" disabled="@(_forking || FieldsBusy)">保存</button>
-        }
-        <button type="button" id="annotation-export" @onclick="OnExport" disabled="@(_shown is null)">匯出</button>
-        @if (_draft is not null)
-        {
-            <button type="button" id="annotation-abandon" class="secondary" @onclick="AskAbandon" disabled="@(_busy || _saving || _forking || _confirming || _abandoning)">放棄草稿</button>
-        }
-        <button type="button" id="annotation-confirm" @onclick="AskConfirm" disabled="@(!CanConfirm)">確認</button>
     </div>
     @if (_shown is not null)
     {
-        <label>
-            整包功能說明
-            <textarea class="purpose-field" aria-label="整包功能說明" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@_shown.Purpose" @oninput="OnPurpose"></textarea>
-        </label>
         <div class="annotation">
             <ul class="table-list">
                 @foreach (var table in _shown.Tables)
                 {
                     <li>
-                        <button type="button" class="secondary" aria-current="@(_selected == table.Name)" @onclick="() => _selected = table.Name">
+                        <button type="button" class="secondary index-item" aria-current="@(_selected == table.Name ? "true" : "false")" @onclick="() => SelectTable(table.Name)">
                             <span class="code">@table.Name</span>
                         </button>
+                        <p class="meta">@TableSummary(table)</p>
                     </li>
                 }
             </ul>
@@ -65,77 +124,121 @@ else
                     <h2 class="code">@current.Name</h2>
                     <label>
                         表註
-                        <textarea class="table-note purpose-field" aria-label="表註" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
+                        <textarea class="table-note purpose-field" aria-label="表註" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@current.Note" @oninput="e => OnTableNote(current, e)"></textarea>
                     </label>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>欄</th>
-                                <th>型別</th>
-                                <th>not null</th>
-                                <th>欄註</th>
-                                <th>主鍵</th>
-                                <th>個資</th>
-                                <th>唯一索引</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var column in current.Columns)
-                            {
-                                var blank = string.IsNullOrWhiteSpace(column.Note);
-                                <tr @key="column.Name" data-column="@column.Name">
-                                    <td class="code">@column.Name</td>
-                                    <td class="code">@column.Type</td>
-                                    <td>@(column.NotNull ? "not null" : "")</td>
-                                    <td class="@(blank ? "unnoted" : null)">
-                                        <textarea class="purpose-field column-note @(blank ? "unnoted" : null)" aria-label="@($"{column.Name} 欄註")" rows="1" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
-                                        @if (blank)
-                                        {
-                                            <span class="unnoted">尚未註記</span>
-                                        }
-                                    </td>
-                                    <td>@(column.PrimaryKey ? "主鍵" : "")</td>
-                                    <td>
+                    <div class="column-tools">
+                        <input type="search" aria-label="搜尋欄名" value="@_query" @oninput="OnQuery" />
+                        <button type="button" aria-pressed="@(_columnFilter == "all" ? "true" : "false")" @onclick='() => SetFilter("all")'>全部</button>
+                        <button type="button" aria-pressed="@(_columnFilter == "blank" ? "true" : "false")" @onclick='() => SetFilter("blank")'>尚未註記</button>
+                        <button type="button" aria-pressed="@(_columnFilter == "pii" ? "true" : "false")" @onclick='() => SetFilter("pii")'>有個資</button>
+                        <button type="button" aria-pressed="@(_columnFilter == "changed" ? "true" : "false")" @onclick='() => SetFilter("changed")'>這次有差異</button>
+                        <button type="button" id="annotation-next-blank" class="secondary" @onclick="NextUnnoted" disabled="@(UnnotedTotal == 0 || !CanEdit || FieldsBusy)">下一個尚未註記</button>
+                    </div>
+                    <div class="column-list">
+                        @foreach (var column in VisibleColumns(current))
+                        {
+                            var blank = string.IsNullOrWhiteSpace(column.Note);
+                            <article class="column-record @(_markedColumn == column.Name ? "marked" : null)" data-column="@column.Name" @key="column.Name">
+                                <header>
+                                    <span class="code">@column.Name</span>
+                                    <span class="code">@column.Type</span>
+                                    @if (column.PrimaryKey)
+                                    {
+                                        <span class="badge">主鍵</span>
+                                    }
+                                    @if (column.NotNull)
+                                    {
+                                        <span class="badge">不可空白</span>
+                                    }
+                                    @if (column.UniqueIndex)
+                                    {
+                                        <span class="badge">唯一索引</span>
+                                        <input type="checkbox" class="check-keep" checked disabled aria-label="@($"{column.Name} 唯一索引")" />
+                                    }
+                                    @if (blank)
+                                    {
+                                        <span class="unnoted">尚未註記</span>
+                                    }
+                                    @if (ColumnChanged(current.Name, column.Name))
+                                    {
+                                        <span class="badge">有差異</span>
+                                    }
+                                </header>
+                                <label>
+                                    欄註
+                                    <textarea class="purpose-field column-note" aria-label="@($"{column.Name} 欄註")" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
+                                </label>
+                                <details open="@RevealSides(column)">
+                                    <summary>欄位對照</summary>
+                                    <label>
+                                        個資處理
                                         <input class="purpose-field" aria-label="@($"{column.Name} 個資")" disabled="@(!CanEdit || FieldsBusy)" value="@column.Pii" @oninput="e => OnPii(column, e)" />
-                                    </td>
-                                    <td>
-                                        <input type="checkbox" checked="@column.UniqueIndex" disabled aria-label="@($"{column.Name} 唯一索引")" />
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                    @foreach (var index in current.Indexes)
+                                    </label>
+                                    @if (!string.IsNullOrWhiteSpace(column.HName) || !string.IsNullOrWhiteSpace(column.HType))
+                                    {
+                                        <p class="meta">畫面欄 @column.HName @column.HType</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(column.SName) || !string.IsNullOrWhiteSpace(column.SLength) || !string.IsNullOrWhiteSpace(column.SOrdinal))
+                                    {
+                                        <p class="meta">實體欄 @column.SName 長度 @column.SLength 序號 @column.SOrdinal</p>
+                                    }
+                                </details>
+                            </article>
+                        }
+                        @if (!VisibleColumns(current).Any())
+                        {
+                            <p class="meta">沒有符合的欄。</p>
+                        }
+                    </div>
+                    @if (current.Indexes.Count > 0)
                     {
-                        <div data-index="@index.Name">
-                            <p class="code">@index.Name</p>
-                            <p class="code">@string.Join("、", index.Columns)</p>
-                            <p>@index.Note</p>
-                        </div>
+                        <h3>索引</h3>
+                        @foreach (var index in current.Indexes)
+                        {
+                            <div data-index="@index.Name">
+                                <p class="code">@index.Name</p>
+                                <p class="code">@string.Join("、", index.Columns)</p>
+                                <label>
+                                    索引說明
+                                    <textarea class="purpose-field" aria-label="@($"{index.Name} 索引說明")" rows="2" disabled="@(!CanEdit || FieldsBusy)" value="@index.Note" @oninput="e => OnIndexNote(current, index, e)"></textarea>
+                                </label>
+                            </div>
+                        }
                     }
                 </div>
             }
         </div>
+        <h2>關聯</h2>
         <ul class="link-editor">
             @foreach (var link in _shown.Links)
             {
                 <li @key="@($"{link.From}.{link.FromColumn}>{link.To}.{link.ToColumn}")">
-                    <span class="code">@link.From</span>
-                    <span class="code">@link.FromColumn</span>
-                    <span class="code">@link.To</span>
-                    <span class="code">@link.ToColumn</span>
-                    <input class="purpose-field" aria-label="關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@link.Note" @oninput="e => OnLinkNote(link, e)" />
+                    <p class="link-line">
+                        <span class="code">@link.From</span>
+                        <span class="code">@link.FromColumn</span>
+                        <span aria-hidden="true">→</span>
+                        <span class="code">@link.To</span>
+                        <span class="code">@link.ToColumn</span>
+                        <span class="badge">@OriginWord(link.Origin)</span>
+                    </p>
+                    <label>
+                        關聯理由
+                        <input class="purpose-field" aria-label="關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@link.Note" @oninput="e => OnLinkNote(link, e)" />
+                    </label>
                     <button type="button" disabled="@(!CanEdit || FieldsBusy)" @onclick="() => RemoveLink(link)">刪除</button>
                 </li>
             }
             <li>
-                <select aria-label="關聯起表" disabled="@(!CanEdit || FieldsBusy)" value="@_fromTable" @onchange="OnFromTable">
-                    <option value=""></option>
-                    @foreach (var table in _shown.Tables)
-                    {
-                        <option value="@table.Name">@table.Name</option>
-                    }
-                </select>
+                <label>
+                    從
+                    <select aria-label="關聯起表" disabled="@(!CanEdit || FieldsBusy)" value="@_fromTable" @onchange="OnFromTable">
+                        <option value=""></option>
+                        @foreach (var table in _shown.Tables)
+                        {
+                            <option value="@table.Name">@table.Name</option>
+                        }
+                    </select>
+                </label>
                 <select aria-label="關聯起欄" disabled="@(!CanEdit || FieldsBusy)" value="@_fromColumn" @onchange="OnFromColumn">
                     <option value=""></option>
                     @foreach (var column in ColumnsOf(_fromTable))
@@ -143,13 +246,16 @@ else
                         <option value="@column.Name">@column.Name</option>
                     }
                 </select>
-                <select aria-label="關聯迄表" disabled="@(!CanEdit || FieldsBusy)" value="@_toTable" @onchange="OnToTable">
-                    <option value=""></option>
-                    @foreach (var table in _shown.Tables)
-                    {
-                        <option value="@table.Name">@table.Name</option>
-                    }
-                </select>
+                <label>
+                    到
+                    <select aria-label="關聯迄表" disabled="@(!CanEdit || FieldsBusy)" value="@_toTable" @onchange="OnToTable">
+                        <option value=""></option>
+                        @foreach (var table in _shown.Tables)
+                        {
+                            <option value="@table.Name">@table.Name</option>
+                        }
+                    </select>
+                </label>
                 <select aria-label="關聯迄欄" disabled="@(!CanEdit || FieldsBusy)" value="@_toColumn" @onchange="OnToColumn">
                     <option value=""></option>
                     @foreach (var column in ColumnsOf(_toTable))
@@ -157,7 +263,10 @@ else
                         <option value="@column.Name">@column.Name</option>
                     }
                 </select>
-                <input class="purpose-field" aria-label="新關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@_linkNote" @oninput="OnNewLinkNote" />
+                <label>
+                    關聯理由
+                    <input class="purpose-field" aria-label="新關聯理由" disabled="@(!CanEdit || FieldsBusy)" value="@_linkNote" @oninput="OnNewLinkNote" />
+                </label>
                 <button type="button" disabled="@(!CanEdit || FieldsBusy)" @onclick="AddLink">新增</button>
             </li>
         </ul>
@@ -167,35 +276,23 @@ else
                 @foreach (var change in _shown.Changes)
                 {
                     <li class="@DiffClass(change.Kind)">
-                        <span class="code">@change.Table</span>
-                        @if (!string.IsNullOrEmpty(change.Column))
-                        {
-                            <span class="code">@change.Column</span>
-                        }
-                        <span>@DiffWord(change.Kind)</span>
+                        <button type="button" @onclick="() => GoToChange(change)">
+                            <span class="code">@change.Table</span>
+                            @if (!string.IsNullOrEmpty(change.Column))
+                            {
+                                <span class="code">@change.Column</span>
+                            }
+                            <span>@DiffWord(change.Kind)</span>
+                        </button>
                     </li>
                 }
             </ul>
         }
         @if (_dbml is not null)
         {
+            <h2>匯出的 DBML</h2>
             <textarea class="dbml-block" aria-label="DBML" readonly rows="12" tabindex="0" data-download="@_download">@_dbml</textarea>
         }
-    }
-    @if (_result is not null)
-    {
-        <p class="result-line" role="status">@_result</p>
-    }
-    @if (_busy)
-    {
-        <p class="progress-line">@(_reading ? WorkbenchMessages.ReadingStructure : WorkbenchMessages.Importing)</p>
-    }
-    @if (_error is not null)
-    {
-        <div class="status-message" role="alert">
-            <span>@_error.Message</span>
-            <span class="code">@_error.Code</span>
-        </div>
     }
 }
 </div>
@@ -258,6 +355,11 @@ else
     private string? _dbml;
     private string _download = "";
     private string? _result;
+    private string _query = "";
+    private string _columnFilter = "all";
+    private string? _markedColumn;
+    private string? _announced;
+    private ElementReference _errorRef;
 
     private AnnotationTableDto? Selected
         => _shown?.Tables.FirstOrDefault(table => table.Name == _selected) ?? _shown?.Tables.FirstOrDefault();
@@ -270,6 +372,32 @@ else
     private bool CanConfirm => _shown?.Status == "draft" && !_busy && !_saving && !_forking && !_confirming && !_abandoning;
 
     private bool FieldsBusy => _saving || _busy || _askAbandon;
+
+    private bool Unsaved
+        => _draft is not null && _saved is not null && ReferenceEquals(_shown, _draft)
+            && JsonSerializer.Serialize(_draft, Json) != JsonSerializer.Serialize(_saved, Json);
+
+    private int ColumnTotal => _shown?.Tables.Sum(table => table.Columns.Count) ?? 0;
+
+    private int UnnotedTotal => _shown?.Tables.Sum(table => table.Columns.Count(column => string.IsNullOrWhiteSpace(column.Note))) ?? 0;
+
+    private string? ConfirmHint
+    {
+        get
+        {
+            if (_shown is not { Status: "draft" })
+                return null;
+            var missingPurpose = string.IsNullOrWhiteSpace(_shown.Purpose);
+            var missingShape = _shown.Tables.Count == 0 || _shown.Tables.All(table => table.Columns.Count == 0);
+            if (missingPurpose && missingShape)
+                return "整包功能說明還是空白，至少要有一張表、一個欄";
+            if (missingPurpose)
+                return "整包功能說明還是空白";
+            if (missingShape)
+                return "至少要有一張表、一個欄";
+            return null;
+        }
+    }
 
     private IReadOnlyDictionary<string, object>? BusyAttributes
         => _busy || _saving || _forking || _abandoning || Retained ? new Dictionary<string, object> { ["disabled"] = true } : null;
@@ -293,7 +421,7 @@ else
             Remember(draft);
             if (_shown is null && _active is not null)
                 _shown = Clone(_active);
-            _selected = _shown?.Tables.FirstOrDefault()?.Name;
+            FocusTable(_shown?.Tables.FirstOrDefault()?.Name);
         }
         catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
         {
@@ -342,7 +470,7 @@ else
             }
 
             Remember(written.Package);
-            _selected = _draft?.Tables.FirstOrDefault()?.Name;
+            FocusTable(_draft?.Tables.FirstOrDefault()?.Name);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
@@ -390,7 +518,7 @@ else
             }
 
             Remember(written.Package);
-            _selected = _shown?.Tables.FirstOrDefault()?.Name;
+            FocusTable(_shown?.Tables.FirstOrDefault()?.Name);
             _dbml = null;
             _download = "";
         }
@@ -501,6 +629,23 @@ else
         await Fork(copy =>
         {
             var noted = copy.Tables.FirstOrDefault(table => table.Name == owner?.Name)?.Columns.FirstOrDefault(item => item.Name == column.Name);
+            if (noted is not null)
+                noted.Note = value;
+        });
+    }
+
+    private async Task OnIndexNote(AnnotationTableDto table, AnnotationIndexDto index, ChangeEventArgs change)
+    {
+        var value = change.Value?.ToString() ?? "";
+        if (EditingDraft())
+        {
+            index.Note = value;
+            return;
+        }
+
+        await Fork(copy =>
+        {
+            var noted = copy.Tables.FirstOrDefault(item => item.Name == table.Name)?.Indexes.FirstOrDefault(item => item.Name == index.Name);
             if (noted is not null)
                 noted.Note = value;
         });
@@ -770,6 +915,13 @@ else
                 column.Note = noted.Note ?? "";
                 column.Pii = noted.Pii ?? "";
             }
+
+            foreach (var index in table.Indexes)
+            {
+                var noted = match.Indexes.FirstOrDefault(item => item.Name == index.Name);
+                if (noted is not null)
+                    index.Note = noted.Note ?? "";
+            }
         }
 
         to.Links = from.Links.Select(link => new AnnotationLinkDto
@@ -802,6 +954,15 @@ else
                 if (!string.Equals(from.Columns[column].Name, to.Columns[column].Name, StringComparison.Ordinal)
                     || !string.Equals(from.Columns[column].Note ?? "", to.Columns[column].Note ?? "", StringComparison.Ordinal)
                     || !string.Equals(from.Columns[column].Pii ?? "", to.Columns[column].Pii ?? "", StringComparison.Ordinal))
+                    return false;
+            }
+
+            if (from.Indexes.Count != to.Indexes.Count)
+                return false;
+            for (var slot = 0; slot < from.Indexes.Count; slot++)
+            {
+                if (!string.Equals(from.Indexes[slot].Name, to.Indexes[slot].Name, StringComparison.Ordinal)
+                    || !string.Equals(from.Indexes[slot].Note ?? "", to.Indexes[slot].Note ?? "", StringComparison.Ordinal))
                     return false;
             }
         }
@@ -943,12 +1104,12 @@ else
             if (_active is not null)
             {
                 _shown = Clone(_active);
-                _selected = _shown.Tables.FirstOrDefault()?.Name;
+                FocusTable(_shown.Tables.FirstOrDefault()?.Name);
             }
             else
             {
                 _shown = null;
-                _selected = null;
+                FocusTable(null);
             }
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
@@ -1052,7 +1213,7 @@ else
             _draft = null;
             _saved = null;
             _shown = _active is null ? written.Package : Clone(_active);
-            _selected = _shown?.Tables.FirstOrDefault()?.Name;
+            FocusTable(_shown?.Tables.FirstOrDefault()?.Name);
             _dbml = _shown?.Dbml;
             _download = _shown is null ? "" : DownloadName(_shown.Title);
         }
@@ -1071,7 +1232,7 @@ else
     private void OpenPackage(AnnotationPackageDto package)
     {
         _shown = Clone(package);
-        _selected = _shown.Tables.FirstOrDefault()?.Name;
+        FocusTable(_shown.Tables.FirstOrDefault()?.Name);
         _fromTable = "";
         _fromColumn = "";
         _toTable = "";
@@ -1137,6 +1298,110 @@ else
 
     private static AnnotationPackageDto Clone(AnnotationPackageDto package)
         => JsonSerializer.Deserialize<AnnotationPackageDto>(JsonSerializer.Serialize(package, Json), Json)!;
+
+    private void FocusTable(string? name)
+    {
+        _selected = name;
+        _query = "";
+        _columnFilter = "all";
+        _markedColumn = null;
+    }
+
+    private void SelectTable(string name)
+    {
+        _selected = name;
+        _markedColumn = null;
+    }
+
+    private void SetFilter(string filter) => _columnFilter = filter;
+
+    private void OnQuery(ChangeEventArgs change) => _query = change.Value?.ToString() ?? "";
+
+    private void NextUnnoted()
+    {
+        if (_shown is null || !CanEdit || FieldsBusy)
+            return;
+        var names = _shown.Tables
+            .Where(table => table.Columns.Any(column => string.IsNullOrWhiteSpace(column.Note)))
+            .Select(table => table.Name)
+            .ToList();
+        if (names.Count == 0)
+            return;
+        var index = names.FindIndex(name => name == _selected);
+        var next = names.Count == 1 || index < 0 ? names[0] : names[(index + 1) % names.Count];
+        _selected = next;
+        _columnFilter = "blank";
+        _query = "";
+        _markedColumn = _shown.Tables.First(table => table.Name == next).Columns.First(column => string.IsNullOrWhiteSpace(column.Note)).Name;
+    }
+
+    private void GoToChange(AnnotationChangeDto change)
+    {
+        if (_shown?.Tables.Any(table => table.Name == change.Table) != true)
+            return;
+        _selected = change.Table;
+        _columnFilter = "all";
+        _query = "";
+        _markedColumn = string.IsNullOrEmpty(change.Column) ? null : change.Column;
+    }
+
+    private IEnumerable<AnnotationColumnDto> VisibleColumns(AnnotationTableDto table)
+    {
+        IEnumerable<AnnotationColumnDto> columns = table.Columns;
+        if (!string.IsNullOrWhiteSpace(_query))
+            columns = columns.Where(column => column.Name.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase));
+        return _columnFilter switch
+        {
+            "blank" => columns.Where(column => string.IsNullOrWhiteSpace(column.Note)),
+            "pii" => columns.Where(column => !string.IsNullOrWhiteSpace(column.Pii)),
+            "changed" => columns.Where(column => ColumnChanged(table.Name, column.Name)),
+            _ => columns,
+        };
+    }
+
+    private bool ColumnChanged(string table, string column)
+        => _shown?.Changes.Any(change => change.Table == table && change.Column == column) == true;
+
+    private string TableSummary(AnnotationTableDto table)
+    {
+        var blanks = table.Columns.Count(column => string.IsNullOrWhiteSpace(column.Note));
+        var diffs = _shown?.Changes.Count(change => change.Table == table.Name) ?? 0;
+        var text = table.Columns.Count + " 欄";
+        if (blanks > 0)
+            text += " · " + blanks + " 尚未註記";
+        if (diffs > 0)
+            text += " · " + diffs + " 處差異";
+        return text;
+    }
+
+    private static bool RevealSides(AnnotationColumnDto column)
+        => !string.IsNullOrWhiteSpace(column.Pii)
+            || (!string.IsNullOrWhiteSpace(column.HName) && !string.Equals(column.HName, column.Name, StringComparison.Ordinal))
+            || (!string.IsNullOrWhiteSpace(column.SName) && !string.Equals(column.SName, column.Name, StringComparison.Ordinal));
+
+    private static string OriginWord(string? origin)
+        => string.Equals(origin, "foreign-key", StringComparison.Ordinal) ? "外鍵" : "人為聲明";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_error is null)
+        {
+            _announced = null;
+            return;
+        }
+
+        var token = _error.Code + "\n" + _error.Message;
+        if (token == _announced)
+            return;
+        _announced = token;
+        try
+        {
+            await _errorRef.FocusAsync();
+        }
+        catch (Exception)
+        {
+        }
+    }
 
     public void Dispose()
     {
