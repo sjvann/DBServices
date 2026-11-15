@@ -168,8 +168,6 @@ public class DesignCatalogTests
         await cut.FindAll(".table-pick").Single(button => button.TextContent.Contains("舊表", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
         await cut.Find("article.table-card").QuerySelector(".field-list input")!.ChangeAsync(new ChangeEventArgs { Value = true });
         await RunPreview(cut);
-        var generation = cut.Instance.GetType().GetField("_previewGeneration", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        generation.SetValue(cut.Instance, (int)generation.GetValue(cut.Instance)! + 1);
         var rows = browser.RowReads;
         Assert.IsGreaterThan(0, rows);
         await cut.FindAll("button").Single(button => button.TextContent.Trim() == "重新讀取").ClickAsync(new MouseEventArgs());
@@ -194,6 +192,31 @@ public class DesignCatalogTests
         await cut.FindAll("button").Single(button => button.TextContent.Trim() == "重新讀取").ClickAsync(new MouseEventArgs());
         Assert.AreEqual("資料來源尚未註記", cut.Find(".empty-catalog").TextContent.Trim());
         Assert.AreEqual(0, cut.FindAll(".table-pick").Count);
+    }
+
+    [TestMethod]
+    public async Task Design_catalog_reread_cancels_a_scheduled_preview()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog
+        {
+            Active = new AnnotationPackageDto
+            {
+                Id = "old",
+                Status = "confirmed",
+                Active = true,
+                Tables = [Table("舊表", "", Column("舊欄", "舊型別", "舊註"))],
+            },
+        };
+        var browser = new QuietBrowser();
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser);
+        await cut.FindAll(".table-pick").Single(button => button.TextContent.Contains("舊表", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await cut.Find("article.table-card").QuerySelector(".field-list input")!.ChangeAsync(new ChangeEventArgs { Value = true });
+        var rows = browser.RowReads;
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "重新讀取").ClickAsync(new MouseEventArgs());
+        await Task.Delay(500);
+        Assert.AreEqual(rows, browser.RowReads);
+        Assert.AreEqual(0, browser.GraphCalls);
     }
 
     [TestMethod]
@@ -253,6 +276,7 @@ public class DesignCatalogTests
             new HttpRequestException("Data Source=secret;Password=nope"),
             new InvalidOperationException("Data Source=secret;Password=nope"),
             new TaskCanceledException("Data Source=secret;Password=nope"),
+            new JsonException("Data Source=secret;Password=nope"),
         })
         {
             await using var context = new BunitContext();
@@ -277,6 +301,40 @@ public class DesignCatalogTests
             Assert.AreEqual(0, browser.GraphCalls);
             Assert.AreEqual(0, browser.RowReads);
         }
+    }
+
+    [TestMethod]
+    public async Task Design_catalog_read_failure_keeps_execution_failed_on_multi_table_save()
+    {
+        await using var context = new BunitContext();
+        var annotations = new Catalog { Active = ConfirmedPackage() };
+        var browser = new QuietBrowser();
+        var views = new SavingViews();
+        views.Remember(new ViewDocumentDto
+        {
+            Id = "kept",
+            Name = "訂單",
+            Purpose = "訂單",
+            Sources = ["orders", "customers"],
+            Links = [new ViewLinkDto { Kind = "foreign-key", From = "orders", FromColumn = "customerId", To = "customers", ToColumn = "id" }],
+            Columns = [new ViewColumnDto { Name = "qty", Source = "orders" }],
+        });
+        var cut = Render(context, "lin", [EntryNames.Analyst], annotations, browser, views);
+        await cut.FindAll(".index-item").Single(button => button.TextContent.Contains("訂單", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        var before = JsonSerializer.Serialize(views.Documents.Single());
+        annotations.ActiveFailure = new HttpRequestException("Data Source=secret;Password=nope");
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "重新讀取").ClickAsync(new MouseEventArgs());
+        await cut.FindAll("button").Single(button => button.TextContent.Trim() == "儲存").ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual(before, JsonSerializer.Serialize(views.Documents.Single()));
+        Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
+        var alert = cut.Find("section.board .error");
+        Assert.AreEqual("execution_failed", alert.QuerySelector(".code")!.TextContent.Trim());
+        Assert.AreEqual("沒有保存。", alert.QuerySelectorAll("span")[1].TextContent.Trim());
+        Assert.IsFalse(cut.Markup.Contains("Data Source=", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("Password=", StringComparison.Ordinal));
+        Assert.AreEqual(0, browser.GraphCalls);
+        Assert.AreEqual(0, browser.RowReads);
     }
 
     [TestMethod]

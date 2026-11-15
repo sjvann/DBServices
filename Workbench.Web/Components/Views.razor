@@ -449,6 +449,8 @@ else
 
     private async Task LoadSchema()
     {
+        _previewGeneration++;
+        CancelPreview();
         _schemaBusy = true;
         _schemaError = null;
         try
@@ -969,6 +971,12 @@ else
                     _error = existing.Error;
                     return;
                 }
+            }
+
+            if (_schemaError is not null)
+            {
+                _error = _schemaError;
+                return;
             }
 
             var previousKinds = (document.Links ?? []).Select(link => link.Kind).ToArray();

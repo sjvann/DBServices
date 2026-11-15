@@ -211,6 +211,36 @@ public class DeclaredLinkTests
     }
 
     [TestMethod]
+    public async Task Declared_link_unreadable_package_is_execution_failed()
+    {
+        var root = Root();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "catalog"));
+            await File.WriteAllTextAsync(Annotations(root), "{");
+            var notesBefore = await File.ReadAllBytesAsync(Annotations(root));
+            await using var factory = Factory(root, []);
+            using var client = factory.CreateClient();
+            var rejected = await SendAsync(client, HttpMethod.Put, "/views/v-unread",
+                """
+                {"id":"v-unread","name":"讀不到","purpose":"讀不到","confirmed":false,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"customerId","to":"customers","toColumn":"id"}],"parameters":[],"columns":[{"name":"qty","source":"orders"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, rejected.Status, rejected.Body);
+            using var error = JsonDocument.Parse(rejected.Body);
+            Assert.AreEqual("execution_failed", error.RootElement.GetProperty("code").GetString());
+            Assert.AreEqual("沒有保存。", error.RootElement.GetProperty("message").GetString());
+            Assert.IsFalse(rejected.Body.Contains("link_undeclared", StringComparison.Ordinal), rejected.Body);
+            Assert.IsFalse(rejected.Body.Contains("Data Source", StringComparison.OrdinalIgnoreCase), rejected.Body);
+            Assert.IsFalse(File.Exists(Views(root)));
+            CollectionAssert.AreEqual(notesBefore, await File.ReadAllBytesAsync(Annotations(root)));
+        }
+        finally
+        {
+            Delete(root);
+        }
+    }
+
+    [TestMethod]
     public async Task Declared_link_blank_column_stays_disconnected()
     {
         var root = Root();
