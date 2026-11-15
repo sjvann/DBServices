@@ -11,15 +11,17 @@ public sealed class EnvironmentService
     private readonly IModelProfile _models;
     private readonly IModelEndpoint _modelEndpoint;
     private readonly Profiles _profiles;
+    private readonly IDataServiceHost? _dataService;
     private EnvironmentSnapshot _current = EnvironmentSnapshot.NotReady;
 
-    public EnvironmentService(IConnectionCount connections, IConnectionAdmin admin, IModelProfile models, IModelEndpoint modelEndpoint, Profiles profiles)
+    public EnvironmentService(IConnectionCount connections, IConnectionAdmin admin, IModelProfile models, IModelEndpoint modelEndpoint, Profiles profiles, IDataServiceHost? dataService = null)
     {
         _connections = connections;
         _admin = admin;
         _models = models;
         _modelEndpoint = modelEndpoint;
         _profiles = profiles;
+        _dataService = dataService;
     }
 
     public EnvironmentSnapshot Current
@@ -163,6 +165,18 @@ public sealed class EnvironmentService
         if (!pulled.Ok)
             return OpResult<ModelPull>.Fail(WorkbenchMessages.Text(pulled.Code, pulled.Message));
         return OpResult<ModelPull>.Success(pulled);
+    }
+
+    public async Task<OpResult<bool>> StartDataServiceAsync(string operatorId, CancellationToken cancellationToken)
+    {
+        if (Admin(operatorId) is { } error)
+            return OpResult<bool>.Fail(error);
+        if (_dataService is null)
+            return OpResult<bool>.Fail(WorkbenchMessages.Text(WorkbenchMessages.ServiceUnavailableCode, "這個工作台不能啟動資料服務。"));
+        var started = await _dataService.StartAsync(cancellationToken);
+        return started.Ok
+            ? OpResult<bool>.Success(true)
+            : OpResult<bool>.Fail(WorkbenchMessages.Text(WorkbenchMessages.ServiceUnavailableCode, started.Message));
     }
 
     public async Task<OpResult<bool>> RemoveConnectionAsync(string operatorId, string name, CancellationToken cancellationToken)

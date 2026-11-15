@@ -31,6 +31,7 @@ builder.Services.AddSingleton<IViewCatalog>(new ViewCatalogClient(new HttpClient
 builder.Services.AddSingleton<IAnnotationCatalog>(new AnnotationCatalogClient(new HttpClient(), mcpBase, catalogKey));
 builder.Services.AddSingleton<IConnectionCount>(new McpConnectionCounter(new HttpClient(), mcpBase));
 builder.Services.AddSingleton<IConnectionAdmin>(new McpConnectionAdmin(new HttpClient(), mcpBase, catalogKey));
+builder.Services.AddSingleton<IDataServiceHost>(new McpProcessHost(mcpBase, contentRoot));
 var modelFile = new FileModelProfile(Path.Combine(contentRoot, "model.json"));
 builder.Services.AddSingleton<IModelProfile>(modelFile);
 builder.Services.AddSingleton<IModelEndpoint>(new ModelEndpoint(modelFile));

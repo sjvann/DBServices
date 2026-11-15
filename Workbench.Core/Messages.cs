@@ -32,6 +32,15 @@ public static class WorkbenchMessages
     public const string Disconnected = "來源連不起來。";
     public const string SecondAdmin = "不能建立另一個管理者。";
     public const string LeftUnsaved = "未保存就離開後不能匯出。";
+    public const string ServiceUnconfiguredCode = "service_unconfigured";
+    public const string ServiceUnavailableCode = "service_unavailable";
+
+    public static CatalogNotice CatalogWaiting(string code, string target)
+    {
+        if (code == ServiceUnconfiguredCode)
+            return new CatalogNotice("資料服務位址還沒有設定", "你填的 " + target + " 會在資料服務位址設定好之後才送出。");
+        return new CatalogNotice("資料服務還沒有啟動", "你填的 " + target + " 會在資料服務啟動後才送出。");
+    }
 
     public static string NoReport(IEnumerable<string> names)
     {
@@ -58,6 +67,11 @@ public static class WorkbenchMessages
             parts.Add("環境設定尚未完成");
         return new ErrorDto { Code = "environment_incomplete", Message = "環境設定未完成：" + string.Join("，", parts) + "。" };
     }
+}
+
+public readonly record struct CatalogNotice(string Title, string Body)
+{
+    public static CatalogNotice None { get; } = new("", "");
 }
 
 public sealed class OpResult<T>

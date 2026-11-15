@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Workbench.Core;
 using Workbench.Core.Ports;
 
 namespace Workbench.Adapters;
@@ -45,7 +46,7 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
     public async Task<DatabaseListResult> DatabasesAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
     {
         if (_http.BaseAddress is null)
-            return DatabaseListResult.Fail("connection_failed", "尚未設定資料服務位址，無法讀取資料庫清單。");
+            return DatabaseListResult.Fail(WorkbenchMessages.ServiceUnconfiguredCode, "資料服務位址還沒有設定。");
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "connections/databases");
@@ -77,7 +78,7 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
         {
             if (cancellationToken.IsCancellationRequested)
                 throw;
-            return DatabaseListResult.Fail("connection_failed", "資料服務沒有回應（" + _http.BaseAddress + "），無法讀取資料庫清單。");
+            return DatabaseListResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。");
         }
     }
 
@@ -87,7 +88,7 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
     private async Task<CatalogWriteResult> SendAsync(HttpMethod method, string url, string callerId, object? body, CancellationToken cancellationToken)
     {
         if (_http.BaseAddress is null)
-            return CatalogWriteResult.Fail("connection_failed", url == "connections/probe" ? "尚未設定資料服務位址，無法測試連線。" : "無法建立連線。");
+            return CatalogWriteResult.Fail(WorkbenchMessages.ServiceUnconfiguredCode, "資料服務位址還沒有設定。");
         try
         {
             using var request = new HttpRequestMessage(method, url);
@@ -108,10 +109,7 @@ public sealed class McpConnectionAdmin : IConnectionAdmin
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or IOException or TaskCanceledException)
         {
-            var message = url == "connections/probe"
-                ? "資料服務沒有回應（" + _http.BaseAddress + "），無法測試連線。"
-                : "無法建立連線。";
-            return CatalogWriteResult.Fail("connection_failed", message);
+            return CatalogWriteResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。");
         }
     }
 

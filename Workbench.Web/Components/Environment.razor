@@ -5,7 +5,11 @@
 
 <div class="page">
 <h1>環境設定</h1>
-@if (_denied)
+@if (_signedOut)
+{
+    <p role="alert">尚未登入。<a href="/">前往登入</a></p>
+}
+else if (_denied)
 {
     <p role="alert">沒有權限。</p>
 }
@@ -193,7 +197,22 @@ else
                 </div>
                 break;
         }
-        @if (_serverType is "PostgreSQL" or "MySQL" or "SqlServer")
+        @if (!string.IsNullOrEmpty(_catalog.Title))
+        {
+            <div class="notice" role="status">
+                <p class="notice-title">@_catalog.Title</p>
+                <p>@_catalog.Body</p>
+                @if (!string.IsNullOrEmpty(_startNote))
+                {
+                    <p>@_startNote</p>
+                }
+                <div class="actions">
+                    <button class="confirm" type="button" disabled="@_starting" @onclick="StartDataService">@(_starting ? "正在啟動…" : "啟動資料服務")</button>
+                    <button class="secondary" type="button" disabled="@_starting" @onclick="ReloadDatabases">再看一次</button>
+                </div>
+            </div>
+        }
+        else if (_serverType is "PostgreSQL" or "MySQL" or "SqlServer")
         {
             <div class="database-choices" aria-live="polite">
                 <p class="hint">資料庫</p>
@@ -311,6 +330,7 @@ else
 </div>
 
 @code {
+    private bool _signedOut;
     private bool _denied;
     private ErrorDto? _error;
     private string _status = "";
@@ -322,6 +342,9 @@ else
     private bool _probing;
     private bool _listing;
     private string _databaseNote = "";
+    private CatalogNotice _catalog = CatalogNotice.None;
+    private bool _starting;
+    private string _startNote = "";
     private string _listedFor = "";
     private int _listGeneration;
     private Task? _reveal;
@@ -344,6 +367,7 @@ else
     {
         if (Gate.Current is not { IsAdmin: true } profile)
         {
+            _signedOut = Gate.Current is null;
             _denied = Gate.Current is not null;
             return;
         }
@@ -384,11 +408,8 @@ else
         var profile = Gate.Current!;
         _error = null;
         _status = "";
-        if (await NeedDatabase() is { } waiting)
-        {
-            _databaseNote = waiting;
+        if (Blocked(await NeedDatabase(), "儲存連線"))
             return;
-        }
 
         var composed = _fields.Compose(_serverType);
         if (!composed.Ok)
@@ -400,6 +421,8 @@ else
         var saved = await Environments.SaveConnectionAsync(profile.Id, _connectionName, _serverType, composed.Value, CancellationToken.None);
         if (!saved.Ok)
         {
+            if (ShowCatalog(saved.Error))
+                return;
             _error = saved.Error;
             await Reload(profile.Id);
             return;
@@ -416,11 +439,8 @@ else
         var profile = Gate.Current!;
         _error = null;
         _status = "";
-        if (await NeedDatabase() is { } waiting)
-        {
-            _databaseNote = waiting;
+        if (Blocked(await NeedDatabase(), "測試連線"))
             return;
-        }
 
         var composed = _fields.Compose(_serverType);
         if (!composed.Ok)
@@ -435,6 +455,8 @@ else
             var probed = await Environments.ProbeConnectionAsync(profile.Id, _serverType, composed.Value, CancellationToken.None);
             if (!probed.Ok)
             {
+                if (ShowCatalog(probed.Error))
+                    return;
                 _error = probed.Error;
                 return;
             }
@@ -461,6 +483,7 @@ else
         _databases = [];
         _fields.Database = "";
         _databaseNote = "";
+        _catalog = CatalogNotice.None;
     }
 
     private async Task AuthChanged()
@@ -481,7 +504,33 @@ else
     {
         _listedFor = "";
         _reveal = null;
+        _startNote = "";
         await RevealDatabases();
+    }
+
+    private async Task StartDataService()
+    {
+        var profile = Gate.Current!;
+        _starting = true;
+        _startNote = "";
+        _error = null;
+        try
+        {
+            var started = await Environments.StartDataServiceAsync(profile.Id, CancellationToken.None);
+            if (!started.Ok)
+            {
+                _startNote = started.Error!.Message;
+                return;
+            }
+
+            _listedFor = "";
+            _reveal = null;
+            await RevealDatabases();
+        }
+        finally
+        {
+            _starting = false;
+        }
     }
 
     private async Task RevealCore()
@@ -492,6 +541,9 @@ else
         if (!windows && (_fields.User.Trim().Length == 0 || _fields.Password.Length == 0))
             return;
         if (_fields.Host.Trim().Length == 0 || _fields.Port.Trim().Length == 0)
+            return;
+
+        if (Gate.Current is not { } profile)
             return;
 
         var generation = _listGeneration;
@@ -508,20 +560,23 @@ else
 
         _listing = true;
         _databaseNote = "";
+        _catalog = CatalogNotice.None;
         try
         {
-            var listed = await Environments.DatabasesAsync(Gate.Current!.Id, _serverType, composed.Value!, CancellationToken.None);
+            var listed = await Environments.DatabasesAsync(profile.Id, _serverType, composed.Value!, CancellationToken.None);
             if (generation != _listGeneration)
                 return;
             if (!listed.Ok)
             {
                 _databases = [];
                 _fields.Database = "";
-                _databaseNote = listed.Error!.Message;
+                if (!ShowCatalog(listed.Error))
+                    _databaseNote = listed.Error!.Message;
                 _listedFor = signature;
                 return;
             }
 
+            _catalog = CatalogNotice.None;
             _databases = listed.Value!.ToList();
             _listedFor = signature;
             if (_databases.Count == 1)
@@ -536,6 +591,43 @@ else
         }
     }
 
+    private bool Blocked(string? waiting, string action)
+    {
+        if (waiting is null)
+            return false;
+        if (!string.IsNullOrEmpty(_catalog.Title))
+            _startNote = "請先啟動資料服務，再" + action + "。";
+        else
+            _databaseNote = waiting;
+        return true;
+    }
+
+    private bool ShowCatalog(ErrorDto? error)
+    {
+        if (error?.Code is not (WorkbenchMessages.ServiceUnavailableCode or WorkbenchMessages.ServiceUnconfiguredCode))
+            return false;
+        _databaseNote = "";
+        _catalog = WorkbenchMessages.CatalogWaiting(error.Code, EnteredTarget());
+        return true;
+    }
+
+    private string EnteredTarget()
+    {
+        if (_serverType == "Sqlite")
+        {
+            if (_fields.Place == "memory")
+                return "記憶體資料庫";
+            var path = _fields.FilePath.Trim();
+            return path.Length == 0 ? "SQLite 檔案" : path;
+        }
+
+        var host = _fields.Host.Trim();
+        var port = _fields.Port.Trim();
+        if (host.Length == 0)
+            return "資料庫";
+        return port.Length == 0 ? host : host + ":" + port;
+    }
+
     private async Task<string?> NeedDatabase()
     {
         if (_serverType is not ("PostgreSQL" or "MySQL" or "SqlServer"))
@@ -545,6 +637,8 @@ else
         await RevealDatabases();
         if (!string.IsNullOrWhiteSpace(_fields.Database))
             return null;
+        if (!string.IsNullOrEmpty(_catalog.Title))
+            return _catalog.Body;
         return _databases.Count == 0
             ? (_databaseNote.Length == 0 ? "先填帳號和密碼，才能列出資料庫。" : _databaseNote)
             : "請選擇一個資料庫。";

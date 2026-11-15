@@ -243,6 +243,21 @@ public sealed class DatabaseListResult
     public static DatabaseListResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class DataServiceStart
+{
+    public bool Ok { get; init; }
+    public string Message { get; init; } = "";
+
+    public static DataServiceStart Ready(string message) => new() { Ok = true, Message = message };
+
+    public static DataServiceStart Fail(string message) => new() { Message = message };
+}
+
+public interface IDataServiceHost
+{
+    Task<DataServiceStart> StartAsync(CancellationToken cancellationToken);
+}
+
 public interface IConnectionAdmin
 {
     Task<IReadOnlyList<NamedConnection>> ListAsync(CancellationToken cancellationToken);
