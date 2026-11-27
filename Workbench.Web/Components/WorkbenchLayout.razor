@@ -19,34 +19,17 @@
         else
         {
             <p class="who">@_me.DisplayName</p>
-            @if (_station == EntryNames.Analyst)
+            <p class="meta">工作</p>
+            @foreach (var item in WorkMenu)
             {
-                <p class="meta">現在的工作</p>
-                <NavLink href="/views">檢視</NavLink>
-            }
-            else if (_station == EntryNames.Designer)
-            {
-                <p class="meta">現在的工作</p>
-                <NavLink href="/styles">樣式</NavLink>
-            }
-            else if (_station == EntryNames.Terminal)
-            {
-                <p class="meta">現在的工作</p>
-                <NavLink href="/talk">產生報表</NavLink>
-                <NavLink href="/records">生成紀錄</NavLink>
-            }
-            else if (_station == EntryNames.Governance && _me.Entries.Contains(EntryNames.Governance))
-            {
-                <p class="meta">現在的工作</p>
-                <NavLink href="/governance" ActiveClass="active rail-link-active">註記</NavLink>
-            }
-            else if (_page == "stations")
-            {
-                <p class="meta">選擇要做的工作</p>
-            }
-            else if (_page == "environment")
-            {
-                <p class="meta">資料庫與 AI</p>
+                if (_me.Entries.Contains(item.Entry))
+                {
+                    <NavLink href="@item.Href" ActiveClass="active rail-link-active">@item.Label</NavLink>
+                }
+                else
+                {
+                    <span class="rail-disabled" role="link" aria-disabled="true" title="沒有權限">@item.Label</span>
+                }
             }
             @if (_me.IsAdmin)
             {
@@ -56,10 +39,6 @@
                 <NavLink href="/entries">入口指派</NavLink>
             }
             <div class="rail-foot">
-                @if (_me.Entries.Count > 1)
-                {
-                    <NavLink href="/stations">換工作</NavLink>
-                }
                 <button class="secondary" type="button" @onclick="Logout">登出</button>
             </div>
         }
@@ -72,9 +51,16 @@
 </div>
 
 @code {
+    private static readonly (string Entry, string Href, string Label)[] WorkMenu =
+    [
+        (EntryNames.Analyst, "/views", "檢視"),
+        (EntryNames.Designer, "/styles", "樣式"),
+        (EntryNames.Terminal, "/talk", "產生報表"),
+        (EntryNames.Terminal, "/records", "生成紀錄"),
+        (EntryNames.Governance, "/governance", "註記"),
+    ];
+
     private MeResponse? _me;
-    private string? _station;
-    private string? _page;
 
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
@@ -113,16 +99,6 @@
     {
         var profile = Gate.Current;
         _me = profile is null ? null : OperatorService.ToMe(profile);
-        var relative = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
-        _page = relative;
-        _station = relative switch
-        {
-            "views" => EntryNames.Analyst,
-            "styles" => EntryNames.Designer,
-            "talk" or "records" => EntryNames.Terminal,
-            "governance" => EntryNames.Governance,
-            _ => null,
-        };
         await InvokeAsync(StateHasChanged);
     }
 

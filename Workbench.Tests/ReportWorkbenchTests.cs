@@ -147,7 +147,7 @@ public class ReportWorkbenchTests
         Assert.AreEqual(1, analyst.Me.Entries.Count);
 
         var multi = await host.LoginAsync("陳安", ChenSecret);
-        Assert.AreEqual("/stations", multi.Me.Destination);
+        Assert.AreEqual("/views", multi.Me.Destination);
         Assert.AreEqual(2, multi.Me.Entries.Count);
 
         var (status, text, _) = await none.RawAsync(HttpMethod.Get, "api/views");
@@ -195,7 +195,7 @@ public class ReportWorkbenchTests
             ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
 
         var switched = await host.LoginAsync("方晴", secret);
-        Assert.AreEqual("/stations", switched.Me.Destination);
+        Assert.AreEqual("/views", switched.Me.Destination);
         Assert.AreEqual(2, switched.Me.Entries.Count);
 
         var cancelled = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest

@@ -208,8 +208,9 @@ public class GapClosureTests
         Assert.AreEqual(0, station.FindAll("input, select, textarea, table").Count);
 
         var rail = context.Render<Workbench.Web.Components.WorkbenchLayout>();
-        Assert.AreEqual(0, rail.FindAll(".rail a").Count);
-        Assert.IsFalse(rail.Markup.Contains("註記", StringComparison.Ordinal));
+        CollectionAssert.AreEqual(new[] { "檢視" }, RailLinks(rail).ToArray());
+        CollectionAssert.Contains(RailDisabled(rail), "註記");
+        Assert.IsFalse(rail.FindAll(".rail a").Any(link => link.TextContent.Contains("註記", StringComparison.Ordinal)));
     }
 
     [TestMethod]
@@ -224,6 +225,7 @@ public class GapClosureTests
             context.Services.GetRequiredService<NavigationManager>().NavigateTo("/governance");
             var cut = context.Render<Workbench.Web.Components.WorkbenchLayout>();
             CollectionAssert.AreEqual(new[] { "註記" }, RailLinks(cut).ToArray());
+            CollectionAssert.AreEquivalent(new[] { "檢視", "樣式", "產生報表", "生成紀錄" }, RailDisabled(cut).ToArray());
             var link = cut.Find(".rail a");
             Assert.IsTrue(link.ClassList.Contains("active"));
             Assert.IsTrue(link.ClassList.Contains("rail-link-active"));
@@ -252,24 +254,26 @@ public class GapClosureTests
         Assert.IsTrue(stations.FindAll("a").Any(link => link.GetAttribute("href") == "/views"));
 
         var rail = shared.Render<Workbench.Web.Components.WorkbenchLayout>();
-        CollectionAssert.AreEquivalent(new[] { "註記", "換工作" }, RailLinks(rail).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "檢視", "註記" }, RailLinks(rail).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "樣式", "產生報表", "生成紀錄" }, RailDisabled(rail).ToArray());
+        Assert.IsFalse(rail.Markup.Contains("換工作", StringComparison.Ordinal));
         var note = rail.FindAll(".rail a").Single(link => link.TextContent.Trim() == "註記");
         Assert.IsTrue(note.ClassList.Contains("active"));
         Assert.IsTrue(note.ClassList.Contains("rail-link-active"));
-        Assert.IsFalse(RailLinks(rail).Contains("檢視"));
 
         await rail.InvokeAsync(() => nav.NavigateTo("/views"));
-        rail.WaitForAssertion(() => CollectionAssert.AreEquivalent(new[] { "檢視", "換工作" }, RailLinks(rail).ToArray()));
-        Assert.IsFalse(RailLinks(rail).Contains("註記"));
-        Assert.IsFalse(RailLinks(rail).Contains("樣式"));
-        Assert.IsFalse(RailLinks(rail).Contains("產生報表"));
+        rail.WaitForAssertion(() => CollectionAssert.AreEquivalent(new[] { "檢視", "註記" }, RailLinks(rail).ToArray()));
+        var view = rail.FindAll(".rail a").Single(link => link.TextContent.Trim() == "檢視");
+        Assert.IsTrue(view.ClassList.Contains("active"));
+        note = rail.FindAll(".rail a").Single(link => link.TextContent.Trim() == "註記");
+        Assert.IsFalse(note.ClassList.Contains("active"));
+        CollectionAssert.AreEquivalent(new[] { "樣式", "產生報表", "生成紀錄" }, RailDisabled(rail).ToArray());
 
         await rail.InvokeAsync(() => nav.NavigateTo("/governance"));
-        rail.WaitForAssertion(() => CollectionAssert.AreEquivalent(new[] { "註記", "換工作" }, RailLinks(rail).ToArray()));
+        rail.WaitForAssertion(() => Assert.IsTrue(rail.FindAll(".rail a").Single(link => link.TextContent.Trim() == "註記").ClassList.Contains("rail-link-active")));
         note = rail.FindAll(".rail a").Single(link => link.TextContent.Trim() == "註記");
         Assert.IsTrue(note.ClassList.Contains("active"));
-        Assert.IsTrue(note.ClassList.Contains("rail-link-active"));
-        Assert.IsFalse(RailLinks(rail).Contains("檢視"));
+        Assert.IsTrue(RailLinks(rail).Contains("檢視"));
     }
 
     private static BunitContext SignedIn(Operators store, string operatorId, RecordingCaller? caller = null)
@@ -293,6 +297,9 @@ public class GapClosureTests
 
     private static List<string> RailLinks(IRenderedComponent<Workbench.Web.Components.WorkbenchLayout> cut)
         => cut.FindAll(".rail a").Select(link => link.TextContent.Trim()).ToList();
+
+    private static List<string> RailDisabled(IRenderedComponent<Workbench.Web.Components.WorkbenchLayout> cut)
+        => cut.FindAll(".rail .rail-disabled").Select(item => item.TextContent.Trim()).ToList();
 
     private static bool Checked(IRenderedComponent<Workbench.Web.Components.Entries> cut, string name)
         => cut.FindAll("label").Single(label => label.TextContent.Contains(name, StringComparison.Ordinal))

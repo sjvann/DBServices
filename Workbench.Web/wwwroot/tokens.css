@@ -63,7 +63,8 @@ h2 { margin-top: var(--space-5); }
 }
 .who { margin: 0 0 var(--space-4); font-weight: 600; }
 .rail .meta { margin: var(--space-4) 0 var(--space-2); }
-.rail a {
+.rail a,
+.rail .rail-disabled {
   display: block;
   margin: 2px 0;
   padding: var(--space-2) var(--space-3);
@@ -75,6 +76,10 @@ h2 { margin-top: var(--space-5); }
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 .rail a:hover { background: var(--surface-sunken); }
+.rail .rail-disabled {
+  color: var(--ink-disabled);
+  cursor: not-allowed;
+}
 .rail a.active {
   background: var(--action-soft);
   border-color: transparent;

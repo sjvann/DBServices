@@ -136,12 +136,10 @@ public sealed class OperatorService
     public static MeResponse ToMe(Profile profile)
     {
         var entries = profile.Entries.Where(entry => EntryNames.All.Contains(entry, StringComparer.Ordinal)).ToList();
-        var destination = entries.Count switch
-        {
-            1 => EntryNames.Home(entries[0]),
-            > 1 => "/stations",
-            _ => profile.IsAdmin ? "/operators" : "/",
-        };
+        var first = EntryNames.All.FirstOrDefault(entry => entries.Contains(entry, StringComparer.Ordinal));
+        var destination = first is null
+            ? profile.IsAdmin ? "/operators" : "/"
+            : EntryNames.Home(first);
         return new MeResponse
         {
             Id = profile.Id,
