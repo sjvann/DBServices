@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -214,6 +215,62 @@ public class GapClosureTests
     }
 
     [TestMethod]
+    public async Task Work_rail_puts_annotation_before_the_later_stations()
+    {
+        var store = new Operators();
+        store.Add(new OperatorRecord { Id = "admin", DisplayName = "admin", IsAdmin = true });
+        store.ReplaceEntries("admin", EntryNames.All);
+        await using var context = SignedIn(store, "admin");
+        context.AddBunitPersistentComponentState();
+        context.Services.GetRequiredService<NavigationManager>().NavigateTo("/governance");
+
+        var rail = context.Render<Workbench.Web.Components.WorkbenchLayout>();
+        var work = RailLinks(rail)
+            .Where(label => label is "註記" or "檢視" or "樣式" or "產生報表" or "生成紀錄")
+            .ToArray();
+        CollectionAssert.AreEqual(
+            new[] { "註記", "檢視", "樣式", "產生報表", "生成紀錄" },
+            work);
+    }
+
+    [TestMethod]
+    public async Task Annotation_open_starts_the_data_service_instead_of_a_save_error()
+    {
+        var store = new Operators();
+        store.Add(new OperatorRecord { Id = "admin", DisplayName = "admin", IsAdmin = true });
+        store.ReplaceEntries("admin", [EntryNames.Governance]);
+        var catalog = new DownThenEmpty();
+        var host = new CountingHost();
+        await using var context = SignedIn(store, "admin", annotations: catalog);
+        context.Services.AddSingleton<IDataServiceHost>(host);
+
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.IsTrue(cut.Find(".lead").TextContent.Contains("還沒有註記包", StringComparison.Ordinal)));
+        Assert.AreEqual(0, cut.FindAll("[role='alert']").Count);
+        Assert.IsFalse(cut.Markup.Contains("沒有保存", StringComparison.Ordinal));
+        Assert.AreEqual(1, host.Starts);
+        Assert.AreEqual(2, catalog.DraftReads);
+    }
+
+    [TestMethod]
+    public async Task Annotation_open_without_a_data_service_does_not_claim_an_empty_package()
+    {
+        var store = new Operators();
+        store.Add(new OperatorRecord { Id = "fang", DisplayName = "方晴", IsAdmin = false });
+        store.ReplaceEntries("fang", [EntryNames.Governance]);
+        await using var context = SignedIn(store, "fang", annotations: new AlwaysDown());
+
+        var cut = context.Render<Workbench.Web.Components.Governance>();
+        cut.WaitForAssertion(() => Assert.AreEqual(1, cut.FindAll("[role='alert']").Count));
+        var alert = cut.Find("[role='alert']");
+        Assert.IsTrue(alert.TextContent.Contains("資料服務還沒有啟動", StringComparison.Ordinal));
+        Assert.IsTrue(alert.TextContent.Contains("service_unavailable", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("沒有保存", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("還沒有註記包", StringComparison.Ordinal));
+        Assert.IsFalse(cut.Markup.Contains("execution_failed", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task Governance_entry_rail_shows_only_annotation()
     {
         var alone = new Operators();
@@ -276,7 +333,7 @@ public class GapClosureTests
         Assert.IsTrue(RailLinks(rail).Contains("檢視"));
     }
 
-    private static BunitContext SignedIn(Operators store, string operatorId, RecordingCaller? caller = null)
+    private static BunitContext SignedIn(Operators store, string operatorId, RecordingCaller? caller = null, IAnnotationCatalog? annotations = null)
     {
         var context = new BunitContext();
         var sessions = new MemorySessionStore();
@@ -291,7 +348,7 @@ public class GapClosureTests
         context.Services.AddSingleton(new OperatorService(store, hasher, profiles));
         if (caller is not null)
             context.Services.AddSingleton<IViewCaller>(caller);
-        context.Services.AddSingleton<IAnnotationCatalog>(new RecordingAnnotations());
+        context.Services.AddSingleton(annotations ?? new RecordingAnnotations());
         return context;
     }
 
@@ -367,5 +424,77 @@ public class GapClosureTests
         public IReadOnlyList<OperatorRecord> List() => _rows.ToList();
         public void ReplaceEntries(string operatorId, IReadOnlyList<string> entries) => _entries[operatorId] = entries.ToList();
         public IReadOnlyList<string> EntriesFor(string operatorId) => _entries.TryGetValue(operatorId, out var found) ? found : [];
+    }
+
+    private sealed class CountingHost : IDataServiceHost
+    {
+        public int Starts { get; private set; }
+
+        public Task<DataServiceStart> StartAsync(CancellationToken cancellationToken)
+        {
+            Starts++;
+            return Task.FromResult(DataServiceStart.Ready("資料服務已啟動。"));
+        }
+    }
+
+    private sealed class DownThenEmpty : IAnnotationCatalog
+    {
+        public int DraftReads { get; private set; }
+
+        public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
+        {
+            DraftReads++;
+            if (DraftReads == 1)
+                throw new HttpRequestException("down");
+            return Task.FromResult<AnnotationPackageDto?>(null);
+        }
+
+        public Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(new AnnotationActiveDto());
+
+        public Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(null);
+
+        public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+    }
+
+    private sealed class AlwaysDown : IAnnotationCatalog
+    {
+        public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
+            => throw new HttpRequestException("down");
+
+        public Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+            => throw new HttpRequestException("down");
+
+        public Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(null);
+
+        public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        public Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+            => Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
     }
 }

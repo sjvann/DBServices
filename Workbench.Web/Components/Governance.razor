@@ -61,9 +61,9 @@ else
                     </details>
                 }
             }
-            else
+            else if (!_catalogDown)
             {
-                <p class="lead">還沒有註記包。匯入 Excel 字典，或從資料庫讀結構。</p>
+                <p class="lead">還沒有註記包。先選一筆資料庫連線並讀結構。若有 Excel 字典，可匯入當預設註解。</p>
             }
             <div class="action-group">
                 <label class="import" for="annotation-import">匯入 Excel</label>
@@ -379,6 +379,7 @@ else
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly JsonSerializerOptions ScriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private bool _denied;
+    private bool _catalogDown;
     private bool _busy;
     private bool _reading;
     private bool _saving;
@@ -464,6 +465,11 @@ else
         if (_denied || profile is null)
             return;
 
+        await ReadStation(profile, allowStart: true);
+    }
+
+    private async Task ReadStation(Profile profile, bool allowStart)
+    {
         var revision = _revision;
         try
         {
@@ -477,6 +483,8 @@ else
             }
             if (revision != _revision)
                 return;
+            _catalogDown = false;
+            _error = null;
             _active = station.Package;
             _others = station.Others ?? [];
             Remember(draft);
@@ -484,11 +492,42 @@ else
                 _shown = Clone(_active);
             FocusTable(_shown?.Tables.FirstOrDefault()?.Name);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException)
         {
             if (revision != _revision)
                 return;
+            if (allowStart && await TryStartDataService(profile))
+            {
+                await ReadStation(profile, allowStart: false);
+                return;
+            }
+
+            _catalogDown = true;
+            _error = WorkbenchMessages.Text(WorkbenchMessages.ServiceUnavailableCode, "資料服務還沒有啟動。");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or TaskCanceledException)
+        {
+            if (revision != _revision)
+                return;
+            _catalogDown = true;
             _error = WorkbenchMessages.Text("execution_failed", "沒有保存。");
+        }
+    }
+
+    private async Task<bool> TryStartDataService(Profile profile)
+    {
+        if (!profile.IsAdmin)
+            return false;
+        if (Services.GetService(typeof(IDataServiceHost)) is not IDataServiceHost host)
+            return false;
+        try
+        {
+            var started = await host.StartAsync(CancellationToken.None);
+            return started.Ok;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or TaskCanceledException)
+        {
+            return false;
         }
     }
 
