@@ -41,10 +41,15 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw Failure(text);
-        var package = JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json) ?? throw Failure(text);
+        var package = (AnnotationPackageDto?)null;
         var others = new List<AnnotationPackageDto>();
+        var connections = new List<AnnotationPackageDto>();
         using (var document = JsonDocument.Parse(text))
         {
+            if (document.RootElement.TryGetProperty("id", out var idNode)
+                && idNode.ValueKind == JsonValueKind.String
+                && !string.IsNullOrEmpty(idNode.GetString()))
+                package = JsonSerializer.Deserialize<AnnotationPackageDto>(text, Json) ?? throw Failure(text);
             if (document.RootElement.TryGetProperty("others", out var extra) && extra.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in extra.EnumerateArray())
@@ -54,9 +59,19 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
                         others.Add(other);
                 }
             }
+
+            if (document.RootElement.TryGetProperty("connections", out var bound) && bound.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in bound.EnumerateArray())
+                {
+                    var connection = JsonSerializer.Deserialize<AnnotationPackageDto>(item.GetRawText(), Json);
+                    if (connection is not null)
+                        connections.Add(connection);
+                }
+            }
         }
 
-        return new AnnotationActiveDto { Package = package, Others = others };
+        return new AnnotationActiveDto { Package = package, Others = others, Connections = connections };
     }
 
     public async Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
@@ -70,9 +85,13 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         return text;
     }
 
-    public async Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+    public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+        => ConfirmAsync(callerId, null, cancellationToken);
+
+    public async Task<AnnotationWriteResult> ConfirmAsync(string callerId, string? packageId, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Post, "annotations/confirm", callerId, null, cancellationToken);
+        object? body = string.IsNullOrWhiteSpace(packageId) ? null : new { id = packageId };
+        using var response = await SendAsync(HttpMethod.Post, "annotations/confirm", callerId, body, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
             return ReadFailure(text);
@@ -125,9 +144,15 @@ public sealed class AnnotationCatalogClient : IAnnotationCatalog
         return new AnnotationWriteResult { Ok = true };
     }
 
-    public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+    public Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+        => ReadStructureAsync(callerId, null, cancellationToken);
+
+    public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, string? connectionId, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Post, "annotations/read-structure", callerId, null, cancellationToken);
+        var url = string.IsNullOrWhiteSpace(connectionId)
+            ? "annotations/read-structure"
+            : "annotations/read-structure?connectionId=" + Uri.EscapeDataString(connectionId.Trim());
+        using var response = await SendAsync(HttpMethod.Post, url, callerId, null, cancellationToken);
         var text = await response.Content.ReadAsStringAsync(cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound || !response.IsSuccessStatusCode)
             return ReadFailure(text);

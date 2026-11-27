@@ -112,6 +112,7 @@ public sealed class ViewColumnDto
 public sealed class ViewDocumentDto
 {
     public string Id { get; set; } = "";
+    public string AnnotationId { get; set; } = "";
     public string Name { get; set; } = "";
     public string Purpose { get; set; } = "";
     public bool Confirmed { get; set; }
@@ -282,6 +283,8 @@ public sealed class AnnotationColumnDto
     public string Type { get; set; } = "";
     public bool NotNull { get; set; }
     public string Note { get; set; } = "";
+    public string NoteOrigin { get; set; } = "";
+    public string NoteSource { get; set; } = "";
     public string HName { get; set; } = "";
     public string SName { get; set; } = "";
     public string HType { get; set; } = "";
@@ -306,6 +309,8 @@ public sealed class AnnotationTableDto
 {
     public string Name { get; set; } = "";
     public string Note { get; set; } = "";
+    public string NoteOrigin { get; set; } = "";
+    public string NoteSource { get; set; } = "";
     public List<AnnotationColumnDto> Columns { get; set; } = [];
     public List<AnnotationIndexDto> Indexes { get; set; } = [];
 }
@@ -338,4 +343,6 @@ public sealed class AnnotationPackageDto
     public List<AnnotationLinkDto> Links { get; set; } = [];
     public string Dbml { get; set; } = "";
     public List<AnnotationChangeDto> Changes { get; set; } = [];
+    public string SourceKind { get; set; } = "";
+    public string SourceKey { get; set; } = "";
 }

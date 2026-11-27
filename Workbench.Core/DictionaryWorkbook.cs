@@ -76,6 +76,8 @@ public static class DictionaryWorkbook
                 Purpose = "",
                 Status = "draft",
                 Active = false,
+                SourceKind = "excel",
+                SourceKey = Path.GetFileName(fileName ?? ""),
                 Tables = tables,
                 Links = [],
                 Dbml = "",

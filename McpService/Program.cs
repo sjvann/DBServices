@@ -385,15 +385,24 @@ app.MapDelete("/annotations/draft", (HttpContext http, AnnotationCatalog annotat
 });
 app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog annotations, ConnectionDirectory directory, IConfiguration configuration) =>
 {
-    if (RejectWrite(http, configuration) is { } rejected)
-        return rejected;
+        if (RejectWrite(http, configuration) is { } rejected)
+            return rejected;
 
-    try
-    {
-        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
-            return blocked;
+        try
+        {
+            var requested = http.Request.Query["connectionId"].ToString();
+            string name;
+            if (!string.IsNullOrWhiteSpace(requested))
+            {
+                if (SelectConnection(directory, configuration, requested, out name) is { } denied)
+                    return denied;
+            }
+            else if (RejectPlatform(directory, configuration, out name) is { } blocked)
+            {
+                return blocked;
+            }
 
-        var result = annotations.ReadStructure(directory.Catalog, name, http.RequestAborted);
+            var result = annotations.ReadStructure(directory.Catalog, name, http.RequestAborted);
         return result.Ok
             ? Results.Json(result.Package)
             : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
@@ -424,12 +433,16 @@ app.MapGet("/annotations/active", (HttpContext http, AnnotationCatalog annotatio
     try
     {
         var active = annotations.Active();
-        if (active.Package is null)
+        var bindable = annotations.Bindable();
+        if (active.Package is null && active.Others.Count == 0)
             return Results.NoContent();
 
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        var node = JsonSerializer.SerializeToNode(active.Package, options)!.AsObject();
+        var node = active.Package is null
+            ? new JsonObject()
+            : JsonSerializer.SerializeToNode(active.Package, options)!.AsObject();
         node["others"] = JsonSerializer.SerializeToNode(active.Others, options);
+        node["connections"] = JsonSerializer.SerializeToNode(bindable, options);
         return Results.Json(node);
     }
     catch (AnnotationReadException)
@@ -437,24 +450,53 @@ app.MapGet("/annotations/active", (HttpContext http, AnnotationCatalog annotatio
         return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
     }
 });
-app.MapPost("/annotations/confirm", (HttpContext http, AnnotationCatalog annotations, ViewCatalog views, ConnectionDirectory directory, IConfiguration configuration) =>
+app.MapPost("/annotations/confirm", async (HttpContext http, AnnotationCatalog annotations, ViewCatalog views, ConnectionDirectory directory, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
         return rejected;
 
     try
     {
-        if (annotations.RefuseConfirm() is { } refused)
-            return Results.Json(new { code = refused.Code, message = refused.Message }, statusCode: 400);
-        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
-            return blocked;
+        string? draftId = null;
+        if (http.Request.ContentLength is > 0)
+        {
+            var body = await http.Request.ReadFromJsonAsync<DraftPick>();
+            draftId = body?.Id;
+        }
 
-        var result = annotations.Confirm(directory.Catalog, name, views.List());
+        if (annotations.RefuseConfirm(draftId) is { } refused)
+            return Results.Json(new { code = refused.Code, message = refused.Message }, statusCode: 400);
+
+        var working = annotations.FindDraft(draftId);
+        string name;
+        if (working is not null && string.Equals(working.SourceKind, "excel", StringComparison.Ordinal))
+        {
+            var excel = annotations.Confirm(directory.Catalog, "", views.List(), working.Id);
+            return excel.Ok
+                ? Results.Json(excel.Package)
+                : Results.Json(new { code = excel.Code, message = excel.Message }, statusCode: 400);
+        }
+
+        if (working is not null && string.Equals(working.SourceKind, "connection", StringComparison.Ordinal))
+        {
+            if (SelectConnection(directory, configuration, working.SourceKey, out name) is { } denied)
+                return denied;
+        }
+        else if (RejectPlatform(directory, configuration, out name) is { } blocked)
+        {
+            return blocked;
+        }
+
+        var result = annotations.Confirm(directory.Catalog, name, views.List(), working?.Id);
         return result.Ok
             ? Results.Json(result.Package)
             : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
     }
     catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+    catch (JsonException)
     {
         return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
     }
@@ -515,6 +557,29 @@ static List<Dictionary<string, string>> ConnectionPayload(ToolCatalog catalog)
     }
 
     return payload;
+}
+
+static IResult? SelectConnection(ConnectionDirectory directory, IConfiguration configuration, string? requested, out string name)
+{
+    name = "";
+    var match = "";
+    foreach (var pair in directory.Catalog.Connections)
+    {
+        if (!pair.Value.Available || !string.Equals(pair.Key, requested?.Trim(), StringComparison.OrdinalIgnoreCase))
+            continue;
+        match = pair.Key;
+        break;
+    }
+
+    if (match.Length == 0)
+        return Results.Json(new { code = "no_connection", message = "沒有讀取結構。" }, statusCode: 400);
+
+    var staging = configuration["Annotation:StagingConnection"];
+    if (!string.IsNullOrWhiteSpace(staging) && string.Equals(match, staging.Trim(), StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { code = "not_platform_source", message = "不能用" + match + "讀結構或確認。" }, statusCode: 400);
+
+    name = match;
+    return null;
 }
 
 static IResult? RejectPlatform(ConnectionDirectory directory, IConfiguration configuration, out string name)
@@ -975,6 +1040,11 @@ static string ResolvedConnectionId(ToolCatalog catalog, string connectionId)
     }
 
     return connectionId;
+}
+
+sealed class DraftPick
+{
+    public string? Id { get; set; }
 }
 
 sealed class SchemaPreviewInput

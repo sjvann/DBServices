@@ -27,6 +27,18 @@ else
                 <h2>資料表</h2>
                 <button class="secondary" type="button" disabled="@_schemaBusy" @onclick="LoadSchema">重新讀取</button>
             </div>
+            @if (_bindable.Count > 1)
+            {
+                <label class="stack" for="annotation-bind">連線註記
+                    <select id="annotation-bind" @bind="_annotationId" @bind:after="UseAnnotation">
+                        <option value="">選擇連線註記</option>
+                        @foreach (var package in _bindable)
+                        {
+                            <option value="@package.Id">@package.Title</option>
+                        }
+                    </select>
+                </label>
+            }
             <label class="stack" for="table-finder">搜尋
                 <input id="table-finder" autocomplete="off" placeholder="輸入表名的一部分" @bind="_query" @bind:event="oninput" />
             </label>
@@ -40,6 +52,10 @@ else
                     <span>@_schemaError.Message</span>
                     <span class="code">@_schemaError.Code</span>
                 </div>
+            }
+            else if (_tables.Count == 0 && _bindable.Count > 1)
+            {
+                <p class="empty-catalog">請選擇要綁定的連線註記。</p>
             }
             else if (_tables.Count == 0)
             {
@@ -548,6 +564,9 @@ else
     private string _status = "";
     private string _id = "";
     private string _name = "";
+    private string _annotationId = "";
+    private List<AnnotationPackageDto> _bindable = [];
+    private AnnotationActiveDto? _catalog;
     private string _purpose = "";
     private string _query = "";
     private string _sql = "";
@@ -634,6 +653,7 @@ else
                 return;
             }
 
+            _catalog = result.Value;
             Project(result.Value);
             Align();
         }
@@ -686,6 +706,7 @@ else
         _editing = true;
         _creating = false;
         _id = document.Id;
+        _annotationId = document.AnnotationId ?? _annotationId;
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
         _published = document.Published;
@@ -1529,6 +1550,7 @@ else
         return new ViewDocumentDto
         {
             Id = _id.Trim(),
+            AnnotationId = _annotationId,
             Name = name,
             Purpose = string.IsNullOrWhiteSpace(_purpose) ? name : _purpose.Trim(),
             Confirmed = _confirmed,
@@ -1587,6 +1609,8 @@ else
     {
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
+        if (!string.IsNullOrEmpty(document.AnnotationId))
+            _annotationId = document.AnnotationId;
         _published = document.Published;
         _confirmed = document.Confirmed;
         _sources = (document.Sources ?? []).ToList();
@@ -1786,15 +1810,29 @@ else
         _documents = documents;
     }
 
+    private void UseAnnotation()
+    {
+        if (_catalog is null)
+            return;
+        Project(_catalog);
+    }
+
     private void Project(AnnotationActiveDto? active)
     {
         _tableNotes.Clear();
         _columnNotes.Clear();
         _declared = [];
         _eligible = [];
-        var package = active?.Package;
+        _bindable = active?.Connections ?? [];
+        if (_bindable.Count == 0 && active?.Package is { Active: true } legacy && legacy.SourceKind != "excel")
+            _bindable = [legacy];
+        if (_bindable.Count == 1 && string.IsNullOrEmpty(_annotationId))
+            _annotationId = _bindable[0].Id;
+        var package = _bindable.FirstOrDefault(item => item.Id == _annotationId);
+        if (package is null && _bindable.Count == 1)
+            package = _bindable[0];
         _package = package;
-        if (package is not { Active: true } || string.Equals(package.Status, "draft", StringComparison.Ordinal))
+        if (package is null || package.SourceKind == "excel" || string.Equals(package.Status, "draft", StringComparison.Ordinal))
         {
             _package = null;
             _tables = [];

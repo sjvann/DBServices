@@ -9,6 +9,9 @@ namespace DbServices.Mcp;
 public sealed class ViewDocument
 {
     public string Id { get; set; } = "";
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AnnotationId { get; set; }
     public string Name { get; set; } = "";
     public string Purpose { get; set; } = "";
     public bool Confirmed { get; set; }
@@ -173,6 +176,8 @@ public sealed class ViewCatalog
 
             if (!copy.Confirmed || string.IsNullOrWhiteSpace(copy.Purpose))
                 copy.Published = false;
+            if (string.IsNullOrWhiteSpace(copy.AnnotationId))
+                copy.AnnotationId = null;
 
             if (index < 0)
                 documents.Add(copy);

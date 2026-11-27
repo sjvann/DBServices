@@ -255,7 +255,7 @@ public class DesignCatalogTests
         CollectionAssert.AreEquivalent(
             new[]
             {
-                "Aggregates", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
+                "Aggregates", "AnnotationId", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
                 "Name", "OrderBy", "Parameters", "Placements", "Published", "Purpose", "Sources", "Sql", "SqlValidated",
             },
             typeof(ViewDocumentDto).GetProperties().Select(property => property.Name).ToArray());
@@ -460,7 +460,7 @@ public class DesignCatalogTests
         CollectionAssert.AreEquivalent(
             new[]
             {
-                "Aggregates", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
+                "Aggregates", "AnnotationId", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
                 "Name", "OrderBy", "Parameters", "Placements", "Published", "Purpose", "Sources", "Sql", "SqlValidated",
             },
             typeof(ViewDocumentDto).GetProperties().Select(property => property.Name).ToArray());

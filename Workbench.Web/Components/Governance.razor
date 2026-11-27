@@ -7,6 +7,7 @@
 @implements IDisposable
 @inject OperatorGate Gate
 @inject IAnnotationCatalog Annotations
+@inject IServiceProvider Services
 @inject IJSRuntime Js
 @layout WorkbenchLayout
 
@@ -67,6 +68,18 @@ else
             <div class="action-group">
                 <label class="import" for="annotation-import">匯入 Excel</label>
                 <InputFile id="annotation-import" class="file-input" OnChange="OnImport" MaxAllowedSize="8388608" @attributes="BusyAttributes" />
+                @if (_connections.Count > 0)
+                {
+                    <label class="stack" for="annotation-connection">連線
+                        <select id="annotation-connection" @bind="_connectionId" disabled="@_busy">
+                            <option value="">選擇連線</option>
+                            @foreach (var item in _connections)
+                            {
+                                <option value="@item.Name">@item.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
                 <button type="button" id="annotation-read" class="secondary" @onclick="OnRead" @attributes="BusyAttributes">讀結構</button>
             </div>
             <div class="action-group">
@@ -179,6 +192,24 @@ else
                                                     欄註
                                                     <textarea class="purpose-field column-note" aria-label="@($"{column.Name} 欄註")" rows="3" disabled="@(!CanEdit || FieldsBusy)" value="@column.Note" @oninput="e => OnColumnNote(column, e)"></textarea>
                                                 </label>
+                                                @if (column.NoteOrigin == "excel" && !string.IsNullOrWhiteSpace(column.NoteSource))
+                                                {
+                                                    <p class="hint">來自 @column.NoteSource</p>
+                                                }
+                                                @if (CanEdit && string.IsNullOrWhiteSpace(column.Note))
+                                                {
+                                                    var choices = ExcelChoices(table.Name, column.Name);
+                                                    @if (choices.Count > 1)
+                                                    {
+                                                        <div class="action-group">
+                                                            @foreach (var choice in choices)
+                                                            {
+                                                                var picked = choice;
+                                                                <button type="button" class="secondary" @onclick="() => PickExcelNote(column, picked.Note, picked.File)">@picked.File</button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                }
                                                 <details open="@RevealSides(column)">
                                                     <summary>欄位對照</summary>
                                                     <p class="hint">對照 Excel 字典的畫面欄與實體欄。畫面欄是 H 側的欄名與型別；實體欄是 S 側的欄名、長度與序號。個資處理保存去識別化註記，這一輪不執行遮罩。畫面格式與資料描述寫在欄註。</p>
@@ -363,6 +394,8 @@ else
     private string _toTable = "";
     private string _toColumn = "";
     private string _linkNote = "";
+    private List<NamedConnection> _connections = [];
+    private string _connectionId = "";
     private AnnotationPackageDto? _shown;
     private AnnotationPackageDto? _active;
     private List<AnnotationPackageDto> _others = [];
@@ -386,7 +419,7 @@ else
     private string? _announced;
     private ElementReference _errorRef;
 
-    private bool Retained => _shown is { Status: "confirmed", Active: false };
+    private bool Retained => _shown is { Status: "confirmed", Active: false } && _shown.SourceKind != "excel";
 
     private bool CanEdit
         => _shown is { Status: "draft" } || (_shown is { Status: "confirmed", Active: true } && _draft is null);
@@ -436,6 +469,12 @@ else
         {
             var draft = await Annotations.DraftAsync(profile.Id, CancellationToken.None);
             var station = await Annotations.ActiveAsync(profile.Id, CancellationToken.None);
+            if (Services.GetService(typeof(IConnectionAdmin)) is IConnectionAdmin admin)
+            {
+                _connections = (await admin.ListAsync(CancellationToken.None)).ToList();
+                if (_connections.Count == 1)
+                    _connectionId = _connections[0].Name;
+            }
             if (revision != _revision)
                 return;
             _active = station.Package;
@@ -531,7 +570,7 @@ else
         _error = null;
         try
         {
-            var written = await Annotations.ReadStructureAsync(profile.Id, CancellationToken.None);
+            var written = await Annotations.ReadStructureAsync(profile.Id, string.IsNullOrWhiteSpace(_connectionId) ? null : _connectionId, CancellationToken.None);
             if (!written.Ok)
             {
                 if (revision == _revision)
@@ -644,6 +683,8 @@ else
         if (EditingDraft())
         {
             column.Note = value;
+            column.NoteOrigin = value.Length == 0 ? "" : "user";
+            column.NoteSource = "";
             return;
         }
 
@@ -651,8 +692,11 @@ else
         await Fork(copy =>
         {
             var noted = copy.Tables.FirstOrDefault(table => table.Name == owner?.Name)?.Columns.FirstOrDefault(item => item.Name == column.Name);
-            if (noted is not null)
-                noted.Note = value;
+            if (noted is null)
+                return;
+            noted.Note = value;
+            noted.NoteOrigin = value.Length == 0 ? "" : "user";
+            noted.NoteSource = "";
         });
     }
 
@@ -1158,6 +1202,68 @@ else
         _ => "已改變",
     };
 
+    private AnnotationPackageDto? PriorPackage(AnnotationPackageDto? draft)
+    {
+        if (draft is null)
+            return null;
+        if (draft.SourceKind is not ("excel" or "connection"))
+            return _active;
+        return ConfirmedPackages().FirstOrDefault(package =>
+            package.Id != draft.Id
+            && package.SourceKind == draft.SourceKind
+            && string.Equals(package.SourceKey, draft.SourceKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private IEnumerable<AnnotationPackageDto> ConfirmedPackages()
+    {
+        if (_active is { Status: "confirmed" })
+            yield return _active;
+        foreach (var package in _others)
+        {
+            if (package.Status == "confirmed")
+                yield return package;
+        }
+    }
+
+    private List<(string File, string Note)> ExcelChoices(string? tableName, string? columnName)
+    {
+        var hits = new List<(string File, string Note)>();
+        foreach (var package in ConfirmedPackages())
+        {
+            if (package.SourceKind != "excel")
+                continue;
+            var table = package.Tables.FirstOrDefault(item => item.Name == tableName);
+            var column = table?.Columns.FirstOrDefault(item => item.Name == columnName);
+            if (column is null || string.IsNullOrWhiteSpace(column.Note))
+                continue;
+            hits.Add((package.SourceKey, column.Note.Trim()));
+        }
+
+        return hits;
+    }
+
+    private async Task PickExcelNote(AnnotationColumnDto column, string note, string file)
+    {
+        if (EditingDraft())
+        {
+            column.Note = note;
+            column.NoteOrigin = "excel";
+            column.NoteSource = file;
+            return;
+        }
+
+        var owner = _shown?.Tables.FirstOrDefault(table => table.Columns.Contains(column));
+        await Fork(copy =>
+        {
+            var noted = copy.Tables.FirstOrDefault(table => table.Name == owner?.Name)?.Columns.FirstOrDefault(item => item.Name == column.Name);
+            if (noted is null)
+                return;
+            noted.Note = note;
+            noted.NoteOrigin = "excel";
+            noted.NoteSource = file;
+        });
+    }
+
     private void AskConfirm()
     {
         if (!CanConfirm || _askConfirm)
@@ -1168,7 +1274,8 @@ else
             return;
         }
 
-        _askText = _active is null ? "確認這份草稿？" : "確認這份草稿？將取代" + _active.Title + "。";
+        var prior = PriorPackage(_shown);
+        _askText = prior is null ? "確認這份草稿？" : "確認這份草稿？將取代" + prior.Title + "。";
         _dialog = DialogHost.Stack.Push(CloseAsked);
         _askConfirm = true;
     }
@@ -1205,12 +1312,12 @@ else
             return;
         }
 
-        var replaced = _active?.Title;
+        var replaced = PriorPackage(_shown)?.Title;
         _confirming = true;
         CancelConfirm();
         try
         {
-            var written = await Annotations.ConfirmAsync(profile.Id, CancellationToken.None);
+            var written = await Annotations.ConfirmAsync(profile.Id, _shown?.Id, CancellationToken.None);
             if (!written.Ok)
             {
                 _error = WorkbenchMessages.Text(written.Code, written.Message);

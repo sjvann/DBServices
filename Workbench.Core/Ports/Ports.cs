@@ -111,6 +111,7 @@ public sealed class AnnotationActiveDto
 {
     public AnnotationPackageDto? Package { get; set; }
     public List<AnnotationPackageDto> Others { get; set; } = [];
+    public List<AnnotationPackageDto> Connections { get; set; } = [];
 }
 
 public interface IAnnotationCatalog
@@ -121,7 +122,14 @@ public interface IAnnotationCatalog
     Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
     Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken);
+
+    Task<AnnotationWriteResult> ReadStructureAsync(string callerId, string? connectionId, CancellationToken cancellationToken)
+        => ReadStructureAsync(callerId, cancellationToken);
+
     Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken);
+
+    Task<AnnotationWriteResult> ConfirmAsync(string callerId, string? packageId, CancellationToken cancellationToken)
+        => ConfirmAsync(callerId, cancellationToken);
     Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken);
 }
 

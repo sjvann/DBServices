@@ -15,12 +15,16 @@ public sealed class AnnotationPackage
     public List<AnnotationLink> Links { get; set; } = [];
     public string Dbml { get; set; } = "";
     public List<AnnotationChange> Changes { get; set; } = [];
+    public string SourceKind { get; set; } = "";
+    public string SourceKey { get; set; } = "";
 }
 
 public sealed class AnnotationTable
 {
     public string Name { get; set; } = "";
     public string Note { get; set; } = "";
+    public string NoteOrigin { get; set; } = "";
+    public string NoteSource { get; set; } = "";
     public List<AnnotationColumn> Columns { get; set; } = [];
     public List<AnnotationIndex> Indexes { get; set; } = [];
 }
@@ -31,6 +35,8 @@ public sealed class AnnotationColumn
     public string Type { get; set; } = "";
     public bool NotNull { get; set; }
     public string Note { get; set; } = "";
+    public string NoteOrigin { get; set; } = "";
+    public string NoteSource { get; set; } = "";
     public string HName { get; set; } = "";
     public string SName { get; set; } = "";
     public string HType { get; set; } = "";
@@ -123,13 +129,13 @@ public sealed class AnnotationCatalog
         {
             var packages = Load();
             var copy = Prepare(incoming);
-            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var index = DraftIndex(packages, copy.SourceKind, copy.SourceKey);
             if (index >= 0)
-                return Merge(packages, packages[index], copy);
+                return Merge(packages, packages[index], copy, NoteSourceFor(packages, copy));
 
-            var active = ActiveOf(packages);
-            if (active is not null)
-                Seed(copy, active);
+            var seeded = NoteSourceFor(packages, copy);
+            if (seeded is not null)
+                Seed(copy, seeded);
             packages.Add(copy);
             if (!TryFlush(packages))
             {
@@ -150,7 +156,9 @@ public sealed class AnnotationCatalog
         lock (_gate)
         {
             var packages = Load();
-            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var index = packages.FindIndex(package =>
+                string.Equals(package.Status, "draft", StringComparison.Ordinal)
+                && string.Equals(package.Id, incoming.Id ?? "", StringComparison.Ordinal));
             if (index < 0 || !string.Equals(packages[index].Id, incoming.Id ?? "", StringComparison.Ordinal))
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
 
@@ -203,13 +211,21 @@ public sealed class AnnotationCatalog
             if (cancellationToken.IsCancellationRequested)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
 
-            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var index = DraftIndex(packages, "connection", connectionId);
+            if (index < 0)
+                index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal) && !Identified(package));
             if (index >= 0)
-                return Merge(packages, packages[index], copy);
+            {
+                var merged = Merge(packages, packages[index], copy, NoteSourceFor(packages, copy));
+                if (!merged.Ok || merged.Package is null)
+                    return merged;
+                return ApplyConnectionDefaults(packages, packages[index]);
+            }
 
-            var active = ActiveOf(packages);
-            if (active is not null)
-                Seed(copy, active);
+            var seeded = NoteSourceFor(packages, copy);
+            if (seeded is not null)
+                Seed(copy, seeded);
+            ApplyExcelDefaults(copy, packages);
             packages.Add(copy);
             if (!TryFlush(packages))
             {
@@ -222,12 +238,16 @@ public sealed class AnnotationCatalog
     }
 
     /// <summary>只刪工作中的草稿。已確認包留在檔內。</summary>
-    public AnnotationWriteResult Abandon()
+    public AnnotationWriteResult Abandon(string? id = null)
     {
         lock (_gate)
         {
             var packages = Load();
-            var index = packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var index = string.IsNullOrEmpty(id)
+                ? packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal))
+                : packages.FindIndex(package =>
+                    string.Equals(package.Status, "draft", StringComparison.Ordinal)
+                    && string.Equals(package.Id, id, StringComparison.Ordinal));
             if (index < 0)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
 
@@ -249,7 +269,7 @@ public sealed class AnnotationCatalog
             var packages = Load();
             var active = packages.FirstOrDefault(package => package.Active && string.Equals(package.Status, "confirmed", StringComparison.Ordinal));
             var others = packages
-                .Where(package => !package.Active && string.Equals(package.Status, "confirmed", StringComparison.Ordinal))
+                .Where(package => string.Equals(package.Status, "confirmed", StringComparison.Ordinal) && !ReferenceEquals(package, active))
                 .Select(Clone)
                 .ToList();
             return new AnnotationActive
@@ -267,9 +287,9 @@ public sealed class AnnotationCatalog
         lock (_gate)
         {
             return Load().Any(package =>
-                package.Active
-                && string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
-                && string.Equals(package.Id, id, StringComparison.Ordinal));
+                string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
+                && string.Equals(package.Id, id, StringComparison.Ordinal)
+                && (package.Active || string.Equals(package.SourceKind, "excel", StringComparison.Ordinal)));
         }
     }
 
@@ -280,13 +300,15 @@ public sealed class AnnotationCatalog
         lock (_gate)
         {
             var packages = Load();
-            if (packages.Any(package => string.Equals(package.Status, "draft", StringComparison.Ordinal)))
+            if (packages.Any(package =>
+                string.Equals(package.Status, "draft", StringComparison.Ordinal)
+                && SameDraftIdentity(package, incoming)))
                 return AnnotationWriteResult.Fail("draft_exists", "已有工作中的草稿，沒有改。");
 
             var stored = packages.FirstOrDefault(package =>
-                package.Active
-                && string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
-                && string.Equals(package.Id, incoming.Id ?? "", StringComparison.Ordinal));
+                string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
+                && string.Equals(package.Id, incoming.Id ?? "", StringComparison.Ordinal)
+                && (package.Active || string.Equals(package.SourceKind, "excel", StringComparison.Ordinal)));
             if (stored is null)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
 
@@ -327,31 +349,65 @@ public sealed class AnnotationCatalog
     }
 
     /// <summary>說明、表或欄不齊時回傳拒絕，且不讀來源。齊了則回傳 null。</summary>
-    public AnnotationWriteResult? RefuseConfirm()
+    public AnnotationPackage? FindDraft(string? id = null)
     {
         lock (_gate)
         {
-            var draft = Load().FirstOrDefault(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var found = WorkingDraft(Load(), id);
+            return found is null ? null : Clone(found);
+        }
+    }
+
+    public AnnotationWriteResult? RefuseConfirm(string? draftId = null)
+    {
+        lock (_gate)
+        {
+            var draft = WorkingDraft(Load(), draftId);
             if (draft is null)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+            if (string.Equals(draft.SourceKind, "excel", StringComparison.Ordinal))
+            {
+                if (ExcelIncomplete(draft))
+                    return AnnotationWriteResult.Fail("confirm_incomplete", "無法確認。至少要有一張表、一個欄。");
+                return null;
+            }
+
             if (Incomplete(draft))
                 return AnnotationWriteResult.Fail("confirm_incomplete", "無法確認。整包功能說明要有內容，而且至少要有一張表、一個欄。");
             return null;
         }
     }
 
+    public List<AnnotationPackage> Bindable()
+    {
+        lock (_gate)
+        {
+            return Load()
+                .Where(package => package.Active && string.Equals(package.Status, "confirmed", StringComparison.Ordinal) && !string.Equals(package.SourceKind, "excel", StringComparison.Ordinal))
+                .Select(Clone)
+                .ToList();
+        }
+    }
+
     /// <summary>
     /// 先對帳表名與欄名，再看已保存檢視的端點。通過才把這一份設成唯一啟用包並寫入 dbml。失敗不寫檔。
     /// </summary>
-    public AnnotationWriteResult Confirm(ToolCatalog catalog, string connectionId, IReadOnlyList<ViewDocument>? views)
+    public AnnotationWriteResult Confirm(ToolCatalog catalog, string connectionId, IReadOnlyList<ViewDocument>? views, string? draftId = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         AnnotationPackage snapshot;
         lock (_gate)
         {
-            var draft = Load().FirstOrDefault(package => string.Equals(package.Status, "draft", StringComparison.Ordinal));
+            var draft = WorkingDraft(Load(), draftId);
             if (draft is null)
                 return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+            if (string.Equals(draft.SourceKind, "excel", StringComparison.Ordinal))
+            {
+                if (ExcelIncomplete(draft))
+                    return AnnotationWriteResult.Fail("confirm_incomplete", "無法確認。至少要有一張表、一個欄。");
+                return CommitIdentified(draft.Id, views, schema: null);
+            }
+
             if (Incomplete(draft))
                 return AnnotationWriteResult.Fail("confirm_incomplete", "無法確認。整包功能說明要有內容，而且至少要有一張表、一個欄。");
             snapshot = Clone(draft);
@@ -374,7 +430,9 @@ public sealed class AnnotationCatalog
         if (unmatched.Count > 0)
             return AnnotationWriteResult.Fail("confirm_unmatched", "無法確認。這些表或欄對不上來源：" + string.Join("、", unmatched) + "。");
 
-        var blocked = Blocked(snapshot, views);
+        var blocked = string.Equals(snapshot.SourceKind, "connection", StringComparison.Ordinal)
+            ? []
+            : Blocked(snapshot, views);
         if (blocked.Count > 0)
             return AnnotationWriteResult.Fail("confirm_blocked", "無法確認。這些檢視會落到新包之外：" + string.Join("、", blocked) + "。");
 
@@ -395,9 +453,14 @@ public sealed class AnnotationCatalog
             if (unmatched.Count > 0)
                 return AnnotationWriteResult.Fail("confirm_unmatched", "無法確認。這些表或欄對不上來源：" + string.Join("、", unmatched) + "。");
 
-            blocked = Blocked(stored, views);
+            blocked = string.Equals(stored.SourceKind, "connection", StringComparison.Ordinal)
+                ? BlockedBound(stored, views, PreviousId(packages, stored))
+                : Blocked(stored, views);
             if (blocked.Count > 0)
                 return AnnotationWriteResult.Fail("confirm_blocked", "無法確認。這些檢視會落到新包之外：" + string.Join("、", blocked) + "。");
+
+            if (string.Equals(stored.SourceKind, "connection", StringComparison.Ordinal))
+                return FinishIdentified(packages, stored);
 
             stored.Status = "confirmed";
             stored.Dbml = Render(stored);
@@ -523,6 +586,8 @@ public sealed class AnnotationCatalog
             Status = "draft",
             Active = false,
             Dbml = "",
+            SourceKind = "connection",
+            SourceKey = title ?? "",
             Tables = tables,
             Links = links,
         };
@@ -590,7 +655,20 @@ public sealed class AnnotationCatalog
             var match = requestTables.FirstOrDefault(item => string.Equals(item?.Name, table.Name, StringComparison.Ordinal));
             if (match is null)
                 continue;
-            table.Note = match.Note ?? "";
+            var previousNote = table.Note ?? "";
+            var nextNote = match.Note ?? "";
+            if (string.Equals(match.NoteOrigin, "excel", StringComparison.Ordinal))
+            {
+                table.Note = nextNote;
+                table.NoteOrigin = "excel";
+                table.NoteSource = match.NoteSource ?? "";
+            }
+            else if (!string.Equals(previousNote, nextNote, StringComparison.Ordinal) || string.Equals(match.NoteOrigin, "user", StringComparison.Ordinal))
+            {
+                table.Note = nextNote;
+                table.NoteOrigin = string.IsNullOrWhiteSpace(nextNote) ? "" : "user";
+                table.NoteSource = "";
+            }
             table.Columns ??= [];
             foreach (var column in table.Columns)
             {
@@ -598,7 +676,20 @@ public sealed class AnnotationCatalog
                 if (noted is null)
                     continue;
                 var note = noted.Note ?? "";
-                column.Note = string.IsNullOrWhiteSpace(note) ? "" : note;
+                note = string.IsNullOrWhiteSpace(note) ? "" : note;
+                if (string.Equals(noted.NoteOrigin, "excel", StringComparison.Ordinal))
+                {
+                    column.Note = note;
+                    column.NoteOrigin = "excel";
+                    column.NoteSource = noted.NoteSource ?? "";
+                }
+                else if (!string.Equals(column.Note ?? "", note, StringComparison.Ordinal) || string.Equals(noted.NoteOrigin, "user", StringComparison.Ordinal))
+                {
+                    column.Note = note;
+                    column.NoteOrigin = note.Length == 0 ? "" : "user";
+                    column.NoteSource = "";
+                }
+
                 column.Pii = noted.Pii ?? "";
             }
         }
@@ -803,16 +894,23 @@ public sealed class AnnotationCatalog
         return straight || swapped;
     }
 
-    private AnnotationWriteResult Merge(List<AnnotationPackage> packages, AnnotationPackage stored, AnnotationPackage source)
+    private AnnotationWriteResult Merge(List<AnnotationPackage> packages, AnnotationPackage stored, AnnotationPackage source, AnnotationPackage? notes)
     {
         var changes = Diff(stored, source);
-        var tables = Project(source, stored, ActiveOf(packages));
+        var tables = Project(source, stored, notes);
         var links = Relate(stored, source, tables);
         stored.Tables = tables;
         stored.Links = links;
         stored.Changes = changes;
         stored.Status = "draft";
         stored.Active = false;
+        if (string.Equals(source.SourceKind, "connection", StringComparison.Ordinal))
+        {
+            stored.SourceKind = "connection";
+            stored.SourceKey = source.SourceKey ?? "";
+            ApplyExcelDefaults(stored, packages);
+        }
+
         if (!TryFlush(packages))
         {
             Reload();
@@ -843,6 +941,14 @@ public sealed class AnnotationCatalog
         copy.Tables ??= [];
         copy.Links ??= [];
         copy.Changes = [];
+        copy.SourceKind ??= "";
+        copy.SourceKey ??= "";
+        if (string.Equals(copy.SourceKind, "excel", StringComparison.Ordinal))
+        {
+            copy.SourceKey = FileKey(string.IsNullOrWhiteSpace(copy.SourceKey) ? copy.Title : copy.SourceKey);
+            StampExcel(copy);
+        }
+
         return copy;
     }
 
@@ -856,8 +962,6 @@ public sealed class AnnotationCatalog
     {
         var draftColumns = IndexColumns(draft);
         var activeColumns = IndexColumns(active);
-        var draftNotes = TableNotes(draft);
-        var activeNotes = TableNotes(active);
         var tables = new List<AnnotationTable>();
         foreach (var table in source.Tables ?? [])
         {
@@ -866,12 +970,28 @@ public sealed class AnnotationCatalog
             var name = table.Name ?? "";
             var key = name.Trim();
             string note;
-            if (draft is not null && draftNotes.TryGetValue(key, out var draftNote))
-                note = draftNote;
-            else if (activeNotes.TryGetValue(key, out var activeNote))
-                note = activeNote;
+            string noteOrigin;
+            string noteSource;
+            var draftTable = FindTable(draft, key);
+            var activeTable = FindTable(active, key);
+            if (draft is not null && draftTable is not null)
+            {
+                note = draftTable.Note ?? "";
+                noteOrigin = draftTable.NoteOrigin ?? "";
+                noteSource = draftTable.NoteSource ?? "";
+            }
+            else if (activeTable is not null)
+            {
+                note = activeTable.Note ?? "";
+                noteOrigin = activeTable.NoteOrigin ?? "";
+                noteSource = activeTable.NoteSource ?? "";
+            }
             else
+            {
                 note = table.Note ?? "";
+                noteOrigin = table.NoteOrigin ?? "";
+                noteSource = table.NoteSource ?? "";
+            }
 
             var columns = new List<AnnotationColumn>();
             foreach (var column in table.Columns ?? [])
@@ -883,11 +1003,15 @@ public sealed class AnnotationCatalog
                 if (draft is not null && draftColumns.TryGetValue(columnKey, out var fromDraft))
                 {
                     copy.Note = fromDraft.Note ?? "";
+                    copy.NoteOrigin = fromDraft.NoteOrigin ?? "";
+                    copy.NoteSource = fromDraft.NoteSource ?? "";
                     copy.Pii = fromDraft.Pii ?? "";
                 }
                 else if (activeColumns.TryGetValue(columnKey, out var fromActive))
                 {
                     copy.Note = fromActive.Note ?? "";
+                    copy.NoteOrigin = fromActive.NoteOrigin ?? "";
+                    copy.NoteSource = fromActive.NoteSource ?? "";
                     copy.Pii = fromActive.Pii ?? "";
                 }
 
@@ -898,6 +1022,8 @@ public sealed class AnnotationCatalog
             {
                 Name = name,
                 Note = note,
+                NoteOrigin = noteOrigin,
+                NoteSource = noteSource,
                 Columns = columns,
                 Indexes = CopyIndexes(table.Indexes),
             });
@@ -1144,6 +1270,8 @@ public sealed class AnnotationCatalog
         Type = column.Type ?? "",
         NotNull = column.NotNull,
         Note = column.Note ?? "",
+        NoteOrigin = column.NoteOrigin ?? "",
+        NoteSource = column.NoteSource ?? "",
         HName = column.HName ?? "",
         SName = column.SName ?? "",
         HType = column.HType ?? "",
@@ -1177,4 +1305,266 @@ public sealed class AnnotationCatalog
 
     private static AnnotationPackage Clone(AnnotationPackage package)
         => JsonSerializer.Deserialize<AnnotationPackage>(JsonSerializer.Serialize(package, Json), Json)!;
+
+    private static string FileKey(string? fileName) => Path.GetFileName(fileName ?? "").Trim();
+
+    private static bool SameKey(string? left, string? right)
+        => string.Equals((left ?? "").Trim(), (right ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool Identified(AnnotationPackage package)
+        => package.SourceKind is "excel" or "connection";
+
+    private static bool SameIdentity(AnnotationPackage package, string? kind, string? key)
+        => string.Equals(package.SourceKind, kind, StringComparison.Ordinal) && SameKey(package.SourceKey, key);
+
+    private static bool SameDraftIdentity(AnnotationPackage draft, AnnotationPackage incoming)
+        => Identified(incoming) ? SameIdentity(draft, incoming.SourceKind, incoming.SourceKey) : !Identified(draft);
+
+    private static int DraftIndex(List<AnnotationPackage> packages, string? kind, string? key)
+    {
+        if (kind is "excel" or "connection")
+            return packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal) && SameIdentity(package, kind, key));
+        return packages.FindIndex(package => string.Equals(package.Status, "draft", StringComparison.Ordinal) && !Identified(package));
+    }
+
+    private static AnnotationPackage? NoteSourceFor(List<AnnotationPackage> packages, AnnotationPackage incoming)
+    {
+        if (incoming.SourceKind is "excel" or "connection")
+        {
+            if (string.Equals(incoming.SourceKind, "excel", StringComparison.Ordinal))
+                return null;
+            var same = packages.FirstOrDefault(package =>
+                string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
+                && SameIdentity(package, incoming.SourceKind, incoming.SourceKey));
+            if (same is not null)
+                return same;
+            if (string.Equals(incoming.SourceKind, "connection", StringComparison.Ordinal))
+            {
+                var legacy = ActiveOf(packages);
+                if (legacy is not null && !Identified(legacy))
+                    return legacy;
+            }
+
+            return null;
+        }
+
+        return ActiveOf(packages);
+    }
+
+    private static AnnotationPackage? WorkingDraft(List<AnnotationPackage> packages, string? id)
+    {
+        var drafts = packages.Where(package => string.Equals(package.Status, "draft", StringComparison.Ordinal)).ToList();
+        if (!string.IsNullOrEmpty(id))
+            return drafts.FirstOrDefault(package => string.Equals(package.Id, id, StringComparison.Ordinal));
+        if (drafts.Count == 1)
+            return drafts[0];
+        var untyped = drafts.Where(package => !Identified(package)).ToList();
+        return untyped.Count == 1 && drafts.Count == 1 ? untyped[0] : untyped.Count == 1 && drafts.All(package => !Identified(package)) ? untyped[0] : null;
+    }
+
+    private static bool ExcelIncomplete(AnnotationPackage package)
+    {
+        var tables = package.Tables ?? [];
+        if (tables.Count == 0)
+            return true;
+        var columns = 0;
+        foreach (var table in tables)
+            columns += table.Columns?.Count ?? 0;
+        return columns == 0;
+    }
+
+    private AnnotationWriteResult CommitIdentified(string draftId, IReadOnlyList<ViewDocument>? views, SchemaGraphResult? schema)
+    {
+        var packages = Load();
+        var index = packages.FindIndex(package =>
+            string.Equals(package.Status, "draft", StringComparison.Ordinal)
+            && string.Equals(package.Id, draftId, StringComparison.Ordinal));
+        if (index < 0)
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        var stored = packages[index];
+        if (schema is not null)
+        {
+            var unmatched = Unmatched(stored, schema);
+            if (unmatched.Count > 0)
+                return AnnotationWriteResult.Fail("confirm_unmatched", "無法確認。這些表或欄對不上來源：" + string.Join("、", unmatched) + "。");
+        }
+
+        var blocked = BlockedBound(stored, views, PreviousId(packages, stored));
+        if (string.Equals(stored.SourceKind, "connection", StringComparison.Ordinal) && blocked.Count > 0)
+            return AnnotationWriteResult.Fail("confirm_blocked", "無法確認。這些檢視會落到新包之外：" + string.Join("、", blocked) + "。");
+        return FinishIdentified(packages, stored);
+    }
+
+    private AnnotationWriteResult ApplyConnectionDefaults(List<AnnotationPackage> packages, AnnotationPackage stored)
+    {
+        ApplyExcelDefaults(stored, packages);
+        if (!TryFlush(packages))
+        {
+            Reload();
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        }
+
+        return AnnotationWriteResult.Success(Clone(stored));
+    }
+
+    private static string PreviousId(List<AnnotationPackage> packages, AnnotationPackage draft)
+    {
+        var previous = packages.FirstOrDefault(package =>
+            string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
+            && SameIdentity(package, draft.SourceKind, draft.SourceKey));
+        return previous?.Id ?? draft.Id;
+    }
+
+    private AnnotationWriteResult FinishIdentified(List<AnnotationPackage> packages, AnnotationPackage stored)
+    {
+        var previous = packages.FirstOrDefault(package =>
+            !ReferenceEquals(package, stored)
+            && string.Equals(package.Status, "confirmed", StringComparison.Ordinal)
+            && SameIdentity(package, stored.SourceKind, stored.SourceKey));
+        var target = previous ?? stored;
+        if (!ReferenceEquals(target, stored))
+        {
+            target.Title = stored.Title ?? "";
+            target.Purpose = stored.Purpose ?? "";
+            target.Tables = stored.Tables ?? [];
+            target.Links = stored.Links ?? [];
+            target.SourceKind = stored.SourceKind ?? "";
+            target.SourceKey = stored.SourceKey ?? "";
+            packages.Remove(stored);
+        }
+
+        target.Status = "confirmed";
+        target.Changes = [];
+        target.Dbml = Render(target);
+        target.Active = string.Equals(target.SourceKind, "connection", StringComparison.Ordinal);
+        if (!TryFlush(packages))
+        {
+            Reload();
+            return AnnotationWriteResult.Fail("execution_failed", "沒有保存。");
+        }
+
+        return AnnotationWriteResult.Success(Clone(target));
+    }
+
+    private static List<string> BlockedBound(AnnotationPackage package, IReadOnlyList<ViewDocument>? views, string boundId)
+    {
+        var names = new List<string>();
+        foreach (var view in views ?? [])
+        {
+            if (view is null || !string.Equals(view.AnnotationId, boundId, StringComparison.Ordinal) || !Outside(package, view))
+                continue;
+            names.Add(view.Name ?? "");
+        }
+
+        return names;
+    }
+
+    private static void StampExcel(AnnotationPackage package)
+    {
+        foreach (var table in package.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            if (string.IsNullOrWhiteSpace(table.NoteOrigin) && !string.IsNullOrWhiteSpace(table.Note))
+            {
+                table.NoteOrigin = "excel";
+                table.NoteSource = package.SourceKey;
+            }
+
+            foreach (var column in table.Columns ?? [])
+            {
+                if (column is null || !string.IsNullOrWhiteSpace(column.NoteOrigin) || string.IsNullOrWhiteSpace(column.Note))
+                    continue;
+                column.NoteOrigin = "excel";
+                column.NoteSource = package.SourceKey;
+            }
+        }
+    }
+
+    private static void ApplyExcelDefaults(AnnotationPackage draft, List<AnnotationPackage> packages)
+    {
+        var excels = packages
+            .Where(package => string.Equals(package.Status, "confirmed", StringComparison.Ordinal) && string.Equals(package.SourceKind, "excel", StringComparison.Ordinal))
+            .ToList();
+        foreach (var table in draft.Tables ?? [])
+        {
+            if (table is null)
+                continue;
+            ApplyExcelNote(excels, table.Name ?? "", null, table);
+            foreach (var column in table.Columns ?? [])
+            {
+                if (column is not null)
+                    ApplyExcelNote(excels, table.Name ?? "", column, null);
+            }
+        }
+    }
+
+    private static void ApplyExcelNote(List<AnnotationPackage> excels, string tableName, AnnotationColumn? column, AnnotationTable? table)
+    {
+        var origin = column?.NoteOrigin ?? table?.NoteOrigin ?? "";
+        var source = column?.NoteSource ?? table?.NoteSource ?? "";
+        var note = column?.Note ?? table?.Note ?? "";
+        if (string.Equals(origin, "user", StringComparison.Ordinal))
+            return;
+        if (!string.IsNullOrWhiteSpace(note) && !string.Equals(origin, "excel", StringComparison.Ordinal))
+            return;
+
+        if (string.Equals(origin, "excel", StringComparison.Ordinal))
+        {
+            var file = excels.FirstOrDefault(package => SameKey(package.SourceKey, source));
+            var updated = ColumnNote(file, tableName, column?.Name);
+            if (updated is null)
+                return;
+            if (column is not null)
+                column.Note = updated;
+            else if (table is not null)
+                table.Note = updated;
+            return;
+        }
+
+        var hits = ColumnHits(excels, tableName, column?.Name);
+        if (hits.Count != 1)
+            return;
+        if (column is not null)
+        {
+            column.Note = hits[0].Note;
+            column.NoteOrigin = "excel";
+            column.NoteSource = hits[0].File;
+        }
+        else if (table is not null)
+        {
+            table.Note = hits[0].Note;
+            table.NoteOrigin = "excel";
+            table.NoteSource = hits[0].File;
+        }
+    }
+
+    private readonly record struct ExcelHit(string File, string Note);
+
+    private static List<ExcelHit> ColumnHits(List<AnnotationPackage> excels, string tableName, string? columnName)
+    {
+        var hits = new List<ExcelHit>();
+        foreach (var excel in excels)
+        {
+            var text = ColumnNote(excel, tableName, columnName);
+            if (!string.IsNullOrWhiteSpace(text))
+                hits.Add(new ExcelHit(excel.SourceKey ?? "", text));
+        }
+
+        return hits;
+    }
+
+    private static string? ColumnNote(AnnotationPackage? package, string tableName, string? columnName)
+    {
+        var table = package?.Tables?.FirstOrDefault(item => string.Equals(item?.Name, tableName, StringComparison.Ordinal));
+        if (table is null)
+            return null;
+        if (columnName is null)
+            return string.IsNullOrWhiteSpace(table.Note) ? null : table.Note.Trim();
+        var column = table.Columns?.FirstOrDefault(item => string.Equals(item?.Name, columnName, StringComparison.Ordinal));
+        return column is null || string.IsNullOrWhiteSpace(column.Note) ? null : column.Note.Trim();
+    }
+
+    private static AnnotationTable? FindTable(AnnotationPackage? package, string key)
+        => package?.Tables?.FirstOrDefault(item => item is not null && string.Equals((item.Name ?? "").Trim(), key, StringComparison.Ordinal));
 }
