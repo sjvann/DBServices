@@ -740,6 +740,63 @@ form.connection .notice {
 form.connection .notice p { margin: 0; max-width: 36rem; }
 form.connection .notice .notice-title { font-weight: 600; color: var(--ink-primary); }
 form.connection .actions { margin: 0; }
+.env h1 { margin-bottom: var(--space-2); }
+.env h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.env .lead { margin-bottom: var(--space-3); max-width: none; }
+.env .hint { margin-bottom: var(--space-2); }
+.env ul { margin-bottom: var(--space-3); }
+.env li { padding: var(--space-2) var(--space-3); margin-bottom: var(--space-1); }
+.env-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+}
+.env-tabs button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  color: var(--ink-secondary);
+  min-height: 32px;
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+}
+.env-tabs button[aria-selected="true"] {
+  position: relative;
+  z-index: 1;
+  margin-bottom: -1px;
+  background: var(--surface-raised);
+  border-color: var(--border-hairline);
+  border-bottom-color: var(--surface-raised);
+  color: var(--action);
+  font-weight: 600;
+}
+.env-panel {
+  position: relative;
+  border: 1px solid var(--border-hairline);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) var(--radius-sm);
+  background: var(--surface-raised);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.env-panel[hidden] { display: none; }
+.env form.panel,
+.env form.connection {
+  max-width: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.env form .check { margin-bottom: var(--space-2); }
+.env .actions { margin: var(--space-2) 0 0; }
 .req { color: var(--ink-secondary); font-size: var(--meta); font-weight: 400; }
 .editor fieldset { max-width: 40rem; }
 .editor fieldset .hint { margin-top: 0; }
