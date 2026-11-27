@@ -36,8 +36,8 @@ else
     </div>
 
     <div class="env-tabs" role="tablist" aria-label="環境設定">
-        <button type="button" role="tab" id="tab-database" aria-controls="panel-database" aria-selected="@(_tab == "database")" @onclick="ShowDatabase">資料庫連線</button>
-        <button type="button" role="tab" id="tab-model" aria-controls="panel-model" aria-selected="@(_tab == "model")" @onclick="ShowModel">AI 設定</button>
+        <button type="button" role="tab" id="tab-database" class="@TabClass("database")" aria-controls="panel-database" aria-selected="@TabSelected("database")" @onclick="ShowDatabase">資料庫連線</button>
+        <button type="button" role="tab" id="tab-model" class="@TabClass("model")" aria-controls="panel-model" aria-selected="@TabSelected("model")" @onclick="ShowModel">AI 設定</button>
     </div>
 
     <section id="panel-database" class="env-panel" role="tabpanel" aria-labelledby="tab-database" hidden="@(_tab != "database")">
@@ -417,6 +417,10 @@ else
 
     private void ShowModel() => _tab = "model";
 
+    private string TabSelected(string tab) => _tab == tab ? "true" : "false";
+
+    private string? TabClass(string tab) => _tab == tab ? "on" : null;
+
     protected override async Task OnInitializedAsync()
     {
         if (Gate.Current is not { IsAdmin: true } profile)
@@ -484,6 +488,7 @@ else
 
         _connectionName = "";
         _fields = ConnectionFields.For(_serverType);
+        ClearWaiting();
         _status = "已儲存資料庫連線。";
         await Reload(profile.Id);
     }
@@ -515,6 +520,7 @@ else
                 return;
             }
 
+            ClearWaiting();
             _status = probed.Value ?? "已連上資料庫。";
         }
         finally
@@ -559,7 +565,39 @@ else
         _listedFor = "";
         _reveal = null;
         _startNote = "";
-        await RevealDatabases();
+        if (_serverType is "PostgreSQL" or "MySQL" or "SqlServer")
+        {
+            await RevealDatabases();
+            return;
+        }
+
+        await RecheckConnection();
+    }
+
+    private async Task RecheckConnection()
+    {
+        if (Gate.Current is not { } profile)
+            return;
+        var composed = _fields.Compose(_serverType);
+        if (!composed.Ok)
+        {
+            ClearWaiting();
+            return;
+        }
+
+        var probed = await Environments.ProbeConnectionAsync(profile.Id, _serverType, composed.Value, CancellationToken.None);
+        if (!probed.Ok)
+        {
+            if (!ShowCatalog(probed.Error))
+            {
+                ClearWaiting();
+                _error = probed.Error;
+            }
+            return;
+        }
+
+        ClearWaiting();
+        _status = probed.Value ?? "已連上資料庫。";
     }
 
     private async Task StartDataService()
@@ -577,6 +615,7 @@ else
                 return;
             }
 
+            ClearWaiting();
             _listedFor = "";
             _reveal = null;
             await RevealDatabases();
@@ -656,6 +695,12 @@ else
         return true;
     }
 
+    private void ClearWaiting()
+    {
+        _catalog = CatalogNotice.None;
+        _startNote = "";
+    }
+
     private bool ShowCatalog(ErrorDto? error)
     {
         if (error?.Code is not (WorkbenchMessages.ServiceUnavailableCode or WorkbenchMessages.ServiceUnconfiguredCode))
@@ -725,6 +770,7 @@ else
             return;
         }
 
+        ClearWaiting();
         _status = "已移除資料庫連線。";
         await Reload(profile.Id);
     }

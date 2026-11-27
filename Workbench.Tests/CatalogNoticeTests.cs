@@ -97,6 +97,80 @@ public class CatalogNoticeTests
     }
 
     [TestMethod]
+    public async Task Active_tab_is_marked_so_its_style_can_apply()
+    {
+        await using var page = new Page(DatabaseListResult.Success([]));
+
+        var database = page.Cut.Find("#tab-database");
+        var model = page.Cut.Find("#tab-model");
+        Assert.AreEqual("true", database.GetAttribute("aria-selected"));
+        Assert.AreEqual("false", model.GetAttribute("aria-selected"));
+        Assert.IsTrue(database.ClassList.Contains("on"));
+        Assert.IsFalse(model.ClassList.Contains("on"));
+
+        await model.ClickAsync(new MouseEventArgs());
+
+        Assert.AreEqual("false", page.Cut.Find("#tab-database").GetAttribute("aria-selected"));
+        Assert.AreEqual("true", page.Cut.Find("#tab-model").GetAttribute("aria-selected"));
+        Assert.IsTrue(page.Cut.Find("#tab-model").ClassList.Contains("on"));
+        Assert.IsFalse(page.Cut.Find("#tab-database").ClassList.Contains("on"));
+    }
+
+    [TestMethod]
+    public async Task Sqlite_notice_clears_once_the_data_service_answers()
+    {
+        var admin = new FixedAdmin(DatabaseListResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。"));
+        var files = new ChosenFile(@"C:\Middle\db\MRG.db");
+        await using var page = new Page(admin, new ReadyHost(admin), files);
+
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("選擇檔案", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await TestConnection(page).ClickAsync(new MouseEventArgs());
+        Assert.Contains("資料服務還沒有啟動", page.Cut.Find(".notice").TextContent);
+        Assert.Contains(@"C:\Middle\db\MRG.db", page.Cut.Find(".notice").TextContent);
+
+        await page.Cut.Find(".notice .confirm").ClickAsync(new MouseEventArgs());
+
+        Assert.IsFalse(page.Cut.Markup.Contains("資料服務還沒有啟動", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Removing_a_connection_clears_a_stale_service_notice()
+    {
+        var admin = new FixedAdmin(DatabaseListResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。"));
+        admin.Connections.Add(new NamedConnection { Name = "mrg", ServerType = "Sqlite" });
+        var files = new ChosenFile(@"C:\Middle\db\MRG.db");
+        await using var page = new Page(admin, null, files);
+
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("選擇檔案", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await TestConnection(page).ClickAsync(new MouseEventArgs());
+        Assert.Contains("資料服務還沒有啟動", page.Cut.Markup);
+
+        admin.RemoveOk = true;
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("移除", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+
+        Assert.Contains("已移除資料庫連線。", page.Cut.Markup);
+        Assert.IsFalse(page.Cut.Markup.Contains("資料服務還沒有啟動", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Sqlite_retry_drops_the_notice_when_the_service_is_back()
+    {
+        var admin = new FixedAdmin(DatabaseListResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。"));
+        var files = new ChosenFile(@"C:\Middle\db\MRG.db");
+        await using var page = new Page(admin, null, files);
+
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("選擇檔案", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        await TestConnection(page).ClickAsync(new MouseEventArgs());
+        admin.NextProbe = CatalogWriteResult.Noted("已連上資料庫。");
+        await page.Cut.Find(".notice").QuerySelectorAll("button")
+            .Single(button => button.TextContent.Contains("再看一次", StringComparison.Ordinal))
+            .ClickAsync(new MouseEventArgs());
+
+        Assert.Contains("已連上資料庫。", page.Cut.Markup);
+        Assert.IsFalse(page.Cut.Markup.Contains("資料服務還沒有啟動", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task Sqlite_path_comes_from_the_file_window()
     {
         var files = new ChosenFile(@"D:\data\warehouse.db");
@@ -132,6 +206,10 @@ public class CatalogNoticeTests
 
         Assert.Contains("請先啟動資料服務，再測試連線。", page.Cut.Find(".notice").TextContent);
     }
+
+    private static AngleSharp.Dom.IElement TestConnection(Page page) =>
+        page.Cut.Find("form.connection").QuerySelectorAll("button")
+            .Single(item => item.TextContent.Contains("測試連線", StringComparison.Ordinal));
 
     [TestMethod]
     public async Task Signed_out_page_asks_for_login()
@@ -222,21 +300,29 @@ public class CatalogNoticeTests
     private sealed class FixedAdmin(DatabaseListResult listed) : IConnectionAdmin
     {
         public DatabaseListResult Listed { get; set; } = listed;
+        public List<NamedConnection> Connections { get; } = [];
+        public bool RemoveOk { get; set; }
+        public CatalogWriteResult? NextProbe { get; set; }
 
         public Task<IReadOnlyList<NamedConnection>> ListAsync(CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<NamedConnection>>([]);
+            => Task.FromResult<IReadOnlyList<NamedConnection>>(Connections.ToList());
 
         public Task<CatalogWriteResult> SaveAsync(string name, string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
             => Task.FromResult(CatalogWriteResult.Fail(Listed.Code, Listed.Message));
 
         public Task<CatalogWriteResult> ProbeAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
-            => Task.FromResult(CatalogWriteResult.Fail(Listed.Code, Listed.Message));
+            => Task.FromResult(NextProbe ?? CatalogWriteResult.Fail(Listed.Code, Listed.Message));
 
         public Task<DatabaseListResult> DatabasesAsync(string serverType, string connectionString, string callerId, CancellationToken cancellationToken)
             => Task.FromResult(Listed);
 
         public Task<CatalogWriteResult> RemoveAsync(string name, string callerId, CancellationToken cancellationToken)
-            => Task.FromResult(CatalogWriteResult.Fail("not_found", "找不到連線。"));
+        {
+            if (!RemoveOk)
+                return Task.FromResult(CatalogWriteResult.Fail("not_found", "找不到連線。"));
+            Connections.Clear();
+            return Task.FromResult(CatalogWriteResult.Success(null));
+        }
     }
 
     private sealed class ReadyHost(FixedAdmin admin) : IDataServiceHost

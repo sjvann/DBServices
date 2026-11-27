@@ -1,1 +1,1 @@
-{"saved":[{"name":"lamp","serverType":"PostgreSQL","connectionString":"Host=localhost;Port=5432;Database=lamp;Username=postgres;Password=1qazxsw234;SSL Mode=Prefer"},{"name":"LongTermCare","serverType":"PostgreSQL","connectionString":"Host=localhost;Port=5432;Database=LongTermCare;Username=postgres;Password=1qazxsw234;SSL Mode=Prefer"}],"removed":["Portgres"]}
+{"saved":[{"name":"mrg","serverType":"Sqlite","connectionString":"Data Source=C:\\Middle\\db\\MRG.db;Mode=ReadWriteCreate"}],"removed":["Portgres","LongTermCare","lamp"]}

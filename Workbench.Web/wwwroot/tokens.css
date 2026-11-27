@@ -770,13 +770,14 @@ form.connection .actions { margin: 0; }
   margin: 0;
   padding: var(--space-1) var(--space-3);
 }
-.env-tabs button[aria-selected="true"] {
+.env-tabs button.on,
+.env-tabs button.on:hover {
   position: relative;
   z-index: 1;
   margin-bottom: -1px;
-  background: var(--surface-raised);
-  border-color: var(--border-hairline);
-  border-bottom-color: var(--surface-raised);
+  background: var(--action-soft);
+  border-color: var(--action);
+  border-bottom-color: var(--action-soft);
   color: var(--action);
   font-weight: 600;
 }
