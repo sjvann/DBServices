@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using DbServices.Api.Shared;
 using DbServices.Mcp;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
@@ -782,6 +784,96 @@ public class DbmlConfirmTests
         Assert.Contains("\\r", noteLine, StringComparison.Ordinal);
         Assert.Contains("\\n", noteLine, StringComparison.Ordinal);
         Assert.DoesNotContain("\r", noteLine, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public async Task Dbml_confirm_with_json_content_picks_the_named_draft_among_two()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ann-pick-" + Guid.NewGuid().ToString("N") + ".db");
+        var root = Path.Combine(Path.GetTempPath(), "mcp-pick-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var connectionString = "Data Source=" + dbPath;
+        try
+        {
+            var service = DbServiceFactory.Create(connectionString, "Sqlite");
+            try
+            {
+                service!.ExecuteSQL("CREATE TABLE parent (Id INTEGER PRIMARY KEY, Name TEXT)");
+            }
+            finally
+            {
+                (service as IDisposable)?.Dispose();
+            }
+
+            var path = Path.Combine(root, "catalog", "annotations.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, """
+            [
+              {
+                "id": "excel-draft",
+                "title": "Samples",
+                "purpose": "",
+                "status": "draft",
+                "active": false,
+                "sourceKind": "excel",
+                "sourceKey": "Samples.xlsx",
+                "tables": [{ "name": "parent", "note": "", "columns": [{ "name": "Id", "type": "text", "note": "局號" }], "indexes": [] }],
+                "links": [],
+                "dbml": "",
+                "changes": []
+              },
+              {
+                "id": "conn-draft",
+                "title": "Samples",
+                "purpose": "測試註記的內容",
+                "status": "draft",
+                "active": false,
+                "sourceKind": "connection",
+                "sourceKey": "Warehouse",
+                "tables": [{ "name": "parent", "note": "", "columns": [{ "name": "Id", "type": "INTEGER", "note": "編號" }, { "name": "Name", "type": "TEXT", "note": "名稱" }], "indexes": [] }],
+                "links": [],
+                "dbml": "",
+                "changes": []
+              }
+            ]
+            """);
+
+            await using var factory = Factory(root,
+            [
+                new("Connections:Warehouse:ServerType", "Sqlite"),
+                new("Connections:Warehouse:ConnectionString", connectionString),
+                new("Workbench:CatalogKey", "unit-catalog-key"),
+            ]);
+            using var client = factory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/annotations/confirm");
+            request.Headers.TryAddWithoutValidation("X-DBServices-Caller", "方晴");
+            request.Headers.TryAddWithoutValidation("X-DBServices-Workbench", "unit-catalog-key");
+            request.Content = JsonContent.Create(new { id = "conn-draft" });
+            using var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, body);
+            using var document = JsonDocument.Parse(body);
+            Assert.AreEqual("conn-draft", document.RootElement.GetProperty("id").GetString());
+            Assert.AreEqual("confirmed", document.RootElement.GetProperty("status").GetString());
+        }
+        finally
+        {
+            ReleaseSqlite();
+            if (File.Exists(dbPath))
+                File.Delete(dbPath);
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Confirm_reads_the_draft_id_when_json_has_no_content_length()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/json; charset=utf-8";
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"conn-draft\"}"));
+        var id = await Program.ReadConfirmDraftIdAsync(context.Request, CancellationToken.None);
+        Assert.AreEqual("conn-draft", id);
     }
 
     private static async Task PutReady(HttpClient client)

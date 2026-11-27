@@ -714,7 +714,14 @@ form.connection {
   max-width: 52rem;
   padding: var(--space-4);
 }
-form.connection label { max-width: none; margin-bottom: var(--space-2); gap: 2px; }
+form.connection label { max-width: none; margin-bottom: var(--space-2); }
+form.connection label:not(.check) { display: block; }
+form.connection label:not(.check) > input,
+form.connection label:not(.check) > select {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+}
 form.connection .grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(5.5rem, 0.6fr) minmax(0, 1.2fr);
@@ -807,7 +814,7 @@ form.connection .actions { margin: 0; }
 .file-path .path-row .secondary { flex: 0 0 auto; }
 .file-path .hint { margin: var(--space-1) 0 0; }
 .env .actions { margin: var(--space-2) 0 0; }
-.req { color: var(--ink-secondary); font-size: var(--meta); font-weight: 400; }
+.req { color: var(--danger); font-weight: 700; margin-left: 2px; }
 .editor fieldset { max-width: 40rem; }
 .editor fieldset .hint { margin-top: 0; }
 .add-row {

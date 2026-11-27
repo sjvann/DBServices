@@ -457,12 +457,7 @@ app.MapPost("/annotations/confirm", async (HttpContext http, AnnotationCatalog a
 
     try
     {
-        string? draftId = null;
-        if (http.Request.ContentLength is > 0)
-        {
-            var body = await http.Request.ReadFromJsonAsync<DraftPick>();
-            draftId = body?.Id;
-        }
+        var draftId = await ReadConfirmDraftIdAsync(http.Request, http.RequestAborted);
 
         if (annotations.RefuseConfirm(draftId) is { } refused)
             return Results.Json(new { code = refused.Code, message = refused.Message }, statusCode: 400);
@@ -1047,11 +1042,32 @@ sealed class DraftPick
     public string? Id { get; set; }
 }
 
+public partial class Program
+{
+    public static async Task<string?> ReadConfirmDraftIdAsync(HttpRequest request, CancellationToken cancellationToken)
+    {
+        if (!HasConfirmBody(request))
+            return null;
+        var body = await request.ReadFromJsonAsync<DraftPick>(cancellationToken);
+        return body?.Id;
+    }
+
+    private static bool HasConfirmBody(HttpRequest request)
+    {
+        if (request.ContentLength is > 0 || request.Headers.TransferEncoding.Count > 0)
+            return true;
+        var contentType = request.ContentType;
+        if (string.IsNullOrEmpty(contentType))
+            return false;
+        var separator = contentType.IndexOf(';');
+        var media = (separator < 0 ? contentType : contentType[..separator]).Trim();
+        return string.Equals(media, "application/json", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
 sealed class SchemaPreviewInput
 {
     public string? ConnectionId { get; set; }
     public ViewDocument? View { get; set; }
     public Dictionary<string, string>? Parameters { get; set; }
 }
-
-public partial class Program;

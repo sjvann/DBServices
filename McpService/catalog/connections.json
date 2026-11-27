@@ -1,1 +1,1 @@
-{"saved":[{"name":"mrg","serverType":"Sqlite","connectionString":"Data Source=C:\\Middle\\db\\MRG.db;Mode=ReadWriteCreate"}],"removed":["Portgres","LongTermCare","lamp"]}
+{"saved":[{"name":"LH_TXN_MLST","serverType":"PostgreSQL","connectionString":"Host=localhost;Port=5432;Database=lh_txn_mlst;Username=postgres;Password=fmjcjjmf5$QA;SSL Mode=Prefer"}],"removed":["Portgres","LongTermCare","lamp","mrg"]}

@@ -61,10 +61,10 @@ else
     }
     <form class="panel connection" @onsubmit="SaveConnection" @onsubmit:preventDefault="true">
         <div class="grid">
-            <label for="connection-name" class="span-2">名稱 <span class="req">必填</span>
+            <label for="connection-name" class="span-2">名稱 <span class="req" title="必填">*</span>
                 <input id="connection-name" autocomplete="off" placeholder="例如：warehouse" @bind="_connectionName" @bind:event="oninput" />
             </label>
-            <label for="connection-engine">資料庫種類 <span class="req">必填</span>
+            <label for="connection-engine">資料庫種類 <span class="req" title="必填">*</span>
                 <select id="connection-engine" @bind="_serverType" @bind:after="UseEngine">
                     <option value="Sqlite">SQLite</option>
                     <option value="SqlServer">SQL Server</option>
@@ -98,7 +98,7 @@ else
                             </select>
                         </label>
                         <div class="file-path span-3">
-                            <label for="connection-path">檔案路徑 <span class="req">必填</span></label>
+                            <label for="connection-path">檔案路徑 <span class="req" title="必填">*</span></label>
                             <div class="path-row">
                                 @if (Files is null)
                                 {
@@ -134,10 +134,10 @@ else
                     </label>
                     @if (_fields.Auth != "windows")
                     {
-                        <label for="connection-user">帳號 <span class="req">必填</span>
+                        <label for="connection-user">帳號 <span class="req" title="必填">*</span>
                             <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：sa" @bind="_fields.User" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                         </label>
-                        <label for="connection-password" class="span-2">密碼 <span class="req">必填</span>
+                        <label for="connection-password" class="span-2">密碼 <span class="req" title="必填">*</span>
                             <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                         </label>
                     }
@@ -171,13 +171,13 @@ else
                             <option value="sid">SID</option>
                         </select>
                     </label>
-                    <label for="connection-oracle-name" class="span-2">@(_fields.OracleKind == "sid" ? "SID" : "服務名稱") <span class="req">必填</span>
+                    <label for="connection-oracle-name" class="span-2">@(_fields.OracleKind == "sid" ? "SID" : "服務名稱") <span class="req" title="必填">*</span>
                         <input id="connection-oracle-name" autocomplete="off" spellcheck="false" placeholder="例如：ORCL" @bind="_fields.OracleName" @bind:event="oninput" />
                     </label>
-                    <label for="connection-user">帳號 <span class="req">必填</span>
+                    <label for="connection-user">帳號 <span class="req" title="必填">*</span>
                         <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="例如：system" @bind="_fields.User" @bind:event="oninput" />
                     </label>
-                    <label for="connection-password" class="span-2">密碼 <span class="req">必填</span>
+                    <label for="connection-password" class="span-2">密碼 <span class="req" title="必填">*</span>
                         <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" />
                     </label>
                 </div>
@@ -190,10 +190,10 @@ else
                     <label for="connection-port">連接埠
                         <input id="connection-port" inputmode="numeric" autocomplete="off" @bind="_fields.Port" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
-                    <label for="connection-user">帳號 <span class="req">必填</span>
+                    <label for="connection-user">帳號 <span class="req" title="必填">*</span>
                         <input id="connection-user" autocomplete="off" spellcheck="false" placeholder="@(_serverType == "MySQL" ? "例如：root" : "例如：postgres")" @bind="_fields.User" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
-                    <label for="connection-password">密碼 <span class="req">必填</span>
+                    <label for="connection-password">密碼 <span class="req" title="必填">*</span>
                         <input id="connection-password" type="password" autocomplete="new-password" @bind="_fields.Password" @bind:event="oninput" @bind:after="ForgetDatabases" @onblur="RevealDatabases" />
                     </label>
                     <label for="connection-ssl">加密連線
@@ -254,7 +254,7 @@ else
                 }
                 else if (_databases.Count > 8)
                 {
-                    <label for="connection-database">選擇資料庫 <span class="req">必填</span>
+                    <label for="connection-database">選擇資料庫 <span class="req" title="必填">*</span>
                         <select id="connection-database" @bind="_fields.Database" @bind:after="NameFromDatabase">
                             <option value="">選擇資料庫</option>
                             @foreach (var name in _databases)
@@ -295,10 +295,10 @@ else
                     <option value="local">本機</option>
                 </select>
             </label>
-            <label for="model-endpoint" class="span-2">位址 <span class="req">必填</span>
+            <label for="model-endpoint" class="span-2">位址 <span class="req" title="必填">*</span>
                 <input id="model-endpoint" autocomplete="off" placeholder="雲端用 https，本機用 127.0.0.1" value="@_endpoint" @oninput="EndpointChanged" />
             </label>
-            <label for="model-id" class="span-2">模型名稱 <span class="req">必填</span>
+            <label for="model-id" class="span-2">模型名稱 <span class="req" title="必填">*</span>
                 <input id="model-id" autocomplete="off" @bind="_modelId" @bind:event="oninput" />
             </label>
             <label for="model-key">金鑰
