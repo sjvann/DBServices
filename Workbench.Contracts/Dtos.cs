@@ -182,6 +182,7 @@ public sealed class ViewProposalRequest
     public string Filter { get; set; } = "";
     public string Limit { get; set; } = "";
     public AnnotationPackageDto? Package { get; set; }
+    public List<string> Scope { get; set; } = [];
 }
 
 public sealed class ViewProposalDto

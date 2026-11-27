@@ -830,6 +830,7 @@ else
                 Filter = _assistFilter,
                 Limit = _assistLimit,
                 Package = _package,
+                Scope = _sources.Count == 0 ? [] : AnnotationProposalTools.CanvasScope(_package, _sources),
             }, CancellationToken.None);
             if (!result.Ok || result.Proposal is null)
             {
