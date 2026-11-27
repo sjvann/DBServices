@@ -97,6 +97,27 @@ public class CatalogNoticeTests
     }
 
     [TestMethod]
+    public async Task Sqlite_path_comes_from_the_file_window()
+    {
+        var files = new ChosenFile(@"D:\data\warehouse.db");
+        await using var page = new Page(new FixedAdmin(DatabaseListResult.Success([])), null, files);
+
+        var path = page.Cut.Find("#connection-path");
+        Assert.IsTrue(path.HasAttribute("readonly"));
+        Assert.AreEqual("尚未選擇檔案", path.GetAttribute("placeholder"));
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("選擇檔案", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+
+        Assert.IsFalse(files.MustExist);
+        Assert.AreEqual(@"D:\data\warehouse.db", page.Cut.Find("#connection-path").GetAttribute("value"));
+
+        await page.Cut.Find("#connection-mode").ChangeAsync(new ChangeEventArgs { Value = "ReadOnly" });
+        files.Path = null;
+        await page.Cut.FindAll("button").Single(button => button.TextContent.Contains("選擇檔案", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+        Assert.IsTrue(files.MustExist);
+        Assert.AreEqual(@"D:\data\warehouse.db", page.Cut.Find("#connection-path").GetAttribute("value"));
+    }
+
+    [TestMethod]
     public async Task Test_button_explains_that_the_data_service_must_start_first()
     {
         await using var page = new Page(DatabaseListResult.Fail(WorkbenchMessages.ServiceUnavailableCode, "資料服務沒有回應。"));
@@ -158,7 +179,7 @@ public class CatalogNoticeTests
         {
         }
 
-        public Page(FixedAdmin admin, IDataServiceHost? host)
+        public Page(FixedAdmin admin, IDataServiceHost? host, ISqliteFilePicker? files = null)
         {
             var store = new Operators();
             store.Add(new OperatorRecord { Id = "admin", DisplayName = "管理者", IsAdmin = true });
@@ -169,6 +190,8 @@ public class CatalogNoticeTests
             circuit.Adopt(sessions.Create("admin"));
             var profiles = new Profiles(store);
             _context.Services.AddSingleton(new OperatorGate(circuit, sessionService, profiles));
+            if (files is not null)
+                _context.Services.AddSingleton(files);
             _context.Services.AddSingleton(new EnvironmentService(
                 new RecordingConnections(),
                 admin,
@@ -182,6 +205,18 @@ public class CatalogNoticeTests
         public IRenderedComponent<Workbench.Web.Components.Environment> Cut { get; }
 
         public ValueTask DisposeAsync() => _context.DisposeAsync();
+    }
+
+    private sealed class ChosenFile(string? path) : ISqliteFilePicker
+    {
+        public string? Path { get; set; } = path;
+        public bool MustExist { get; private set; }
+
+        public Task<string?> PickAsync(string? currentPath, bool fileMustExist)
+        {
+            MustExist = fileMustExist;
+            return Task.FromResult(Path);
+        }
     }
 
     private sealed class FixedAdmin(DatabaseListResult listed) : IConnectionAdmin

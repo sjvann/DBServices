@@ -38,7 +38,7 @@ public class ConnectionFormTests
         var result = ConnectionFields.For("Sqlite").Compose("Sqlite");
 
         Assert.IsFalse(result.Ok);
-        Assert.AreEqual("請填寫檔案路徑。", result.Error!.Message);
+        Assert.AreEqual("請選擇檔案。", result.Error!.Message);
     }
 
     [TestMethod]

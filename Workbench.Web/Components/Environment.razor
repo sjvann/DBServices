@@ -1,6 +1,8 @@
 @page "/environment"
+@using Microsoft.Extensions.DependencyInjection
 @inject OperatorGate Gate
 @inject EnvironmentService Environments
+@inject IServiceProvider Services
 @layout WorkbenchLayout
 
 <div class="page env">
@@ -95,9 +97,24 @@ else
                                 <option value="ReadOnly">唯讀</option>
                             </select>
                         </label>
-                        <label for="connection-path" class="span-3">檔案路徑 <span class="req">必填</span>
-                            <input id="connection-path" autocomplete="off" spellcheck="false" placeholder="例如：D:\data\warehouse.db" @bind="_fields.FilePath" @bind:event="oninput" />
-                        </label>
+                        <div class="file-path span-3">
+                            <label for="connection-path">檔案路徑 <span class="req">必填</span></label>
+                            <div class="path-row">
+                                @if (Files is null)
+                                {
+                                    <input id="connection-path" autocomplete="off" spellcheck="false" placeholder="例如：D:\data\warehouse.db" @bind="_fields.FilePath" @bind:event="oninput" />
+                                }
+                                else
+                                {
+                                    <input id="connection-path" readonly value="@_fields.FilePath" placeholder="尚未選擇檔案" />
+                                    <button class="secondary" type="button" disabled="@_picking" @onclick="BrowseSqlite">@(_picking ? "正在開啟…" : "選擇檔案")</button>
+                                }
+                            </div>
+                            @if (Files is not null && _fields.OpenMode == "ReadWriteCreate")
+                            {
+                                <p class="hint">在視窗裡選現有檔案。要新建時，直接輸入檔名。</p>
+                            }
+                        </div>
                     }
                 </div>
                 break;
@@ -370,7 +387,31 @@ else
     private string _pullStatus = "";
     private CancellationTokenSource? _pull;
     private IReadOnlyList<string> _names = [];
+    private bool _picking;
     private IReadOnlyList<string> Offers => OllamaCatalog.Offers(_endpoint, _names);
+    private ISqliteFilePicker? Files => Services.GetService<ISqliteFilePicker>();
+
+    private async Task BrowseSqlite()
+    {
+        if (Files is null || _picking)
+            return;
+        _picking = true;
+        try
+        {
+            var mustExist = _fields.OpenMode is "ReadOnly" or "ReadWrite";
+            var chosen = await Files.PickAsync(_fields.FilePath, mustExist);
+            if (!string.IsNullOrWhiteSpace(chosen))
+                _fields.FilePath = chosen;
+        }
+        catch (Exception ex)
+        {
+            _error = new ErrorDto { Message = ex.Message };
+        }
+        finally
+        {
+            _picking = false;
+        }
+    }
 
     private void ShowDatabase() => _tab = "database";
 

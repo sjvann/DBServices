@@ -81,7 +81,7 @@ public sealed class ConnectionFields
             return Fail("請選擇位置。");
         var path = FilePath.Trim();
         if (path.Length == 0)
-            return Fail("請填寫檔案路徑。");
+            return Fail("請選擇檔案。");
         if (Broken(path))
             return Fail("檔案路徑不能換行。");
         if (OpenMode is not ("ReadWriteCreate" or "ReadWrite" or "ReadOnly"))

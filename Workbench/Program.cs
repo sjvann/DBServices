@@ -50,6 +50,8 @@ builder.Services.AddSingleton<StyleService>();
 builder.Services.AddSingleton<UtteranceService>();
 builder.Services.AddSingleton<RecordService>();
 builder.Services.AddSingleton<ExportService>();
+if (OperatingSystem.IsWindows())
+    builder.Services.AddSingleton<ISqliteFilePicker, WindowsSqliteFilePicker>();
 builder.Services.AddScoped<CircuitSession>();
 builder.Services.AddScoped<OperatorGate>();
 builder.Services.AddHttpContextAccessor();

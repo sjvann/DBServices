@@ -796,6 +796,15 @@ form.connection .actions { margin: 0; }
   padding: 0;
 }
 .env form .check { margin-bottom: var(--space-2); }
+.file-path > label { margin: 0; }
+.file-path .path-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.file-path .path-row input { flex: 1 1 auto; min-width: 0; }
+.file-path .path-row .secondary { flex: 0 0 auto; }
+.file-path .hint { margin: var(--space-1) 0 0; }
 .env .actions { margin: var(--space-2) 0 0; }
 .req { color: var(--ink-secondary); font-size: var(--meta); font-weight: 400; }
 .editor fieldset { max-width: 40rem; }
