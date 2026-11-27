@@ -264,9 +264,16 @@ public static class ViewShape
             name = document.Name?.Trim() ?? "",
             published = document.Published,
             sources = document.Sources ?? [],
-            links = (document.Links ?? []).Select(link => new { link.Kind, link.From, link.FromColumn, link.To, link.ToColumn }),
+            links = (document.Links ?? []).Select(link => new { link.Kind, link.From, link.FromColumn, link.To, link.ToColumn, link.Join, link.Reason, link.ViewOnly }),
             parameters = (document.Parameters ?? []).Select(item => new { item.Name, item.Column, item.Source }),
             columns = (document.Columns ?? []).Select(item => new { item.Name, item.Source }),
+            filters = document.Filters ?? [],
+            groupBy = document.GroupBy ?? [],
+            aggregates = document.Aggregates ?? [],
+            having = document.Having ?? [],
+            orderBy = document.OrderBy ?? [],
+            limit = document.Limit,
+            distinct = document.Distinct,
         };
         return JsonSerializer.Serialize(shape);
     }

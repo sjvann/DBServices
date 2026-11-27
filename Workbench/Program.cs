@@ -35,6 +35,7 @@ builder.Services.AddSingleton<IDataServiceHost>(new McpProcessHost(mcpBase, cont
 var modelFile = new FileModelProfile(Path.Combine(contentRoot, "model.json"));
 builder.Services.AddSingleton<IModelProfile>(modelFile);
 builder.Services.AddSingleton<IModelEndpoint>(new ModelEndpoint(modelFile));
+builder.Services.AddSingleton<IViewProposer>(new ModelViewProposer(modelFile));
 builder.Services.AddSingleton<IViewCaller>(new McpViewCaller(new HttpClient(), mcpBase));
 builder.Services.AddSingleton<ISchemaBrowser>(new SchemaBrowserClient(new HttpClient(), mcpBase, catalogKey));
 builder.Services.AddSingleton<Profiles>();

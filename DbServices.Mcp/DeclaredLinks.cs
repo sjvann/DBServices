@@ -31,7 +31,7 @@ public static class DeclaredLinks
         return sources > 1 && (document.Links ?? []).Count > 0;
     }
 
-    public static bool TryPrepare(ViewDocument document, AnnotationPackage? package)
+    public static LinkGate TryPrepare(ViewDocument document, AnnotationPackage? package)
     {
         var sources = (document.Sources ?? [])
             .Select(source => source?.Trim() ?? "")
@@ -40,21 +40,30 @@ public static class DeclaredLinks
             .Count();
         var links = document.Links ?? [];
         if (sources <= 1 || links.Count == 0)
-            return true;
+            return LinkGate.Pass();
 
         var declared = Eligible(package);
         var kinds = new string[links.Count];
         for (var index = 0; index < links.Count; index++)
         {
+            if (links[index].ViewOnly)
+            {
+                if (string.IsNullOrWhiteSpace(links[index].Reason))
+                    return LinkGate.Reason();
+                kinds[index] = "accepted";
+                continue;
+            }
+
             var origin = Match(links[index], declared);
             if (origin is null)
-                return false;
+                return LinkGate.Undeclared();
+            links[index].ViewOnly = false;
             kinds[index] = origin == "foreign-key" ? "foreign-key" : "accepted";
         }
 
         for (var index = 0; index < links.Count; index++)
             links[index].Kind = kinds[index];
-        return true;
+        return LinkGate.Pass();
     }
 
     private static List<Declared> Eligible(AnnotationPackage? package)
@@ -105,4 +114,13 @@ public static class DeclaredLinks
     }
 
     private sealed record Declared(string From, string FromColumn, string To, string ToColumn, string Origin);
+}
+
+public readonly record struct LinkGate(bool Ok, string Code, string Message)
+{
+    public static LinkGate Pass() => new(true, "", "");
+
+    public static LinkGate Undeclared() => new(false, DeclaredLinks.Code, DeclaredLinks.Message);
+
+    public static LinkGate Reason() => new(false, "link_reason_required", "僅此檢視的關聯要寫理由。");
 }

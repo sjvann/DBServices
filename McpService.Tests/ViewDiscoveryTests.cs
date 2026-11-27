@@ -673,10 +673,11 @@ public class ViewDiscoveryTests
                 Sources = ["products"],
                 Columns = [new ViewColumn { Name = "Name", Source = "products" }],
             }, null);
-            Assert.IsFalse(direct.Ok);
-            Assert.AreEqual("preview_unavailable", direct.Code);
-            Assert.AreEqual("不讀取業務列。", direct.Message);
-            Assert.AreEqual(0, direct.Rows.Count);
+            Assert.IsTrue(direct.Ok, direct.Message);
+            Assert.AreEqual(2, direct.Rows.Count);
+            Assert.IsTrue(direct.Rows.Any(row => row.Contains("one")));
+            Assert.IsTrue(direct.Sql.Contains("SELECT", StringComparison.Ordinal));
+            Assert.IsFalse(direct.Sql.Contains(";", StringComparison.Ordinal));
 
             await using var factory = Factory(root,
             [
@@ -689,11 +690,10 @@ public class ViewDiscoveryTests
                 """
                 {"connectionId":"warehouse","view":{"id":"ship-1","name":"出貨","purpose":"說明出貨","confirmed":true,"sources":["products"],"links":[],"parameters":[],"columns":[{"name":"Name","source":"products"}]}}
                 """);
-            Assert.AreEqual(HttpStatusCode.BadRequest, preview.Status, preview.Body);
-            Assert.Contains("preview_unavailable", preview.Body);
-            Assert.Contains("不讀取業務列。", preview.Body);
-            Assert.IsFalse(preview.Body.Contains("\"rows\"", StringComparison.Ordinal), preview.Body);
-            Assert.IsFalse(preview.Body.Contains("one", StringComparison.Ordinal), preview.Body);
+            Assert.AreEqual(HttpStatusCode.OK, preview.Status, preview.Body);
+            Assert.Contains("one", preview.Body);
+            Assert.Contains("\"sql\"", preview.Body);
+            Assert.IsFalse(preview.Body.Contains("Data Source=", StringComparison.Ordinal), preview.Body);
 
             var graph = await SendAsync(client, HttpMethod.Get, "/schema/graph?connectionId=warehouse", "林可", "unit-catalog-key");
             Assert.AreEqual(HttpStatusCode.OK, graph.Status, graph.Body);

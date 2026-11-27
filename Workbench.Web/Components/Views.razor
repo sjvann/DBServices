@@ -5,6 +5,7 @@
 @inject SchemaService Schema
 @inject AnnotationService Annotations
 @inject EnvironmentService Environments
+@inject IViewProposer Proposer
 @layout WorkbenchLayout
 
 @if (_denied)
@@ -21,30 +22,6 @@ else if (_closed)
 else
 {
     <div class="studio">
-        <aside class="index" aria-label="檢視清單">
-            <div class="index-head">
-                <h1>檢視</h1>
-                <button class="secondary" type="button" @onclick="StartNew">新增</button>
-            </div>
-            @if (_documents.Count == 0)
-            {
-                <p class="empty">還沒有檢視。按新增，從左側挑一張資料表開始。</p>
-            }
-            else
-            {
-                <ul class="index-list">
-                    @foreach (var view in _documents)
-                    {
-                        <li>
-                            <button type="button" class="secondary index-item" aria-current="@(MarkCurrent(view))" @onclick="() => Open(view)">
-                                <span>@view.Name</span>
-                                <span class="meta">@(view.Published ? "已發布" : "尚未發布")</span>
-                            </button>
-                        </li>
-                    }
-                </ul>
-            }
-        </aside>
         <aside class="library" aria-label="資料表">
             <div class="index-head">
                 <h2>資料表</h2>
@@ -85,6 +62,7 @@ else
                                 <button type="button"
                                         class="table-pick"
                                         draggable="true"
+                                        aria-expanded="@ColumnOpen(current.Name)"
                                         aria-pressed="@Placed(current.Name)"
                                         @ondragstart="() => BeginDrag(current.Name)"
                                         @ondragend="EndDrag"
@@ -92,10 +70,13 @@ else
                                     <span>@current.Name</span>
                                     <span class="meta">@TableState(current.Name)</span>
                                 </button>
+                                <button class="secondary" type="button" @onclick="() => ToggleTree(current.Name)">@(ColumnOpen(current.Name) ? "收合欄位" : "展開欄位")</button>
                                 @if (!string.IsNullOrWhiteSpace(tableNote))
                                 {
                                     <p class="meta">@tableNote</p>
                                 }
+                                @if (ColumnOpen(current.Name))
+                                {
                                 <ul class="field-list">
                                     @foreach (var column in current.Columns)
                                     {
@@ -113,6 +94,7 @@ else
                                         </li>
                                     }
                                 </ul>
+                                }
                             </li>
                         }
                     </ul>
@@ -151,6 +133,23 @@ else
                 <div class="error" role="alert"><span>@_local</span></div>
             }
             <div class="board-bar">
+                <div class="module-switch" aria-label="檢視清單">
+                    <button class="secondary" type="button" @onclick="StartNew">新增</button>
+                    @if (_documents.Count == 0)
+                    {
+                        <p class="empty">還沒有檢視。從左側挑一張資料表開始。</p>
+                    }
+                    else
+                    {
+                        @foreach (var view in _documents)
+                        {
+                            <button type="button" class="secondary index-item" aria-current="@(MarkCurrent(view))" @onclick="() => Open(view)">
+                                <span>@view.Name</span>
+                                <span class="meta">@(view.Published ? "已發布" : "尚未發布")</span>
+                            </button>
+                        }
+                    }
+                </div>
                 <div class="board-title">
                     <h2 id="view-editor-title">@(_editing ? (string.IsNullOrWhiteSpace(_name) ? AutomaticName() : _name) : "定義報表要讀的資料")</h2>
                     @if (_editing)
@@ -165,6 +164,9 @@ else
                 @if (_editing)
                 {
                     <div class="actions">
+                        <button class="secondary" type="button" aria-pressed="@(!_showSql)" @onclick="() => _showSql = false">圖像</button>
+                        <button class="secondary" type="button" aria-pressed="@_showSql" @onclick="() => _showSql = true">SQL</button>
+                        <button class="secondary" type="button" aria-pressed="@_assist" @onclick="() => _assist = !_assist">助理</button>
                         <button class="secondary" type="button" disabled="@_busy" @onclick="Save">儲存</button>
                         <button class="confirm" type="button" disabled="@_busy" @onclick="Publish">發布</button>
                     </div>
@@ -193,6 +195,54 @@ else
                 </label>
                 <p class="hint">可以空白，會用資料表的名字。</p>
                 <label class="choice"><input type="checkbox" @bind="_confirmed" /> 解說已確認</label>
+                @if (_assist)
+                {
+                    <form class="prop-panel" @onsubmit="Propose" @onsubmit:preventDefault="true">
+                        <label class="stack" for="assist-ask">想看的內容
+                            <textarea id="assist-ask" @bind="_ask" @bind:event="oninput"></textarea>
+                        </label>
+                        <label class="stack" for="assist-grain">一列代表什麼
+                            <input id="assist-grain" autocomplete="off" @bind="_grain" @bind:event="oninput" />
+                        </label>
+                        <label class="stack" for="assist-wanted">希望出現的欄位或概念
+                            <input id="assist-wanted" autocomplete="off" @bind="_wanted" @bind:event="oninput" />
+                        </label>
+                        <label class="stack" for="assist-filter">篩選
+                            <input id="assist-filter" autocomplete="off" @bind="_assistFilter" @bind:event="oninput" />
+                        </label>
+                        <label class="stack" for="assist-limit">筆數
+                            <input id="assist-limit" autocomplete="off" @bind="_assistLimit" @bind:event="oninput" />
+                        </label>
+                        <button class="confirm" type="submit" disabled="@_proposing">產生提案</button>
+                        @if (!string.IsNullOrEmpty(_proposalNote))
+                        {
+                            <p role="status">@_proposalNote</p>
+                        }
+                        @if (_proposal is not null)
+                        {
+                            <ul>
+                                @foreach (var source in _proposal.Sources)
+                                {
+                                    <li>@source：@ReasonFor(source)</li>
+                                }
+                                @foreach (var link in _proposal.Links)
+                                {
+                                    <li>@link.From.@link.FromColumn → @link.To.@link.ToColumn。@link.Reason</li>
+                                }
+                            </ul>
+                            <div class="actions">
+                                <button class="confirm" type="button" @onclick="AcceptProposal">接受提案</button>
+                                <button class="secondary" type="button" @onclick="DeclineProposal">先不要</button>
+                            </div>
+                        }
+                    </form>
+                }
+                @if (_showSql)
+                {
+                    <pre class="sql-read">@(string.IsNullOrWhiteSpace(_sql) ? (string.IsNullOrWhiteSpace(_previewNote) ? "結構還沒編成 SQL。" : _previewNote) : _sql)</pre>
+                }
+                else
+                {
                 <div class="canvas @( _dragOver ? "drag-over" : null)"
                      @ondragenter="() => _dragOver = true"
                      @ondragleave="() => _dragOver = false"
@@ -215,18 +265,25 @@ else
                                 }
                             </div>
                         }
-                        <div class="card-grid">
+                        <div class="card-stage" style="@StageStyle()" @onpointermove="MoveCard" @onpointerup="EndCardMove">
+                            <svg class="link-layer" aria-hidden="true">
+                                @foreach (var link in _links)
+                                {
+                                    var line = LinkLine(link);
+                                    <line x1="@line.X1" y1="@line.Y1" x2="@line.X2" y2="@line.Y2" />
+                                }
+                            </svg>
                             @foreach (var source in _sources)
                             {
                                 var table = Card(source);
                                 var missing = !Known(source);
-                                <article class="table-card" aria-label="@source">
-                                    <header>
+                                <article class="table-card" aria-label="@source" style="@CardStyle(source)">
+                                    <header @onpointerdown="args => StartCardMove(source, args)">
                                         <div>
                                             <h3>@source</h3>
                                             <p class="meta">@(IsRoot(source) ? "起點" : $"第 {Layer(source)} 層")@(missing ? " · 目前連線裡找不到" : "")</p>
                                         </div>
-                                        <button class="secondary" type="button" @onclick="() => RemoveTable(source)">移出</button>
+                                        <button class="secondary" type="button" @onpointerdown:stopPropagation="true" @onclick="() => RemoveTable(source)">移出</button>
                                     </header>
                                     @if (table.Columns.Count == 0)
                                     {
@@ -242,7 +299,7 @@ else
                                             @foreach (var column in table.Columns)
                                             {
                                                 var current = column;
-                                                <li>
+                                                <li @ondragover:preventDefault="true" @ondrop="() => DropColumn(source, current.Name)" @ondrop:preventDefault="true">
                                                     <label class="choice">
                                                         <input type="checkbox" checked="@ColumnOn(source, current.Name)" @onchange="args => ToggleColumn(source, current.Name, Checked(args))" />
                                                         <span>@current.Name</span>
@@ -259,6 +316,7 @@ else
                                                             <span class="badge">連到 @current.ReferencesTable.@current.ReferencesColumn</span>
                                                         }
                                                     </label>
+                                                    <button type="button" class="link-handle" draggable="true" aria-label="@($"從 {source}.{current.Name} 拉關聯")" @ondragstart="() => BeginColumnDrag(source, current.Name)" @ondragstart:stopPropagation="true" @ondragend="EndColumnDrag" @onpointerdown:stopPropagation="true">拉線</button>
                                                     <label class="choice quiet">
                                                         <input type="checkbox" checked="@FilterOn(source, current.Name)" @onchange="args => ToggleFilter(source, current.Name, Checked(args))" />
                                                         <span>當作篩選</span>
@@ -281,7 +339,21 @@ else
                             <ul class="link-list" aria-label="表怎麼相連">
                                 @foreach (var link in _links)
                                 {
-                                    <li><span class="code">@link.From.@link.FromColumn → @link.To.@link.ToColumn</span></li>
+                                    var current = link;
+                                    <li>
+                                        <span class="code">@current.From.@current.FromColumn → @current.To.@current.ToColumn</span>
+                                        <select aria-label="連接方式" value="@JoinValue(current)" @onchange="args => SetJoin(current, args)">
+                                            <option value="inner">內連接</option>
+                                            <option value="left">左連接</option>
+                                        </select>
+                                        <button class="secondary" type="button" @onclick="() => RemoveLink(current)">移除</button>
+                                        @if (current.ViewOnly)
+                                        {
+                                            <label class="stack">僅此檢視的理由
+                                                <input autocomplete="off" value="@current.Reason" @oninput="args => current.Reason = args.Value?.ToString() ?? string.Empty" />
+                                            </label>
+                                        }
+                                    </li>
                                 }
                             </ul>
                         }
@@ -311,11 +383,79 @@ else
                                 </div>
                             }
                         </div>
+                        <div class="prop-panel">
+                            <label class="choice"><input type="checkbox" @bind="_distinct" @bind:after="SchedulePreview" /> 不重複</label>
+                            <label class="stack" for="row-limit">筆數
+                                <input id="row-limit" inputmode="numeric" autocomplete="off" value="@_limitText" @oninput="SetLimit" />
+                            </label>
+                            <p class="meta">沒有填筆數時，預覽最多 100 列。</p>
+                            @foreach (var filter in _filters)
+                            {
+                                var current = filter;
+                                <div class="filter-grid">
+                                    <input aria-label="條件表" value="@current.Source" @oninput="args => current.Source = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="條件欄" value="@current.Column" @oninput="args => current.Column = args.Value?.ToString() ?? string.Empty" />
+                                    <select aria-label="條件運算子" value="@current.Operator" @onchange="args => SetOperator(current, args)">
+                                        <option>=</option><option>&lt;&gt;</option><option>&gt;</option><option>&lt;</option><option>&gt;=</option><option>&lt;=</option><option>LIKE</option><option>IN</option><option>IS NULL</option><option>IS NOT NULL</option>
+                                    </select>
+                                    <input aria-label="條件值" value="@current.Value" @oninput="args => current.Value = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="條件參數" placeholder="參數名" value="@current.Parameter" @oninput="args => current.Parameter = args.Value?.ToString() ?? string.Empty" />
+                                    <button class="secondary" type="button" @onclick="() => RemoveFilter(current)">移除條件</button>
+                                </div>
+                            }
+                            <button class="secondary" type="button" @onclick="AddFilter">加條件</button>
+                            <button class="secondary" type="button" @onclick="AddGroup">加分組</button>
+                            @foreach (var group in _groupBy)
+                            {
+                                var current = group;
+                                <div class="filter-grid">
+                                    <input aria-label="分組表" value="@current.Source" @oninput="args => current.Source = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="分組欄" value="@current.Column" @oninput="args => current.Column = args.Value?.ToString() ?? string.Empty" />
+                                </div>
+                            }
+                            <button class="secondary" type="button" @onclick="AddAggregate">加彙總</button>
+                            @foreach (var aggregate in _aggregates)
+                            {
+                                var current = aggregate;
+                                <div class="filter-grid">
+                                    <select aria-label="彙總函數" value="@current.Function" @onchange="args => SetFunction(current, args)">
+                                        <option value="count">COUNT</option><option value="sum">SUM</option><option value="avg">AVG</option><option value="min">MIN</option><option value="max">MAX</option>
+                                    </select>
+                                    <input aria-label="彙總表" value="@current.Source" @oninput="args => current.Source = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="彙總欄" value="@current.Column" @oninput="args => current.Column = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="彙總名稱" value="@current.Alias" @oninput="args => current.Alias = args.Value?.ToString() ?? string.Empty" />
+                                </div>
+                            }
+                            @foreach (var having in _having)
+                            {
+                                var current = having;
+                                <div class="filter-grid">
+                                    <input aria-label="彙總條件" value="@current.Column" @oninput="args => current.Column = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="彙總條件值" value="@current.Value" @oninput="args => current.Value = args.Value?.ToString() ?? string.Empty" />
+                                </div>
+                            }
+                            <button class="secondary" type="button" @onclick="AddHaving">加彙總條件</button>
+                            <button class="secondary" type="button" @onclick="AddOrder">加排序</button>
+                            @foreach (var order in _orderBy)
+                            {
+                                var current = order;
+                                <div class="filter-grid">
+                                    <input aria-label="排序表" value="@current.Source" @oninput="args => current.Source = args.Value?.ToString() ?? string.Empty" />
+                                    <input aria-label="排序欄" value="@current.Column" @oninput="args => current.Column = args.Value?.ToString() ?? string.Empty" />
+                                    <select aria-label="排序方向" value="@current.Direction" @onchange="args => SetDirection(current, args)">
+                                        <option value="asc">由小到大</option>
+                                        <option value="desc">由大到小</option>
+                                    </select>
+                                </div>
+                            }
+                            <button class="secondary" type="button" @onclick="AddManualLink">加上關聯</button>
+                        </div>
                     }
                 </div>
-                <section class="preview" aria-label="資料預覽">
+                }
+                <section class="preview" aria-label="查詢結果">
                     <div class="preview-bar">
-                        <h3>資料</h3>
+                        <h3>查詢結果</h3>
                         @if (!string.IsNullOrEmpty(QuerySentence()))
                         {
                             <p class="meta">@QuerySentence()</p>
@@ -399,12 +539,39 @@ else
     private string? _hint;
     private string? _switchCandidate;
     private string? _drag;
+    private string? _dragColumnTable;
+    private string? _dragColumn;
+    private string? _movingCard;
+    private double _moveX;
+    private double _moveY;
     private string _previewNote = "";
     private string _status = "";
     private string _id = "";
     private string _name = "";
     private string _purpose = "";
     private string _query = "";
+    private string _sql = "";
+    private string _limitText = "";
+    private string _ask = "";
+    private string _grain = "";
+    private string _wanted = "";
+    private string _assistFilter = "";
+    private string _assistLimit = "";
+    private string _proposalNote = "";
+    private bool _showSql;
+    private bool _assist;
+    private bool _distinct;
+    private bool _proposing;
+    private int? _limit;
+    private ViewProposalDto? _proposal;
+    private AnnotationPackageDto? _package;
+    private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
+    private List<ViewFilterDto> _filters = [];
+    private List<ViewGroupDto> _groupBy = [];
+    private List<ViewAggregateDto> _aggregates = [];
+    private List<ViewFilterDto> _having = [];
+    private List<ViewOrderDto> _orderBy = [];
+    private List<ViewPlacementDto> _placements = [];
     private List<ViewDocumentDto> _documents = [];
     private List<SchemaTableDto> _tables = [];
     private List<AnnotationLinkDto> _declared = [];
@@ -489,6 +656,18 @@ else
         _links = [];
         _columns = [];
         _parameters = [];
+        _filters = [];
+        _groupBy = [];
+        _aggregates = [];
+        _having = [];
+        _orderBy = [];
+        _placements = [];
+        _limit = null;
+        _limitText = "";
+        _distinct = false;
+        _sql = "";
+        _proposal = null;
+        _proposalNote = "";
         _values.Clear();
         _hint = null;
         _switchCandidate = null;
@@ -519,9 +698,13 @@ else
             FromColumn = link.FromColumn,
             To = link.To,
             ToColumn = link.ToColumn,
+            Join = link.Join,
+            Reason = link.Reason,
+            ViewOnly = link.ViewOnly,
         }).ToList();
         _columns = (document.Columns ?? []).Select(item => new ViewColumnDto { Name = item.Name, Source = item.Source }).ToList();
         _parameters = (document.Parameters ?? []).Select(item => new ViewParameterDto { Name = item.Name, Column = item.Column, Source = item.Source }).ToList();
+        CopyQuery(document);
         _values.Clear();
         _hint = null;
         _switchCandidate = null;
@@ -538,7 +721,304 @@ else
 
     private string? MarkCurrent(ViewDocumentDto view) => _editing && !_creating && _id == view.Id ? "true" : null;
 
+    private bool ColumnOpen(string table) => !_collapsed.Contains(table);
+
+    private void ToggleTree(string table)
+    {
+        if (!_collapsed.Add(table))
+            _collapsed.Remove(table);
+    }
+
+    private static string Text(ChangeEventArgs args, string fallback)
+    {
+        var text = args.Value?.ToString();
+        return string.IsNullOrWhiteSpace(text) ? fallback : text;
+    }
+
+    private static void SetOperator(ViewFilterDto filter, ChangeEventArgs args) => filter.Operator = Text(args, "=");
+
+    private static void SetFunction(ViewAggregateDto aggregate, ChangeEventArgs args) => aggregate.Function = Text(args, "count");
+
+    private static void SetDirection(ViewOrderDto order, ChangeEventArgs args) => order.Direction = Text(args, "asc");
+
+    private static string JoinValue(ViewLinkDto link)
+        => string.Equals(link.Join, "left", StringComparison.OrdinalIgnoreCase) ? "left" : "inner";
+
+    private void SetJoin(ViewLinkDto link, ChangeEventArgs args)
+    {
+        link.Join = args.Value?.ToString() == "left" ? "left" : "inner";
+        SchedulePreview();
+    }
+
+    private void SetLimit(ChangeEventArgs args)
+    {
+        _limitText = args.Value?.ToString() ?? "";
+        _limit = int.TryParse(_limitText.Trim(), out var parsed) && parsed > 0 ? parsed : null;
+        SchedulePreview();
+    }
+
+    private void AddFilter()
+    {
+        _filters.Add(new ViewFilterDto { Operator = "=", Combiner = "and" });
+    }
+
+    private void RemoveFilter(ViewFilterDto filter)
+    {
+        _filters.Remove(filter);
+        SchedulePreview();
+    }
+
+    private void AddGroup() => _groupBy.Add(new ViewGroupDto());
+
+    private void AddAggregate() => _aggregates.Add(new ViewAggregateDto { Function = "count" });
+
+    private void AddHaving() => _having.Add(new ViewFilterDto { Operator = ">", Combiner = "and" });
+
+    private void AddOrder() => _orderBy.Add(new ViewOrderDto { Direction = "asc" });
+
+    private void AddManualLink()
+    {
+        if (_sources.Count < 2)
+        {
+            _local = "要先放進兩張資料表。";
+            return;
+        }
+
+        var from = Card(_sources[0]);
+        var to = Card(_sources[1]);
+        if (from.Columns.Count == 0 || to.Columns.Count == 0)
+        {
+            _local = "這兩張表沒有欄位可以連。";
+            return;
+        }
+
+        var origin = DeclaredOrigin(from.Name, from.Columns[0].Name, to.Name, to.Columns[0].Name);
+        _links.Add(new ViewLinkDto
+        {
+            Kind = origin == "declared" ? "accepted" : origin == "foreign-key" ? "foreign-key" : "accepted",
+            From = from.Name,
+            FromColumn = from.Columns[0].Name,
+            To = to.Name,
+            ToColumn = to.Columns[0].Name,
+            Join = "inner",
+            ViewOnly = origin is null,
+        });
+        _local = origin is null ? "這段關聯只留在這份檢視，請寫理由。" : null;
+    }
+
+    private string ReasonFor(string source)
+        => _proposal?.Reasons.TryGetValue(source, out var reason) == true ? reason : "";
+
+    private async Task Propose()
+    {
+        _proposal = null;
+        _proposalNote = "";
+        if (string.IsNullOrWhiteSpace(_ask) && string.IsNullOrWhiteSpace(_wanted))
+        {
+            _proposalNote = "請先描述想看的內容。";
+            return;
+        }
+
+        _proposing = true;
+        try
+        {
+            var result = await Proposer.ProposeAsync(new ViewProposalRequest
+            {
+                Ask = _ask,
+                Grain = _grain,
+                Wanted = _wanted,
+                Filter = _assistFilter,
+                Limit = _assistLimit,
+                Package = _package,
+            }, CancellationToken.None);
+            if (!result.Ok || result.Proposal is null)
+            {
+                _proposalNote = result.Message;
+                return;
+            }
+
+            _proposal = result.Proposal;
+            _proposalNote = "可以接受這份提案，或先不要。";
+        }
+        finally
+        {
+            _proposing = false;
+        }
+    }
+
+    private void AcceptProposal()
+    {
+        var proposal = _proposal;
+        if (proposal is null)
+            return;
+        if (!_editing)
+            StartNew();
+        _sources = proposal.Sources.ToList();
+        _links = proposal.Links.Select(link => new ViewLinkDto
+        {
+            Kind = link.Kind,
+            From = link.From,
+            FromColumn = link.FromColumn,
+            To = link.To,
+            ToColumn = link.ToColumn,
+            Join = string.IsNullOrWhiteSpace(link.Join) ? "inner" : link.Join,
+            Reason = link.Reason,
+            ViewOnly = link.ViewOnly,
+        }).ToList();
+        _columns = proposal.Columns.Select(column => new ViewColumnDto { Name = column.Name, Source = column.Source }).ToList();
+        _filters = (proposal.Filters ?? []).ToList();
+        _limit = proposal.Limit;
+        _limitText = proposal.Limit?.ToString() ?? _assistLimit;
+        if (!string.IsNullOrWhiteSpace(_grain))
+            _purpose = _grain.Trim();
+        _proposalNote = "已放到畫布。";
+        _proposal = null;
+        _showSql = false;
+        SchedulePreview();
+    }
+
+    private void DeclineProposal()
+    {
+        _proposal = null;
+        _proposalNote = "畫布維持原樣。";
+    }
+
     private void BeginDrag(string table) => _drag = table;
+
+    private void BeginColumnDrag(string table, string column)
+    {
+        _dragColumnTable = table;
+        _dragColumn = column;
+        _drag = null;
+    }
+
+    private void EndColumnDrag()
+    {
+        _dragColumnTable = null;
+        _dragColumn = null;
+    }
+
+    private void DropColumn(string table, string column)
+    {
+        var fromTable = _dragColumnTable;
+        var fromColumn = _dragColumn;
+        _dragColumnTable = null;
+        _dragColumn = null;
+        if (string.IsNullOrWhiteSpace(fromTable) || string.IsNullOrWhiteSpace(fromColumn))
+            return;
+        if (string.Equals(fromTable, table, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(fromColumn, column, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (_links.Any(link => SameEnds(link, fromTable, fromColumn, table, column)))
+            return;
+
+        var origin = DeclaredOrigin(fromTable, fromColumn, table, column);
+        _links.Add(new ViewLinkDto
+        {
+            Kind = origin == "declared" ? "accepted" : origin == "foreign-key" ? "foreign-key" : "accepted",
+            From = fromTable,
+            FromColumn = fromColumn,
+            To = table,
+            ToColumn = column,
+            Join = "inner",
+            ViewOnly = origin is null,
+        });
+        _local = origin is null ? "這段關聯只留在這份檢視，請寫理由。" : null;
+        SchedulePreview();
+    }
+
+    private static bool SameEnds(ViewLinkDto link, string fromTable, string fromColumn, string toTable, string toColumn)
+        => string.Equals(link.From, fromTable, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(link.FromColumn, fromColumn, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(link.To, toTable, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(link.ToColumn, toColumn, StringComparison.OrdinalIgnoreCase);
+
+    private void RemoveLink(ViewLinkDto link)
+    {
+        _links.Remove(link);
+        SchedulePreview();
+    }
+
+    private void StartCardMove(string table, PointerEventArgs args)
+    {
+        if (args.Button != 0)
+            return;
+        _movingCard = table;
+        _moveX = args.ClientX;
+        _moveY = args.ClientY;
+        EnsurePlacement(table);
+    }
+
+    private void MoveCard(PointerEventArgs args)
+    {
+        if (_movingCard is null)
+            return;
+        var place = EnsurePlacement(_movingCard);
+        place.X = Math.Max(0, place.X + args.ClientX - _moveX);
+        place.Y = Math.Max(0, place.Y + args.ClientY - _moveY);
+        _moveX = args.ClientX;
+        _moveY = args.ClientY;
+    }
+
+    private void EndCardMove() => _movingCard = null;
+
+    private string CardStyle(string table)
+    {
+        var index = Math.Max(0, _sources.FindIndex(item => string.Equals(item, table, StringComparison.OrdinalIgnoreCase)));
+        var (x, y) = Point(table, index);
+        return $"left:{x:0}px;top:{y:0}px;";
+    }
+
+    private string StageStyle()
+    {
+        var bottom = 280d;
+        for (var index = 0; index < _sources.Count; index++)
+        {
+            var (_, y) = Point(_sources[index], index);
+            bottom = Math.Max(bottom, y + 320);
+        }
+
+        return $"height:{bottom:0}px";
+    }
+
+    private (double X1, double Y1, double X2, double Y2) LinkLine(ViewLinkDto link)
+    {
+        var from = Anchor(link.From, link.FromColumn);
+        var to = Anchor(link.To, link.ToColumn);
+        return (from.X, from.Y, to.X, to.Y);
+    }
+
+    private (double X, double Y) Anchor(string? table, string? column)
+    {
+        var name = table ?? "";
+        var index = Math.Max(0, _sources.FindIndex(item => string.Equals(item, name, StringComparison.OrdinalIgnoreCase)));
+        var (x, y) = Point(name, index);
+        var card = Card(name);
+        var columnIndex = card.Columns.FindIndex(item => string.Equals(item.Name, column, StringComparison.OrdinalIgnoreCase));
+        if (columnIndex < 0)
+            columnIndex = 0;
+        return (x + 130, y + 96 + columnIndex * 36);
+    }
+
+    private (double X, double Y) Point(string table, int index)
+    {
+        var found = _placements.FirstOrDefault(item => string.Equals(item.Table, table, StringComparison.OrdinalIgnoreCase));
+        if (found is not null)
+            return (found.X, found.Y);
+        return (16 + (index % 3) * 280, 16 + (index / 3) * 260);
+    }
+
+    private ViewPlacementDto EnsurePlacement(string table)
+    {
+        var found = _placements.FirstOrDefault(item => string.Equals(item.Table, table, StringComparison.OrdinalIgnoreCase));
+        if (found is not null)
+            return found;
+        var index = Math.Max(0, _sources.FindIndex(item => string.Equals(item, table, StringComparison.OrdinalIgnoreCase)));
+        var (x, y) = Point(table, index);
+        found = new ViewPlacementDto { Table = table, X = x, Y = y };
+        _placements.Add(found);
+        return found;
+    }
 
     private void EndDrag()
     {
@@ -890,6 +1370,7 @@ else
             _previewing = false;
             _previewColumns = [];
             _previewRows = [];
+            _sql = "";
             _previewNote = "";
             StateHasChanged();
             return;
@@ -911,13 +1392,17 @@ else
             {
                 _previewColumns = [];
                 _previewRows = [];
+                _sql = "";
                 _previewNote = result.Error!.Message;
                 return;
             }
 
             _previewColumns = result.Value!.Columns ?? [];
             _previewRows = result.Value.Rows ?? [];
-            _previewNote = result.Value.Truncated ? "先顯示前 40 列。" : $"{_previewRows.Count} 列";
+            _sql = result.Value.Sql ?? "";
+            _previewNote = result.Value.Truncated
+                ? "只顯示前 " + _previewRows.Count + " 列。"
+                : _previewRows.Count == 0 ? "" : _previewRows.Count + " 列";
         }
         catch (OperationCanceledException)
         {
@@ -1051,6 +1536,15 @@ else
             Links = _links.ToList(),
             Columns = _columns.ToList(),
             Parameters = _parameters.ToList(),
+            Limit = _limit,
+            Distinct = _distinct,
+            Filters = _filters.ToList(),
+            GroupBy = _groupBy.ToList(),
+            Aggregates = _aggregates.ToList(),
+            Having = _having.ToList(),
+            OrderBy = _orderBy.ToList(),
+            Placements = _placements.ToList(),
+            Sql = "",
         };
     }
 
@@ -1098,6 +1592,41 @@ else
         _links = (document.Links ?? []).ToList();
         _columns = (document.Columns ?? []).ToList();
         _parameters = (document.Parameters ?? []).ToList();
+        CopyQuery(document);
+    }
+
+    private void CopyQuery(ViewDocumentDto document)
+    {
+        _limit = document.Limit;
+        _limitText = document.Limit?.ToString() ?? "";
+        _distinct = document.Distinct;
+        _filters = (document.Filters ?? []).Select(item => new ViewFilterDto
+        {
+            Combiner = item.Combiner,
+            Source = item.Source,
+            Column = item.Column,
+            Operator = item.Operator,
+            Value = item.Value,
+            Parameter = item.Parameter,
+        }).ToList();
+        _groupBy = (document.GroupBy ?? []).Select(item => new ViewGroupDto { Source = item.Source, Column = item.Column }).ToList();
+        _aggregates = (document.Aggregates ?? []).Select(item => new ViewAggregateDto
+        {
+            Function = item.Function,
+            Source = item.Source,
+            Column = item.Column,
+            Alias = item.Alias,
+        }).ToList();
+        _having = (document.Having ?? []).Select(item => new ViewFilterDto
+        {
+            Combiner = item.Combiner,
+            Column = item.Column,
+            Operator = string.IsNullOrWhiteSpace(item.Operator) ? ">" : item.Operator,
+            Value = item.Value,
+        }).ToList();
+        _orderBy = (document.OrderBy ?? []).Select(item => new ViewOrderDto { Source = item.Source, Column = item.Column, Direction = item.Direction }).ToList();
+        _placements = (document.Placements ?? []).Select(item => new ViewPlacementDto { Table = item.Table, X = item.X, Y = item.Y }).ToList();
+        _sql = document.Sql ?? "";
     }
 
     private void Align()
@@ -1155,9 +1684,18 @@ else
         var kinds = new string[links.Count];
         for (var index = 0; index < links.Count; index++)
         {
+            if (links[index].ViewOnly)
+            {
+                if (string.IsNullOrWhiteSpace(links[index].Reason))
+                    return new ErrorDto { Code = "link_reason_required", Message = "僅此檢視的關聯要寫理由。" };
+                kinds[index] = "accepted";
+                continue;
+            }
+
             var origin = DeclaredOrigin(links[index].From, links[index].FromColumn, links[index].To, links[index].ToColumn);
             if (origin is null)
                 return new ErrorDto { Code = "link_undeclared", Message = "這段關聯不在註記包裡。" };
+            links[index].ViewOnly = false;
             kinds[index] = origin == "foreign-key" ? "foreign-key" : "accepted";
         }
 
@@ -1254,8 +1792,10 @@ else
         _declared = [];
         _eligible = [];
         var package = active?.Package;
+        _package = package;
         if (package is not { Active: true } || string.Equals(package.Status, "draft", StringComparison.Ordinal))
         {
+            _package = null;
             _tables = [];
             return;
         }

@@ -17,6 +17,16 @@ public sealed class ViewDocument
     public List<ViewLink> Links { get; set; } = [];
     public List<ViewParameter> Parameters { get; set; } = [];
     public List<ViewColumn> Columns { get; set; } = [];
+    public int? Limit { get; set; }
+    public bool Distinct { get; set; }
+    public List<ViewFilter> Filters { get; set; } = [];
+    public List<ViewGroup> GroupBy { get; set; } = [];
+    public List<ViewAggregate> Aggregates { get; set; } = [];
+    public List<ViewFilter> Having { get; set; } = [];
+    public List<ViewOrder> OrderBy { get; set; } = [];
+    public string Sql { get; set; } = "";
+    public bool SqlValidated { get; set; }
+    public List<ViewPlacement> Placements { get; set; } = [];
 }
 
 public sealed class ViewLink
@@ -26,6 +36,47 @@ public sealed class ViewLink
     public string FromColumn { get; set; } = "";
     public string To { get; set; } = "";
     public string ToColumn { get; set; } = "";
+    public string Join { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public bool ViewOnly { get; set; }
+}
+
+public sealed class ViewFilter
+{
+    public string Combiner { get; set; } = "and";
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Operator { get; set; } = "=";
+    public string Value { get; set; } = "";
+    public string Parameter { get; set; } = "";
+}
+
+public sealed class ViewGroup
+{
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+}
+
+public sealed class ViewAggregate
+{
+    public string Function { get; set; } = "";
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Alias { get; set; } = "";
+}
+
+public sealed class ViewOrder
+{
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Direction { get; set; } = "asc";
+}
+
+public sealed class ViewPlacement
+{
+    public string Table { get; set; } = "";
+    public double X { get; set; }
+    public double Y { get; set; }
 }
 
 public sealed class ViewParameter

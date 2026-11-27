@@ -48,7 +48,11 @@ public class SourceAnnotationTests
             {
                 var names = document.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
                 CollectionAssert.AreEquivalent(
-                    new[] { "id", "name", "purpose", "confirmed", "published", "sources", "links", "parameters", "columns" },
+                    new[]
+                    {
+                        "id", "name", "purpose", "confirmed", "published", "sources", "links", "parameters", "columns",
+                        "limit", "distinct", "filters", "groupBy", "aggregates", "having", "orderBy", "sql", "sqlValidated", "placements",
+                    },
                     names);
                 Assert.AreEqual("關聯", document.RootElement.GetProperty("name").GetString());
                 Assert.IsTrue(document.RootElement.GetProperty("confirmed").GetBoolean());

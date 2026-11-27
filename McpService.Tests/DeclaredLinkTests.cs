@@ -35,7 +35,11 @@ public class DeclaredLinkTests
             using var document = JsonDocument.Parse(saved.Body);
             var names = document.RootElement.EnumerateObject().Select(property => property.Name).ToArray();
             CollectionAssert.AreEquivalent(
-                new[] { "id", "name", "purpose", "confirmed", "published", "sources", "links", "parameters", "columns" },
+                new[]
+                {
+                    "id", "name", "purpose", "confirmed", "published", "sources", "links", "parameters", "columns",
+                    "limit", "distinct", "filters", "groupBy", "aggregates", "having", "orderBy", "sql", "sqlValidated", "placements",
+                },
                 names);
             var link = document.RootElement.GetProperty("links")[0];
             Assert.AreEqual("accepted", link.GetProperty("kind").GetString());
@@ -322,6 +326,53 @@ public class DeclaredLinkTests
             Assert.AreEqual("link_undeclared", error.RootElement.GetProperty("code").GetString());
             Assert.AreEqual("這段關聯不在註記包裡。", error.RootElement.GetProperty("message").GetString());
             Assert.IsFalse(File.Exists(Views(root)));
+            CollectionAssert.AreEqual(notesBefore, await File.ReadAllBytesAsync(Annotations(root)));
+        }
+        finally
+        {
+            Delete(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task View_only_link_stays_on_the_view_and_needs_a_reason()
+    {
+        var root = Root();
+        try
+        {
+            WritePackages(root, Package(true, "confirmed", Link("orders", "customerId", "customers", "id", "foreign-key", "包內理由")));
+            var notesBefore = await File.ReadAllBytesAsync(Annotations(root));
+            await using var factory = Factory(root, []);
+            using var client = factory.CreateClient();
+            var missing = await SendAsync(client, HttpMethod.Put, "/views/v-only",
+                """
+                {"id":"v-only","name":"僅此","purpose":"僅此","confirmed":false,"published":false,"sources":["orders","customers"],"links":[{"kind":"accepted","from":"orders","fromColumn":"note","to":"customers","toColumn":"id","join":"left","viewOnly":true,"reason":"  "}],"parameters":[],"columns":[{"name":"qty","source":"orders"}]}
+                """);
+            Assert.AreEqual(HttpStatusCode.BadRequest, missing.Status, missing.Body);
+            using (var error = JsonDocument.Parse(missing.Body))
+            {
+                Assert.AreEqual("link_reason_required", error.RootElement.GetProperty("code").GetString());
+                Assert.AreEqual("僅此檢視的關聯要寫理由。", error.RootElement.GetProperty("message").GetString());
+            }
+
+            Assert.IsFalse(File.Exists(Views(root)));
+            CollectionAssert.AreEqual(notesBefore, await File.ReadAllBytesAsync(Annotations(root)));
+
+            var saved = await SendAsync(client, HttpMethod.Put, "/views/v-only",
+                """
+                {"id":"v-only","name":"僅此","purpose":"僅此","confirmed":false,"published":false,"sources":["orders","customers"],"links":[{"kind":"foreign-key","from":"orders","fromColumn":"note","to":"customers","toColumn":"id","join":"left","viewOnly":true,"reason":"這次才要連"}],"parameters":[],"columns":[{"name":"qty","source":"orders"}],"sql":"DROP TABLE orders"}
+                """);
+            Assert.AreEqual(HttpStatusCode.OK, saved.Status, saved.Body);
+            using var document = JsonDocument.Parse(saved.Body);
+            var link = document.RootElement.GetProperty("links")[0];
+            Assert.IsTrue(link.GetProperty("viewOnly").GetBoolean());
+            Assert.AreEqual("accepted", link.GetProperty("kind").GetString());
+            Assert.AreEqual("這次才要連", link.GetProperty("reason").GetString());
+            Assert.AreEqual("left", link.GetProperty("join").GetString());
+            var sql = document.RootElement.GetProperty("sql").GetString() ?? "";
+            Assert.IsTrue(sql.StartsWith("SELECT", StringComparison.Ordinal));
+            Assert.IsFalse(sql.Contains("DROP", StringComparison.Ordinal));
+            Assert.IsFalse(saved.Body.Contains("包內理由", StringComparison.Ordinal), saved.Body);
             CollectionAssert.AreEqual(notesBefore, await File.ReadAllBytesAsync(Annotations(root)));
         }
         finally

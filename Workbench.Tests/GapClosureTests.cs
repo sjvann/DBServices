@@ -78,6 +78,7 @@ public class GapClosureTests
         context.Services.AddSingleton(new SchemaService(profiles, browser, connections, environments));
         context.Services.AddSingleton(environments);
         context.Services.AddSingleton(new AnnotationService(profiles, new RecordingAnnotations()));
+        context.Services.AddSingleton<IViewProposer>(new FixedViewProposer());
 
         var cut = context.Render<Workbench.Web.Components.Views>();
         await cut.FindAll("button").Single(button => button.TextContent.Contains("出貨", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());

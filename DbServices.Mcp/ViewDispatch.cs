@@ -21,6 +21,9 @@ public static class ViewDispatch
         if (RejectParameters(view, parameters) is { } rejected)
             return rejected;
 
+        if (!string.IsNullOrWhiteSpace(view.Sql))
+            return SelectRunner.Dispatch(catalog, connectionId, view, parameters);
+
         var sources = view.Sources ?? [];
         if (sources.Count == 0)
             return TableDispatchResult.QueryExecutionFailed();

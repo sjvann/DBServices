@@ -260,7 +260,7 @@ app.MapGet("/views/{id}", (string id, HttpContext http, ViewCatalog views, IConf
     var document = views.Find(id);
     return document is null ? Results.NotFound(new { code = "not_found", message = "找不到檢視。" }) : Results.Json(document);
 });
-app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, AnnotationCatalog annotations, IConfiguration configuration) =>
+app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, AnnotationCatalog annotations, ConnectionDirectory directory, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
         return rejected;
@@ -282,10 +282,28 @@ app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views,
             return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
         }
 
-        if (!DeclaredLinks.TryPrepare(document, package))
-            return Results.Json(new { code = DeclaredLinks.Code, message = DeclaredLinks.Message }, statusCode: 400);
+        var gate = DeclaredLinks.TryPrepare(document, package);
+        if (!gate.Ok)
+            return Results.Json(new { code = gate.Code, message = gate.Message }, statusCode: 400);
     }
 
+    document.Sql = "";
+    var serverType = "Sqlite";
+    foreach (var pair in directory.Catalog.Connections)
+    {
+        if (!pair.Value.Available || string.IsNullOrWhiteSpace(pair.Value.ServerType))
+            continue;
+        serverType = pair.Value.ServerType;
+        break;
+    }
+
+    var compiled = SelectCompiler.Compile(document, serverType, document.Limit is int set && set > 0 ? set : null, null, omitMissing: false);
+    if (!compiled.Ok)
+        return Results.Json(new { code = compiled.Code, message = compiled.Message }, statusCode: 400);
+
+    var previous = views.Find(id);
+    document.Sql = compiled.Sql;
+    document.SqlValidated = previous is not null && previous.SqlValidated && SelectCompiler.SameQuery(previous, document);
     var result = views.Save(document);
     return result.Ok ? Results.Json(result.Document) : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
 });
@@ -467,7 +485,7 @@ app.MapPost("/schema/preview", async (HttpContext http, ConnectionDirectory dire
 
     var preview = SchemaGraph.Preview(directory.Catalog, input?.ConnectionId, input?.View, input?.Parameters);
     return preview.Ok
-        ? Results.Json(new { columns = preview.Columns, rows = preview.Rows, truncated = preview.Truncated })
+        ? Results.Json(new { columns = preview.Columns, rows = preview.Rows, truncated = preview.Truncated, sql = preview.Sql })
         : Results.Json(new { code = preview.Code, message = preview.Message }, statusCode: 400);
 });
 

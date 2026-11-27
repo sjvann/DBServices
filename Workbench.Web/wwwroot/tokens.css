@@ -803,11 +803,21 @@ form.connection .actions { margin: 0; }
 [role="status"] p { margin: 0 0 var(--space-4); }
 .studio {
   display: grid;
-  grid-template-columns: 200px 232px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   background: var(--surface-base);
 }
+.module-switch { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.sql-read {
+  margin: var(--space-4);
+  padding: var(--space-3);
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  background: var(--surface-sunken);
+}
+.prop-panel { display: grid; gap: var(--space-2); margin: var(--space-3); }
 .content:has(> .studio) {
   display: flex;
   padding: 0;
@@ -904,6 +914,32 @@ form.connection .actions { margin: 0; }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--space-3);
+}
+.card-stage {
+  position: relative;
+  min-height: 280px;
+}
+.link-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.link-layer line { stroke: var(--action); stroke-width: 2; }
+.card-stage .table-card {
+  position: absolute;
+  width: 260px;
+  z-index: 1;
+}
+.table-card header { cursor: grab; }
+.link-handle {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--action);
+  cursor: crosshair;
 }
 .table-card {
   border: 1px solid var(--border-hairline);
@@ -1137,7 +1173,7 @@ form.connection .actions { margin: 0; }
   .page.wide .column-record { scroll-margin-top: 8rem; }
   .studio {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(420px, auto);
+    grid-template-rows: auto minmax(420px, auto);
     height: auto;
   }
   .content:has(> .studio) { overflow: auto; }

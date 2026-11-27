@@ -53,6 +53,47 @@ public sealed class ViewLinkDto
     public string FromColumn { get; set; } = "";
     public string To { get; set; } = "";
     public string ToColumn { get; set; } = "";
+    public string Join { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public bool ViewOnly { get; set; }
+}
+
+public sealed class ViewFilterDto
+{
+    public string Combiner { get; set; } = "and";
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Operator { get; set; } = "=";
+    public string Value { get; set; } = "";
+    public string Parameter { get; set; } = "";
+}
+
+public sealed class ViewGroupDto
+{
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+}
+
+public sealed class ViewAggregateDto
+{
+    public string Function { get; set; } = "";
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Alias { get; set; } = "";
+}
+
+public sealed class ViewOrderDto
+{
+    public string Source { get; set; } = "";
+    public string Column { get; set; } = "";
+    public string Direction { get; set; } = "asc";
+}
+
+public sealed class ViewPlacementDto
+{
+    public string Table { get; set; } = "";
+    public double X { get; set; }
+    public double Y { get; set; }
 }
 
 public sealed class ViewParameterDto
@@ -79,6 +120,16 @@ public sealed class ViewDocumentDto
     public List<ViewLinkDto> Links { get; set; } = [];
     public List<ViewParameterDto> Parameters { get; set; } = [];
     public List<ViewColumnDto> Columns { get; set; } = [];
+    public int? Limit { get; set; }
+    public bool Distinct { get; set; }
+    public List<ViewFilterDto> Filters { get; set; } = [];
+    public List<ViewGroupDto> GroupBy { get; set; } = [];
+    public List<ViewAggregateDto> Aggregates { get; set; } = [];
+    public List<ViewFilterDto> Having { get; set; } = [];
+    public List<ViewOrderDto> OrderBy { get; set; } = [];
+    public string Sql { get; set; } = "";
+    public bool SqlValidated { get; set; }
+    public List<ViewPlacementDto> Placements { get; set; } = [];
 }
 
 public sealed class ViewSummaryDto
@@ -121,6 +172,26 @@ public sealed class StyleWriteRequest
 public sealed class SuggestRequest
 {
     public string? ViewId { get; set; }
+}
+
+public sealed class ViewProposalRequest
+{
+    public string Ask { get; set; } = "";
+    public string Grain { get; set; } = "";
+    public string Wanted { get; set; } = "";
+    public string Filter { get; set; } = "";
+    public string Limit { get; set; } = "";
+    public AnnotationPackageDto? Package { get; set; }
+}
+
+public sealed class ViewProposalDto
+{
+    public List<string> Sources { get; set; } = [];
+    public List<ViewLinkDto> Links { get; set; } = [];
+    public List<ViewColumnDto> Columns { get; set; } = [];
+    public List<ViewFilterDto> Filters { get; set; } = [];
+    public int? Limit { get; set; }
+    public Dictionary<string, string> Reasons { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class IgnoreStyleRequest
@@ -201,6 +272,7 @@ public sealed class SchemaPreviewDto
     public List<string> Columns { get; set; } = [];
     public List<List<string>> Rows { get; set; } = [];
     public bool Truncated { get; set; }
+    public string Sql { get; set; } = "";
 }
 
 public sealed class AnnotationColumnDto

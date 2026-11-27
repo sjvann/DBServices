@@ -253,7 +253,11 @@ public class DesignCatalogTests
         Assert.AreEqual("單號", saved.Columns.Single().Name);
         Assert.AreEqual("出貨單", saved.Columns.Single().Source);
         CollectionAssert.AreEquivalent(
-            new[] { "Columns", "Confirmed", "Id", "Links", "Name", "Parameters", "Published", "Purpose", "Sources" },
+            new[]
+            {
+                "Aggregates", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
+                "Name", "OrderBy", "Parameters", "Placements", "Published", "Purpose", "Sources", "Sql", "SqlValidated",
+            },
             typeof(ViewDocumentDto).GetProperties().Select(property => property.Name).ToArray());
         Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
 
@@ -454,7 +458,11 @@ public class DesignCatalogTests
         Assert.AreEqual("orders", saved.Links.Single().To);
         Assert.AreEqual("customerId", saved.Links.Single().ToColumn);
         CollectionAssert.AreEquivalent(
-            new[] { "Columns", "Confirmed", "Id", "Links", "Name", "Parameters", "Published", "Purpose", "Sources" },
+            new[]
+            {
+                "Aggregates", "Columns", "Confirmed", "Distinct", "Filters", "GroupBy", "Having", "Id", "Limit", "Links",
+                "Name", "OrderBy", "Parameters", "Placements", "Published", "Purpose", "Sources", "Sql", "SqlValidated",
+            },
             typeof(ViewDocumentDto).GetProperties().Select(property => property.Name).ToArray());
         Assert.IsFalse(JsonSerializer.Serialize(saved).Contains("不該出現的理由", StringComparison.Ordinal));
         Assert.IsFalse(cut.Markup.Contains("link_undeclared", StringComparison.Ordinal));
@@ -530,7 +538,7 @@ public class DesignCatalogTests
         Assert.AreEqual(0, views.Documents.Count);
         Assert.AreEqual(0, annotations.SaveAttempts);
         Assert.AreEqual(2, Field<List<ViewLinkDto>>(cut, "_links").Count);
-        var shown = cut.Find("[aria-label='表怎麼相連']").QuerySelectorAll("li").Select(item => item.TextContent.Trim()).ToArray();
+        var shown = cut.Find("[aria-label='表怎麼相連']").QuerySelectorAll("li .code").Select(item => item.TextContent.Trim()).ToArray();
         CollectionAssert.AreEquivalent(
             new[] { "orders.customerId → customers.id", "orders.customerId → accounts.missing" },
             shown);
@@ -729,6 +737,7 @@ public class DesignCatalogTests
         context.Services.AddSingleton(new SchemaService(profiles, browser, connections, environments));
         context.Services.AddSingleton(environments);
         context.Services.AddSingleton(new AnnotationService(profiles, annotations));
+        context.Services.AddSingleton<IViewProposer>(new FixedViewProposer());
         return context.Render<Workbench.Web.Components.Views>();
     }
 

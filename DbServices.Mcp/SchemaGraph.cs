@@ -3,11 +3,11 @@ using DbServices.Api.Shared;
 namespace DbServices.Mcp;
 
 /// <summary>
-/// 從已登記連線讀出資料表、欄位與外鍵。預覽不讀業務列。
+/// 從已登記連線讀出資料表、欄位與外鍵。預覽依編成的 SELECT 讀取有限列。
 /// </summary>
 public static class SchemaGraph
 {
-    public const int PreviewLimit = 40;
+    public const int PreviewLimit = 100;
 
     public static SchemaGraphResult Read(ToolCatalog catalog, string? connectionId)
     {
@@ -73,13 +73,7 @@ public static class SchemaGraph
         string? connectionId,
         ViewDocument? view,
         IReadOnlyDictionary<string, string>? parameters)
-    {
-        ArgumentNullException.ThrowIfNull(catalog);
-        _ = connectionId;
-        _ = view;
-        _ = parameters;
-        return SchemaPreviewResult.Fail("preview_unavailable", "不讀取業務列。");
-    }
+        => SelectRunner.Preview(catalog, connectionId, view, parameters);
 
     public static PreparedView Prepare(ViewDocument view, IReadOnlyDictionary<string, string>? parameters)
     {
@@ -108,12 +102,24 @@ public static class SchemaGraph
                 FromColumn = link.FromColumn,
                 To = link.To,
                 ToColumn = link.ToColumn,
+                Join = link.Join,
+                Reason = link.Reason,
+                ViewOnly = link.ViewOnly,
             }).ToList(),
             Columns = (view.Columns ?? []).Select(column => new ViewColumn
             {
                 Name = column.Name,
                 Source = column.Source,
             }).ToList(),
+            Limit = view.Limit,
+            Distinct = view.Distinct,
+            Filters = view.Filters ?? [],
+            GroupBy = view.GroupBy ?? [],
+            Aggregates = view.Aggregates ?? [],
+            Having = view.Having ?? [],
+            OrderBy = view.OrderBy ?? [],
+            Sql = "",
+            Placements = view.Placements ?? [],
             Parameters = (view.Parameters ?? [])
                 .Where(item => !string.IsNullOrWhiteSpace(item.Name) && supplied.ContainsKey(item.Name))
                 .Select(item => new ViewParameter
@@ -176,9 +182,10 @@ public sealed class SchemaPreviewResult
     public List<string> Columns { get; init; } = [];
     public List<List<string>> Rows { get; init; } = [];
     public bool Truncated { get; init; }
+    public string Sql { get; init; } = "";
 
-    public static SchemaPreviewResult Success(List<string> columns, List<List<string>> rows, bool truncated)
-        => new() { Ok = true, Columns = columns, Rows = rows, Truncated = truncated };
+    public static SchemaPreviewResult Success(List<string> columns, List<List<string>> rows, bool truncated, string? sql = null)
+        => new() { Ok = true, Columns = columns, Rows = rows, Truncated = truncated, Sql = sql ?? "" };
 
     public static SchemaPreviewResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
