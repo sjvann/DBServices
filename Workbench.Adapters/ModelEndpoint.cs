@@ -158,6 +158,8 @@ public sealed class ModelEndpoint : IModelEndpoint
         _ => status,
     };
 
+    public HttpClient OpenPullClient() => OpenPull();
+
     private HttpClient OpenPull()
     {
         var client = _handler is null ? new HttpClient() : new HttpClient(_handler, disposeHandler: false);
@@ -208,12 +210,20 @@ public sealed class ModelEndpoint : IModelEndpoint
         return await client.SendAsync(request, cancellationToken);
     }
 
-    private HttpClient Open()
+    public ProbeChannel OpenProbeChannel()
     {
-        var client = _handler is null ? new HttpClient() : new HttpClient(_handler, disposeHandler: false);
-        client.Timeout = Limit;
-        return client;
+        if (_handler is not null)
+        {
+            var injected = new HttpClient(_handler, disposeHandler: false) { Timeout = Limit };
+            return new ProbeChannel(injected, _handler as HttpClientHandler);
+        }
+
+        var redirects = new HttpClientHandler { AllowAutoRedirect = false };
+        var client = new HttpClient(redirects, disposeHandler: true) { Timeout = Limit };
+        return new ProbeChannel(client, redirects);
     }
+
+    private HttpClient Open() => OpenProbeChannel().Client;
 
     private static bool TryAddress(ModelDraft draft, out string endpoint, out ModelProbe? failure)
     {
@@ -319,4 +329,19 @@ public sealed class ModelEndpoint : IModelEndpoint
             trimmed = trimmed[..^"/models".Length].TrimEnd('/');
         return trimmed + "/chat/completions";
     }
+}
+
+public sealed class ProbeChannel : IDisposable
+{
+    public ProbeChannel(HttpClient client, HttpClientHandler? redirects)
+    {
+        Client = client;
+        Redirects = redirects;
+    }
+
+    public HttpClient Client { get; }
+
+    public HttpClientHandler? Redirects { get; }
+
+    public void Dispose() => Client.Dispose();
 }

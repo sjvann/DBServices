@@ -3,6 +3,7 @@
 @inject OperatorGate Gate
 @inject ViewService ViewEditor
 @inject SchemaService Schema
+@inject AnnotationService Annotations
 @inject EnvironmentService Environments
 @layout WorkbenchLayout
 
@@ -56,38 +57,86 @@ else
             {
                 <p class="empty">正在讀取資料表。</p>
             }
-            else if (!string.IsNullOrEmpty(_schemaError))
+            else if (_schemaError is not null)
             {
-                <p class="empty" role="alert">@_schemaError</p>
+                <div class="status-message" role="alert">
+                    <span>@_schemaError.Message</span>
+                    <span class="code">@_schemaError.Code</span>
+                </div>
             }
-            else if (VisibleTables.Count == 0)
+            else if (_tables.Count == 0)
             {
-                <p class="empty">@(_tables.Count == 0 ? "這筆連線裡沒有資料表。" : "沒有符合的資料表。")</p>
+                <p class="empty-catalog">資料來源尚未註記</p>
             }
             else
             {
-                <ul class="table-list">
-                    @foreach (var table in VisibleTables)
-                    {
-                        var current = table;
-                        <li>
-                            <button type="button"
-                                    class="table-pick"
-                                    draggable="true"
-                                    aria-pressed="@Placed(current.Name)"
-                                    @ondragstart="() => BeginDrag(current.Name)"
-                                    @ondragend="EndDrag"
-                                    @onclick="() => Place(current.Name)">
-                                <span>@current.Name</span>
-                                <span class="meta">@TableState(current.Name)</span>
-                            </button>
-                        </li>
-                    }
-                </ul>
+                @if (VisibleTables.Count == 0)
+                {
+                    <p class="empty">沒有符合的資料表。</p>
+                }
+                else
+                {
+                    <ul class="table-list">
+                        @foreach (var table in VisibleTables)
+                        {
+                            var current = table;
+                            var tableNote = TableNote(current.Name);
+                            <li>
+                                <button type="button"
+                                        class="table-pick"
+                                        draggable="true"
+                                        aria-pressed="@Placed(current.Name)"
+                                        @ondragstart="() => BeginDrag(current.Name)"
+                                        @ondragend="EndDrag"
+                                        @onclick="() => Place(current.Name)">
+                                    <span>@current.Name</span>
+                                    <span class="meta">@TableState(current.Name)</span>
+                                </button>
+                                @if (!string.IsNullOrWhiteSpace(tableNote))
+                                {
+                                    <p class="meta">@tableNote</p>
+                                }
+                                <ul class="field-list">
+                                    @foreach (var column in current.Columns)
+                                    {
+                                        <li>
+                                            <span>@column.Name</span>
+                                            <span class="meta">@column.Type</span>
+                                            @if (ColumnUnmarked(current.Name, column.Name))
+                                            {
+                                                <span class="unmarked-badge">尚未註記</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@ColumnNote(current.Name, column.Name)</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (_declared.Count > 0)
+                {
+                    <ul class="link-list" aria-label="已聲明關聯">
+                        @foreach (var link in _declared)
+                        {
+                            <li><span class="code">@link.From.@link.FromColumn → @link.To.@link.ToColumn</span></li>
+                        }
+                    </ul>
+                }
             }
         </aside>
         <section class="board" aria-labelledby="view-editor-title">
-            @if (_error is not null)
+            @if (_error?.Code == "link_undeclared")
+            {
+                <div class="status-message" role="alert">
+                    <span>@_error.Message</span>
+                    <span class="code">@_error.Code</span>
+                </div>
+            }
+            else if (_error is not null)
             {
                 <div class="error" role="alert">
                     @if (!string.IsNullOrEmpty(_error.Code))
@@ -110,7 +159,7 @@ else
                     }
                     else
                     {
-                        <p class="meta">選一張資料表，勾要看的欄。相關的表可以一起拖進來。下方會出現資料。</p>
+                        <p class="meta">選一張資料表，勾要看的欄。相關的表可以一起拖進來。預覽不讀取業務列。</p>
                     }
                 </div>
                 @if (_editing)
@@ -143,6 +192,7 @@ else
                     <input id="view-name" autocomplete="off" placeholder="@AutomaticName()" @bind="_name" @bind:event="oninput" />
                 </label>
                 <p class="hint">可以空白，會用資料表的名字。</p>
+                <label class="choice"><input type="checkbox" @bind="_confirmed" /> 解說已確認</label>
                 <div class="canvas @( _dragOver ? "drag-over" : null)"
                      @ondragenter="() => _dragOver = true"
                      @ondragleave="() => _dragOver = false"
@@ -286,7 +336,7 @@ else
                     <div role="status" aria-live="polite">
                         @if (_previewing)
                         {
-                            <p class="meta">正在取資料。</p>
+                            <p class="meta">正在準備預覽。</p>
                         }
                         else if (!string.IsNullOrEmpty(_previewNote))
                         {
@@ -295,7 +345,10 @@ else
                     </div>
                     @if (_previewColumns.Count == 0)
                     {
-                        <p class="empty">勾選欄位後，這裡會出現資料。篩選可以留白。</p>
+                        @if (string.IsNullOrEmpty(_previewNote) && !_previewing)
+                        {
+                            <p class="empty">勾選欄位後，這裡會顯示預覽說明。篩選可以留白。</p>
+                        }
                     }
                     else
                     {
@@ -334,6 +387,7 @@ else
     private bool _creating;
     private bool _busy;
     private bool _published;
+    private bool _confirmed;
     private bool _schemaBusy;
     private bool _previewing;
     private bool _dragOver;
@@ -341,7 +395,7 @@ else
     private int _previewGeneration;
     private ErrorDto? _error;
     private string? _local;
-    private string? _schemaError;
+    private ErrorDto? _schemaError;
     private string? _hint;
     private string? _switchCandidate;
     private string? _drag;
@@ -353,6 +407,10 @@ else
     private string _query = "";
     private List<ViewDocumentDto> _documents = [];
     private List<SchemaTableDto> _tables = [];
+    private List<AnnotationLinkDto> _declared = [];
+    private List<AnnotationLinkDto> _eligible = [];
+    private readonly Dictionary<string, string> _tableNotes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _columnNotes = new(StringComparer.OrdinalIgnoreCase);
     private List<string> _sources = [];
     private List<ViewLinkDto> _links = [];
     private List<ViewColumnDto> _columns = [];
@@ -391,22 +449,26 @@ else
 
     private async Task LoadSchema()
     {
+        _previewGeneration++;
+        CancelPreview();
         _schemaBusy = true;
         _schemaError = null;
         try
         {
-            var result = await Schema.GraphAsync(Gate.Current!.Id, CancellationToken.None);
+            var result = await Annotations.DesignCatalogAsync(Gate.Current!.Id, CancellationToken.None);
             if (!result.Ok)
             {
-                _schemaError = result.Error!.Message;
+                _schemaError = result.Error;
                 _tables = [];
+                _declared = [];
+                _eligible = [];
+                _tableNotes.Clear();
+                _columnNotes.Clear();
                 return;
             }
 
-            _tables = result.Value!.Tables ?? [];
+            Project(result.Value);
             Align();
-            if (_editing && _columns.Count > 0)
-                SchedulePreview();
         }
         finally
         {
@@ -419,6 +481,7 @@ else
         _editing = true;
         _creating = true;
         _published = false;
+        _confirmed = false;
         _id = "v-" + Guid.NewGuid().ToString("N")[..12];
         _name = "";
         _purpose = "";
@@ -447,6 +510,7 @@ else
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
         _published = document.Published;
+        _confirmed = document.Confirmed;
         _sources = (document.Sources ?? []).ToList();
         _links = (document.Links ?? []).Select(link => new ViewLinkDto
         {
@@ -538,7 +602,7 @@ else
         {
             _links.Add(new ViewLinkDto
             {
-                Kind = "foreign-key",
+                Kind = KindFor(suggestion),
                 From = suggestion.From,
                 FromColumn = suggestion.FromColumn,
                 To = suggestion.To,
@@ -753,7 +817,7 @@ else
         => Suggestions(2).FirstOrDefault(item => string.Equals(item.Table, table, StringComparison.OrdinalIgnoreCase))?.Depth ?? 1;
 
     private IReadOnlyList<SchemaNeighborhood.Suggestion> Suggestions(int depth)
-        => string.IsNullOrWhiteSpace(Root) ? [] : SchemaNeighborhood.Suggest(_tables, Root, depth);
+        => string.IsNullOrWhiteSpace(Root) ? [] : SchemaNeighborhood.Suggest(WithHiddenEdges(_tables), Root, depth);
 
     private SchemaTableDto Card(string source)
     {
@@ -827,6 +891,7 @@ else
             _previewColumns = [];
             _previewRows = [];
             _previewNote = "";
+            StateHasChanged();
             return;
         }
 
@@ -835,6 +900,7 @@ else
         _previewCts = cts;
         _previewing = true;
         _previewNote = "";
+        StateHasChanged();
         try
         {
             var document = Draft();
@@ -859,7 +925,10 @@ else
         finally
         {
             if (generation == _previewGeneration)
+            {
                 _previewing = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -904,9 +973,33 @@ else
                 }
             }
 
-            var saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
+            if (_schemaError is not null)
+            {
+                _error = _schemaError;
+                return;
+            }
+
+            var previousKinds = (document.Links ?? []).Select(link => link.Kind).ToArray();
+            if (RefuseUndeclared(document) is { } refused)
+            {
+                _error = refused;
+                return;
+            }
+
+            OpResult<ViewDocumentDto> saved;
+            try
+            {
+                saved = await ViewEditor.SaveAsync(profile.Id, document, CancellationToken.None);
+            }
+            catch
+            {
+                RestoreKinds(document.Links, previousKinds);
+                throw;
+            }
+
             if (!saved.Ok)
             {
+                RestoreKinds(document.Links, previousKinds);
                 _error = saved.Error;
                 return;
             }
@@ -952,6 +1045,7 @@ else
             Id = _id.Trim(),
             Name = name,
             Purpose = string.IsNullOrWhiteSpace(_purpose) ? name : _purpose.Trim(),
+            Confirmed = _confirmed,
             Published = _published,
             Sources = _sources.ToList(),
             Links = _links.ToList(),
@@ -999,6 +1093,7 @@ else
         _name = document.Name ?? "";
         _purpose = document.Purpose ?? "";
         _published = document.Published;
+        _confirmed = document.Confirmed;
         _sources = (document.Sources ?? []).ToList();
         _links = (document.Links ?? []).ToList();
         _columns = (document.Columns ?? []).ToList();
@@ -1025,6 +1120,101 @@ else
         var text = name?.Trim() ?? "";
         var found = _tables.FirstOrDefault(item => string.Equals(item.Name, text, StringComparison.OrdinalIgnoreCase));
         return found?.Name ?? text;
+    }
+
+    private string KindFor(SchemaNeighborhood.Suggestion suggestion)
+    {
+        var origin = DeclaredOrigin(suggestion.From, suggestion.FromColumn, suggestion.To, suggestion.ToColumn);
+        return origin == "declared" ? "accepted" : "foreign-key";
+    }
+
+    private ErrorDto? RefuseUndeclared(ViewDocumentDto document)
+    {
+        var sources = (document.Sources ?? [])
+            .Select(source => source?.Trim() ?? "")
+            .Where(source => source.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var links = document.Links ?? [];
+        if (sources <= 1 || links.Count == 0)
+            return null;
+
+        var names = new HashSet<string>(
+            (document.Sources ?? []).Select(source => source?.Trim() ?? "").Where(source => source.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var link in links)
+        {
+            if (link.Kind is not ("foreign-key" or "accepted")
+                || string.IsNullOrWhiteSpace(link.FromColumn)
+                || string.IsNullOrWhiteSpace(link.ToColumn)
+                || !names.Contains(link.From ?? "")
+                || !names.Contains(link.To ?? ""))
+                return null;
+        }
+
+        var kinds = new string[links.Count];
+        for (var index = 0; index < links.Count; index++)
+        {
+            var origin = DeclaredOrigin(links[index].From, links[index].FromColumn, links[index].To, links[index].ToColumn);
+            if (origin is null)
+                return new ErrorDto { Code = "link_undeclared", Message = "這段關聯不在註記包裡。" };
+            kinds[index] = origin == "foreign-key" ? "foreign-key" : "accepted";
+        }
+
+        for (var index = 0; index < links.Count; index++)
+            links[index].Kind = kinds[index];
+        return null;
+    }
+
+    private static void RestoreKinds(IList<ViewLinkDto>? links, string[] kinds)
+    {
+        if (links is null)
+            return;
+        for (var index = 0; index < links.Count && index < kinds.Length; index++)
+            links[index].Kind = kinds[index];
+    }
+
+    private string? DeclaredOrigin(string? from, string? fromColumn, string? to, string? toColumn)
+    {
+        var left = from?.Trim() ?? "";
+        var leftColumn = fromColumn?.Trim() ?? "";
+        var right = to?.Trim() ?? "";
+        var rightColumn = toColumn?.Trim() ?? "";
+        foreach (var link in _eligible)
+        {
+            var origin = link.Origin?.Trim() ?? "";
+            if (origin is not ("foreign-key" or "declared"))
+                continue;
+            if (SameDeclared(link.From, link.FromColumn, link.To, link.ToColumn, left, leftColumn, right, rightColumn))
+                return origin;
+        }
+
+        return null;
+    }
+
+    private static bool SameDeclared(
+        string? from,
+        string? fromColumn,
+        string? to,
+        string? toColumn,
+        string otherFrom,
+        string otherFromColumn,
+        string otherTo,
+        string otherToColumn)
+    {
+        var left = from?.Trim() ?? "";
+        var leftColumn = fromColumn?.Trim() ?? "";
+        var right = to?.Trim() ?? "";
+        var rightColumn = toColumn?.Trim() ?? "";
+        var straight = string.Equals(left, otherFrom, StringComparison.Ordinal)
+            && string.Equals(leftColumn, otherFromColumn, StringComparison.Ordinal)
+            && string.Equals(right, otherTo, StringComparison.Ordinal)
+            && string.Equals(rightColumn, otherToColumn, StringComparison.Ordinal);
+        var swapped = string.Equals(left, otherTo, StringComparison.Ordinal)
+            && string.Equals(leftColumn, otherToColumn, StringComparison.Ordinal)
+            && string.Equals(right, otherFrom, StringComparison.Ordinal)
+            && string.Equals(rightColumn, otherFromColumn, StringComparison.Ordinal);
+        return straight || swapped;
     }
 
     private static bool SameLink(ViewLinkDto link, SchemaNeighborhood.Suggestion suggestion)
@@ -1056,6 +1246,154 @@ else
 
         _documents = documents;
     }
+
+    private void Project(AnnotationActiveDto? active)
+    {
+        _tableNotes.Clear();
+        _columnNotes.Clear();
+        _declared = [];
+        _eligible = [];
+        var package = active?.Package;
+        if (package is not { Active: true } || string.Equals(package.Status, "draft", StringComparison.Ordinal))
+        {
+            _tables = [];
+            return;
+        }
+
+        var included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tables = new List<SchemaTableDto>();
+        foreach (var table in package.Tables ?? [])
+        {
+            var name = table.Name?.Trim() ?? "";
+            if (name.Length == 0 || !included.Add(name))
+                continue;
+            if (!string.IsNullOrWhiteSpace(table.Note))
+                _tableNotes[name] = table.Note.Trim();
+
+            var columns = new List<SchemaColumnDto>();
+            foreach (var column in table.Columns ?? [])
+            {
+                var columnName = column.Name?.Trim() ?? "";
+                if (columnName.Length == 0)
+                    continue;
+                _columnNotes[NoteKey(name, columnName)] = column.Note?.Trim() ?? "";
+                columns.Add(new SchemaColumnDto
+                {
+                    Name = columnName,
+                    Type = column.Type?.Trim() ?? "",
+                    PrimaryKey = column.PrimaryKey,
+                });
+            }
+
+            tables.Add(new SchemaTableDto { Name = name, Columns = columns });
+        }
+
+        foreach (var link in package.Links ?? [])
+        {
+            if (!Eligible(link))
+                continue;
+            var copy = new AnnotationLinkDto
+            {
+                From = link.From.Trim(),
+                FromColumn = link.FromColumn.Trim(),
+                To = link.To.Trim(),
+                ToColumn = link.ToColumn.Trim(),
+                Origin = link.Origin,
+            };
+            _eligible.Add(copy);
+            if (Declared(link, included))
+                _declared.Add(copy);
+        }
+
+        foreach (var table in tables)
+        {
+            foreach (var column in table.Columns)
+            {
+                var first = _declared.FirstOrDefault(link =>
+                    string.Equals(link.From, table.Name, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(link.FromColumn, column.Name, StringComparison.OrdinalIgnoreCase));
+                if (first is null)
+                    continue;
+                column.ReferencesTable = first.To;
+                column.ReferencesColumn = first.ToColumn;
+            }
+        }
+
+        _tables = tables;
+    }
+
+    private static bool Eligible(AnnotationLinkDto link)
+    {
+        if (!string.Equals(link.Origin?.Trim(), "foreign-key", StringComparison.Ordinal)
+            && !string.Equals(link.Origin?.Trim(), "declared", StringComparison.Ordinal))
+            return false;
+        var from = link.From?.Trim() ?? "";
+        var to = link.To?.Trim() ?? "";
+        var fromColumn = link.FromColumn?.Trim() ?? "";
+        var toColumn = link.ToColumn?.Trim() ?? "";
+        return from.Length > 0 && to.Length > 0 && fromColumn.Length > 0 && toColumn.Length > 0;
+    }
+
+    private static bool Declared(AnnotationLinkDto link, HashSet<string> tables)
+    {
+        if (!string.Equals(link.Origin, "foreign-key", StringComparison.Ordinal)
+            && !string.Equals(link.Origin, "declared", StringComparison.Ordinal))
+            return false;
+        var from = link.From?.Trim() ?? "";
+        var to = link.To?.Trim() ?? "";
+        var fromColumn = link.FromColumn?.Trim() ?? "";
+        var toColumn = link.ToColumn?.Trim() ?? "";
+        return from.Length > 0 && to.Length > 0 && fromColumn.Length > 0 && toColumn.Length > 0
+            && tables.Contains(from) && tables.Contains(to);
+    }
+
+    private List<SchemaTableDto> WithHiddenEdges(IReadOnlyList<SchemaTableDto> tables)
+    {
+        var copy = tables.Select(table => new SchemaTableDto
+        {
+            Name = table.Name,
+            Columns = (table.Columns ?? []).Select(column => new SchemaColumnDto
+            {
+                Name = column.Name,
+                Type = column.Type,
+                PrimaryKey = column.PrimaryKey,
+                ReferencesTable = column.ReferencesTable,
+                ReferencesColumn = column.ReferencesColumn,
+            }).ToList(),
+        }).ToList();
+
+        foreach (var link in _declared)
+        {
+            var table = copy.FirstOrDefault(item => string.Equals(item.Name, link.From, StringComparison.OrdinalIgnoreCase));
+            if (table is null)
+                continue;
+            var shown = table.Columns.Any(column =>
+                string.Equals(column.Name, link.FromColumn, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(column.ReferencesTable, link.To, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(column.ReferencesColumn, link.ToColumn, StringComparison.OrdinalIgnoreCase));
+            if (shown)
+                continue;
+            table.Columns.Add(new SchemaColumnDto
+            {
+                Name = link.FromColumn,
+                ReferencesTable = link.To,
+                ReferencesColumn = link.ToColumn,
+            });
+        }
+
+        return copy;
+    }
+
+    private string? TableNote(string table)
+        => _tableNotes.TryGetValue(table, out var note) && !string.IsNullOrWhiteSpace(note) ? note : null;
+
+    private bool ColumnUnmarked(string table, string column)
+        => !_columnNotes.TryGetValue(NoteKey(table, column), out var note) || string.IsNullOrWhiteSpace(note);
+
+    private string ColumnNote(string table, string column)
+        => _columnNotes.TryGetValue(NoteKey(table, column), out var note) ? note : "";
+
+    private static string NoteKey(string table, string column) => table + "\u001f" + column;
 
     public void Dispose() => CancelPreview();
 }

@@ -9,20 +9,36 @@ namespace Workbench.Adapters;
 
 public sealed class SnapshotPdfWriter : IReportPdf
 {
-    private static readonly string FontFamilyName = ResolveFont();
+    public const string BuiltInFamily = "Lato";
 
-    private static string ResolveFont()
+    private static string FontFamilyName = ResolveFontFamily(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "msjh.ttc"));
+
+    public static string ResolveFontFamily(string fontFile)
     {
         QuestPDF.Settings.License = LicenseType.Community;
-        var fonts = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
-        var regular = Path.Combine(fonts, "msjh.ttc");
-        if (File.Exists(regular))
-            FontManager.RegisterFontFromFile(regular);
+        if (string.IsNullOrWhiteSpace(fontFile) || !File.Exists(fontFile))
+            return UseBuiltInFamily();
 
-        var names = FontManager.GetRegisteredFonts().Select(font => font.FamilyName).Distinct().ToArray();
-        return names.FirstOrDefault(name => name.Contains("JhengHei", StringComparison.OrdinalIgnoreCase))
-            ?? names.FirstOrDefault(name => name.Contains("微軟正黑", StringComparison.Ordinal))
-            ?? throw new InvalidOperationException("找不到正黑體。已註冊：" + string.Join("、", names.Take(12)));
+        try
+        {
+            FontManager.RegisterFontFromFile(fontFile);
+            var names = FontManager.GetRegisteredFonts().Select(font => font.FamilyName);
+            var chosen = names.FirstOrDefault(name => name.Contains("JhengHei", StringComparison.OrdinalIgnoreCase))
+                ?? names.FirstOrDefault(name => name.Contains("微軟正黑", StringComparison.Ordinal));
+            return string.IsNullOrEmpty(chosen) || chosen == BuiltInFamily ? UseBuiltInFamily() : chosen;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return UseBuiltInFamily();
+        }
+    }
+
+    private static string UseBuiltInFamily()
+    {
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
+        QuestPDF.Settings.ThrowOnMissingFontFamilies = false;
+        return BuiltInFamily;
     }
 
     public byte[] Write(PrintReport report)

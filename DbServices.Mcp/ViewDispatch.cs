@@ -42,10 +42,11 @@ public static class ViewDispatch
             tables[source] = ToMaps(columns, rows);
         }
 
-        var order = JoinOrder(view);
-        if (order is null)
+        var plan = JoinOrder(view);
+        if (plan is null)
             return TableDispatchResult.QueryExecutionFailed();
 
+        var order = plan.Steps;
         var current = tables[order[0].Source].Select(row => Prefix(order[0].Source, row)).ToList();
         for (var index = 1; index < order.Count; index++)
         {
@@ -70,6 +71,11 @@ public static class ViewDispatch
             current = joined;
         }
 
+        var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in order)
+            present.Add(step.Source);
+        current = KeepMatching(current, plan.Remaining, present);
+
         return TableDispatchResult.Rows(OutputColumns(view), ProjectRows(view, current));
     }
 
@@ -87,7 +93,7 @@ public static class ViewDispatch
         return JoinOrder(view) is not null;
     }
 
-    private static List<JoinStep>? JoinOrder(ViewDocument view)
+    private static JoinPlan? JoinOrder(ViewDocument view)
     {
         var sources = view.Sources;
         var pending = new HashSet<string>(sources, StringComparer.OrdinalIgnoreCase);
@@ -119,7 +125,38 @@ public static class ViewDispatch
             links.Remove(link);
         }
 
-        return steps;
+        return new JoinPlan(steps, links);
+    }
+
+    private static List<Dictionary<string, string>> KeepMatching(
+        List<Dictionary<string, string>> rows,
+        IReadOnlyList<ViewLink> links,
+        IReadOnlySet<string> present)
+    {
+        foreach (var link in links)
+        {
+            if (string.IsNullOrWhiteSpace(link.From) || string.IsNullOrWhiteSpace(link.To)
+                || string.IsNullOrWhiteSpace(link.FromColumn) || string.IsNullOrWhiteSpace(link.ToColumn))
+                continue;
+            if (!present.Contains(link.From) || !present.Contains(link.To))
+                continue;
+
+            var leftKey = link.From + "." + link.FromColumn;
+            var rightKey = link.To + "." + link.ToColumn;
+            var next = new List<Dictionary<string, string>>();
+            foreach (var row in rows)
+            {
+                if (!row.TryGetValue(leftKey, out var leftText) || !row.TryGetValue(rightKey, out var rightText))
+                    continue;
+                if (!string.Equals(leftText, rightText, StringComparison.Ordinal))
+                    continue;
+                next.Add(row);
+            }
+
+            rows = next;
+        }
+
+        return rows;
     }
 
     private static TableDispatchResult? RejectParameters(ViewDocument view, IReadOnlyDictionary<string, object?> parameters)
@@ -305,4 +342,6 @@ public static class ViewDispatch
     }
 
     private sealed record JoinStep(string Source, ViewLink Link);
+
+    private sealed record JoinPlan(List<JoinStep> Steps, List<ViewLink> Remaining);
 }

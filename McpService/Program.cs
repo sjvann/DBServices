@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DbServices.Mcp;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -16,6 +17,7 @@ builder.Services.AddSingleton(sp =>
     var environment = sp.GetRequiredService<IWebHostEnvironment>();
     return new ConnectionDirectory(connections, Path.Combine(environment.ContentRootPath, "catalog", "connections.json"));
 });
+builder.Services.AddSingleton(sp => sp.GetRequiredService<ConnectionDirectory>().Catalog);
 builder.Services.AddSingleton(sp =>
 {
     var environment = sp.GetRequiredService<IWebHostEnvironment>();
@@ -26,6 +28,17 @@ builder.Services.AddSingleton(sp =>
         ? relative
         : Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
     return new ViewCatalog(path);
+});
+builder.Services.AddSingleton(sp =>
+{
+    var environment = sp.GetRequiredService<IWebHostEnvironment>();
+    var relative = sp.GetRequiredService<IConfiguration>()["Catalog:AnnotationsPath"];
+    if (string.IsNullOrWhiteSpace(relative))
+        relative = Path.Combine("catalog", "annotations.json");
+    var path = Path.IsPathRooted(relative)
+        ? relative
+        : Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
+    return new AnnotationCatalog(path);
 });
 
 builder.Services
@@ -39,44 +52,129 @@ builder.Services
     })
     .WithListToolsHandler((request, _) =>
     {
-        var views = request.Server.Services!.GetRequiredService<ViewCatalog>();
+        var services = request.Server.Services!;
+        var views = services.GetRequiredService<ViewCatalog>();
         var tools = views.Published().Select(ToTool).ToList();
+        if (ActiveAnnotation(services.GetRequiredService<AnnotationCatalog>()) is not null)
+            tools.Add(SourceAnnotationTool());
         return ValueTask.FromResult(new ListToolsResult { Tools = tools });
     })
     .WithCallToolHandler((request, _) =>
     {
         var services = request.Server.Services!;
         var name = request.Params?.Name ?? "";
+        var arguments = request.Params?.Arguments;
+        var environment = services.GetRequiredService<IWebHostEnvironment>();
+        var configuration = services.GetRequiredService<IConfiguration>();
+        var http = services.GetRequiredService<IHttpContextAccessor>();
+        var directory = services.GetRequiredService<ConnectionDirectory>();
+        var requestedConnection = (ArgumentText(arguments, "connectionId") ?? "").Trim();
+        var auditArguments = AuditFromArguments(arguments);
+        if (IsClosedTool(name))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                name,
+                auditArguments,
+                TableDispatchResult.ToolDisabled()));
+        }
+
+        if (name.Equals("source_annotation", StringComparison.OrdinalIgnoreCase))
+        {
+            var package = ActiveAnnotation(services.GetRequiredService<AnnotationCatalog>());
+            if (package is null)
+            {
+                return ValueTask.FromResult(Finish(
+                    environment,
+                    configuration,
+                    http,
+                    directory.Catalog,
+                    requestedConnection,
+                    name,
+                    auditArguments,
+                    TableDispatchResult.UnknownTool()));
+            }
+
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                "",
+                "source_annotation",
+                [],
+                TableDispatchResult.Scalar(AnnotationCitation(package))));
+        }
+
         var views = services.GetRequiredService<ViewCatalog>();
         var view = views.FindPublishedByName(name);
         if (view is null)
         {
-            return ValueTask.FromResult(ToolResult(TableDispatchResult.QueryExecutionFailed()));
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                name,
+                auditArguments,
+                TableDispatchResult.UnknownTool()));
         }
 
-        var arguments = request.Params?.Arguments;
-        var connectionId = ArgumentText(arguments, "connectionId") ?? "";
-        if (ParameterMissing(view, arguments))
-            return ValueTask.FromResult(ToolResult(TableDispatchResult.InvalidArguments()));
+        if (RejectedArguments(view, arguments))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                view.Name,
+                auditArguments,
+                TableDispatchResult.UnacceptableArguments()));
+        }
 
-        var parameters = ReadParameters(arguments);
-        var directory = services.GetRequiredService<ConnectionDirectory>();
-        var outcome = ViewDispatch.Execute(
-            directory.Catalog,
-            connectionId,
-            view,
-            parameters);
-        var auditArguments = new List<KeyValuePair<string, object?>>();
-        foreach (var pair in parameters)
-            auditArguments.Add(new KeyValuePair<string, object?>(pair.Key, pair.Value));
+        if (ParameterMissing(view, arguments))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                directory.Catalog,
+                requestedConnection,
+                view.Name,
+                auditArguments,
+                TableDispatchResult.InvalidArguments()));
+        }
+
+        var catalog = directory.Catalog;
+        if (!TryResolveConnection(catalog, requestedConnection, out var connectionId, out var failure))
+        {
+            return ValueTask.FromResult(Finish(
+                environment,
+                configuration,
+                http,
+                catalog,
+                connectionId,
+                view.Name,
+                auditArguments,
+                failure!));
+        }
+
+        var parameters = ReadParameters(view, arguments);
+        var outcome = ViewDispatch.Execute(catalog, connectionId, view, parameters);
         return ValueTask.FromResult(Finish(
-            services.GetRequiredService<IWebHostEnvironment>(),
-            services.GetRequiredService<IConfiguration>(),
-            services.GetRequiredService<IHttpContextAccessor>(),
-            directory.Catalog,
+            environment,
+            configuration,
+            http,
+            catalog,
             connectionId,
             view.Name,
-            auditArguments,
+            AuditOf(parameters),
             outcome));
     });
 
@@ -162,12 +260,32 @@ app.MapGet("/views/{id}", (string id, HttpContext http, ViewCatalog views, IConf
     var document = views.Find(id);
     return document is null ? Results.NotFound(new { code = "not_found", message = "找不到檢視。" }) : Results.Json(document);
 });
-app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
+app.MapPut("/views/{id}", async (string id, HttpContext http, ViewCatalog views, AnnotationCatalog annotations, IConfiguration configuration) =>
 {
     if (RejectWrite(http, configuration) is { } rejected)
         return rejected;
     var document = await http.Request.ReadFromJsonAsync<ViewDocument>() ?? new ViewDocument();
     document.Id = id;
+    DeclaredLinks.TrimEnds(document);
+    var shaped = ViewCatalog.Check(document, views.List());
+    if (shaped is not null)
+        return Results.Json(new { code = shaped.Code, message = shaped.Message }, statusCode: 400);
+    if (DeclaredLinks.Applies(document))
+    {
+        AnnotationPackage? package;
+        try
+        {
+            package = annotations.Active().Package;
+        }
+        catch (AnnotationReadException)
+        {
+            return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+        }
+
+        if (!DeclaredLinks.TryPrepare(document, package))
+            return Results.Json(new { code = DeclaredLinks.Code, message = DeclaredLinks.Message }, statusCode: 400);
+    }
+
     var result = views.Save(document);
     return result.Ok ? Results.Json(result.Document) : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
 });
@@ -182,6 +300,147 @@ app.MapPost("/views/{id}/publish", (string id, HttpContext http, ViewCatalog vie
     SetPublished(id, true, http, views, configuration));
 app.MapPost("/views/{id}/unpublish", (string id, HttpContext http, ViewCatalog views, IConfiguration configuration) =>
     SetPublished(id, false, http, views, configuration));
+
+app.MapGet("/annotations/draft", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var draft = annotations.Draft();
+        return draft is null ? Results.NoContent() : Results.Json(draft);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapPut("/annotations/draft", async (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    AnnotationPackage? package;
+    try
+    {
+        package = await http.Request.ReadFromJsonAsync<AnnotationPackage>();
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+
+    if (package is null)
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    try
+    {
+        var current = annotations.Draft();
+        var sameDraft = current is not null && string.Equals(current.Id, package.Id, StringComparison.Ordinal);
+        var result = sameDraft
+            ? annotations.Save(package)
+            : annotations.IsActiveId(package.Id)
+                ? annotations.ForkFromActive(package)
+                : annotations.Import(package);
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapDelete("/annotations/draft", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var result = annotations.Abandon();
+        return result.Ok
+            ? Results.NoContent()
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapPost("/annotations/read-structure", (HttpContext http, AnnotationCatalog annotations, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+
+    try
+    {
+        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
+            return blocked;
+
+        var result = annotations.ReadStructure(directory.Catalog, name, http.RequestAborted);
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapGet("/annotations/draft/dbml", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var text = annotations.DraftDbml();
+        return text is null ? Results.NoContent() : Results.Text(text, "text/plain; charset=utf-8");
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapGet("/annotations/active", (HttpContext http, AnnotationCatalog annotations, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+    try
+    {
+        var active = annotations.Active();
+        if (active.Package is null)
+            return Results.NoContent();
+
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var node = JsonSerializer.SerializeToNode(active.Package, options)!.AsObject();
+        node["others"] = JsonSerializer.SerializeToNode(active.Others, options);
+        return Results.Json(node);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
+app.MapPost("/annotations/confirm", (HttpContext http, AnnotationCatalog annotations, ViewCatalog views, ConnectionDirectory directory, IConfiguration configuration) =>
+{
+    if (RejectWrite(http, configuration) is { } rejected)
+        return rejected;
+
+    try
+    {
+        if (annotations.RefuseConfirm() is { } refused)
+            return Results.Json(new { code = refused.Code, message = refused.Message }, statusCode: 400);
+        if (RejectPlatform(directory, configuration, out var name) is { } blocked)
+            return blocked;
+
+        var result = annotations.Confirm(directory.Catalog, name, views.List());
+        return result.Ok
+            ? Results.Json(result.Package)
+            : Results.Json(new { code = result.Code, message = result.Message }, statusCode: 400);
+    }
+    catch (AnnotationReadException)
+    {
+        return Results.Json(new { code = "execution_failed", message = "沒有保存。" }, statusCode: 400);
+    }
+});
 
 app.MapGet("/schema/graph", (string? connectionId, HttpContext http, ConnectionDirectory directory, IConfiguration configuration) =>
 {
@@ -240,6 +499,28 @@ static List<Dictionary<string, string>> ConnectionPayload(ToolCatalog catalog)
     return payload;
 }
 
+static IResult? RejectPlatform(ConnectionDirectory directory, IConfiguration configuration, out string name)
+{
+    name = "";
+    var available = new List<string>();
+    foreach (var pair in directory.Catalog.Connections)
+    {
+        if (pair.Value.Available)
+            available.Add(pair.Key);
+    }
+
+    if (available.Count == 0)
+        return Results.Json(new { code = "no_connection", message = "沒有讀取結構。" }, statusCode: 400);
+    if (available.Count > 1)
+        return Results.Json(new { code = "connection_unselectable", message = "註記站不能選擇連線，沒有讀取結構。" }, statusCode: 400);
+
+    name = available[0];
+    var expected = configuration["Annotation:PlatformConnection"];
+    if (!string.Equals(name, expected, StringComparison.OrdinalIgnoreCase))
+        return Results.Json(new { code = "not_platform_source", message = "不能用" + name + "讀結構或確認。" }, statusCode: 400);
+    return null;
+}
+
 static IResult? RejectWrite(HttpContext http, IConfiguration configuration)
 {
     var caller = http.Request.Headers["X-DBServices-Caller"].ToString();
@@ -254,28 +535,117 @@ static IResult? RejectWrite(HttpContext http, IConfiguration configuration)
     return null;
 }
 
+static AnnotationPackage? ActiveAnnotation(AnnotationCatalog annotations)
+{
+    try
+    {
+        return annotations.Active().Package;
+    }
+    catch (AnnotationReadException)
+    {
+        return null;
+    }
+}
+
+static Tool SourceAnnotationTool()
+    => new()
+    {
+        Name = "source_annotation",
+        Description = "已確認註記包的表、欄、型別、註解與已聲明關聯。",
+        InputSchema = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["type"] = "object",
+            ["properties"] = new Dictionary<string, object?>(),
+            ["required"] = new List<string>(),
+        }),
+        Annotations = new ToolAnnotations
+        {
+            ReadOnlyHint = true,
+            DestructiveHint = false,
+        },
+    };
+
+static Dictionary<string, object?> AnnotationCitation(AnnotationPackage package)
+{
+    var tables = new List<Dictionary<string, object?>>();
+    foreach (var table in package.Tables ?? [])
+    {
+        if (table is null)
+            continue;
+
+        var columns = new List<Dictionary<string, string>>();
+        foreach (var column in table.Columns ?? [])
+        {
+            if (column is null)
+                continue;
+            columns.Add(new Dictionary<string, string>
+            {
+                ["name"] = column.Name ?? "",
+                ["type"] = column.Type ?? "",
+                ["note"] = column.Note ?? "",
+            });
+        }
+
+        tables.Add(new Dictionary<string, object?>
+        {
+            ["name"] = table.Name ?? "",
+            ["note"] = table.Note ?? "",
+            ["columns"] = columns,
+        });
+    }
+
+    var links = new List<Dictionary<string, string>>();
+    foreach (var link in package.Links ?? [])
+    {
+        if (link is null || link.Origin is not ("foreign-key" or "declared"))
+            continue;
+        if (string.IsNullOrWhiteSpace(link.From) || string.IsNullOrWhiteSpace(link.FromColumn)
+            || string.IsNullOrWhiteSpace(link.To) || string.IsNullOrWhiteSpace(link.ToColumn))
+            continue;
+
+        links.Add(new Dictionary<string, string>
+        {
+            ["from"] = link.From ?? "",
+            ["fromColumn"] = link.FromColumn ?? "",
+            ["to"] = link.To ?? "",
+            ["toColumn"] = link.ToColumn ?? "",
+            ["origin"] = link.Origin ?? "",
+            ["note"] = link.Note ?? "",
+        });
+    }
+
+    return new Dictionary<string, object?>
+    {
+        ["tables"] = tables,
+        ["links"] = links,
+    };
+}
+
 static Tool ToTool(ViewDocument view)
 {
     var properties = new Dictionary<string, object?>
     {
         ["connectionId"] = new Dictionary<string, object?> { ["type"] = "string" },
     };
+    var required = new List<string>();
     foreach (var parameter in view.Parameters)
     {
         if (string.IsNullOrWhiteSpace(parameter.Name) || properties.ContainsKey(parameter.Name))
             continue;
         properties[parameter.Name] = new Dictionary<string, object?> { ["type"] = "string" };
+        if (!parameter.Name.Equals("connectionId", StringComparison.OrdinalIgnoreCase))
+            required.Add(parameter.Name);
     }
 
     return new Tool
     {
         Name = view.Name,
-        Description = string.IsNullOrWhiteSpace(view.Purpose) ? view.Name : view.Purpose,
+        Description = Describe(view),
         InputSchema = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["type"] = "object",
             ["properties"] = properties,
-            ["required"] = new[] { "connectionId" },
+            ["required"] = required,
         }),
         Annotations = new ToolAnnotations
         {
@@ -315,19 +685,171 @@ static bool TryArgument(IDictionary<string, JsonElement>? arguments, string name
     return false;
 }
 
-static Dictionary<string, object?> ReadParameters(IDictionary<string, JsonElement>? arguments)
+static string Describe(ViewDocument view)
 {
-    var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+    var parts = new List<string>();
+    var purpose = view.Purpose?.Trim() ?? "";
+    if (purpose.Length > 0)
+        parts.Add(purpose);
+
+    var sources = (view.Sources ?? []).Select(source => source?.Trim() ?? "").Where(source => source.Length > 0).ToList();
+    if (sources.Count > 0)
+        parts.Add("來源表：" + string.Join("、", sources));
+
+    var links = new List<string>();
+    foreach (var link in view.Links ?? [])
+    {
+        if (string.IsNullOrWhiteSpace(link.From) || string.IsNullOrWhiteSpace(link.To)
+            || string.IsNullOrWhiteSpace(link.FromColumn) || string.IsNullOrWhiteSpace(link.ToColumn))
+            continue;
+        links.Add(link.From.Trim() + "." + link.FromColumn.Trim() + " = " + link.To.Trim() + "." + link.ToColumn.Trim());
+    }
+
+    if (links.Count > 0)
+        parts.Add("關聯：" + string.Join("；", links));
+
+    var columns = (view.Columns ?? []).Select(column => column.Name?.Trim() ?? "").Where(name => name.Length > 0).ToList();
+    if (columns.Count > 0)
+        parts.Add("輸出欄：" + string.Join("、", columns));
+
+    var parameters = (view.Parameters ?? []).Select(parameter => parameter.Name?.Trim() ?? "").Where(name => name.Length > 0).ToList();
+    if (parameters.Count > 0)
+        parts.Add("參數：" + string.Join("、", parameters));
+
+    return string.Join("。", parts);
+}
+
+static bool IsClosedTool(string name)
+    => name.Equals("insert", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("update", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("delete", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("sql", StringComparison.OrdinalIgnoreCase);
+
+static bool IsSecret(string name)
+    => name.Equals("connectionString", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("connectString", StringComparison.OrdinalIgnoreCase);
+
+static bool RejectedArguments(ViewDocument view, IDictionary<string, JsonElement>? arguments)
+{
     if (arguments is null)
-        return parameters;
+        return false;
+
+    var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var parameter in view.Parameters ?? [])
+    {
+        if (!string.IsNullOrWhiteSpace(parameter.Name))
+            declared.Add(parameter.Name);
+    }
 
     foreach (var pair in arguments)
     {
-        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase)
-            || pair.Key.Equals("filters", StringComparison.OrdinalIgnoreCase))
+        if (IsSecret(pair.Key))
+            return true;
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (!declared.Contains(pair.Key))
+            return true;
+    }
+
+    return false;
+}
+
+static bool TryResolveConnection(ToolCatalog catalog, string requested, out string connectionId, out TableDispatchResult? failure)
+{
+    failure = null;
+    var trimmed = requested.Trim();
+    if (trimmed.Length == 0)
+    {
+        string? only = null;
+        var count = 0;
+        foreach (var pair in catalog.Connections)
+        {
+            if (!pair.Value.Available)
+                continue;
+            count++;
+            only = pair.Key;
+        }
+
+        if (count != 1 || only is null)
+        {
+            connectionId = "";
+            failure = TableDispatchResult.ConnectionRequired();
+            return false;
+        }
+
+        connectionId = only;
+        return true;
+    }
+
+    string? found = null;
+    ConnectionSnapshot? snapshot = null;
+    foreach (var pair in catalog.Connections)
+    {
+        if (!pair.Key.Equals(trimmed, StringComparison.OrdinalIgnoreCase))
+            continue;
+        found = pair.Key;
+        snapshot = pair.Value;
+        break;
+    }
+
+    if (snapshot is null || found is null)
+    {
+        connectionId = trimmed;
+        failure = TableDispatchResult.UnknownConnection();
+        return false;
+    }
+
+    if (!snapshot.Available || string.IsNullOrWhiteSpace(snapshot.ConnectionString))
+    {
+        connectionId = found;
+        failure = TableDispatchResult.ConnectionFailed();
+        return false;
+    }
+
+    connectionId = found;
+    return true;
+}
+
+static List<KeyValuePair<string, object?>> AuditFromArguments(IDictionary<string, JsonElement>? arguments)
+{
+    var list = new List<KeyValuePair<string, object?>>();
+    if (arguments is null)
+        return list;
+
+    foreach (var pair in arguments)
+    {
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase) || IsSecret(pair.Key))
             continue;
         if (TryScalar(pair.Value, out var scalar))
-            parameters[pair.Key] = scalar;
+            list.Add(new KeyValuePair<string, object?>(pair.Key, scalar));
+    }
+
+    return list;
+}
+
+static List<KeyValuePair<string, object?>> AuditOf(IReadOnlyDictionary<string, object?> parameters)
+{
+    var list = new List<KeyValuePair<string, object?>>();
+    foreach (var pair in parameters)
+    {
+        if (pair.Key.Equals("connectionId", StringComparison.OrdinalIgnoreCase) || IsSecret(pair.Key))
+            continue;
+        list.Add(new KeyValuePair<string, object?>(pair.Key, pair.Value));
+    }
+
+    return list;
+}
+
+static Dictionary<string, object?> ReadParameters(ViewDocument view, IDictionary<string, JsonElement>? arguments)
+{
+    var parameters = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+    foreach (var parameter in view.Parameters ?? [])
+    {
+        if (string.IsNullOrWhiteSpace(parameter.Name))
+            continue;
+        if (!TryArgument(arguments, parameter.Name, out var element) || !TryScalar(element, out var scalar))
+            continue;
+        parameters[parameter.Name] = scalar;
     }
 
     return parameters;

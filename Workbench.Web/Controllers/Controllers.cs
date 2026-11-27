@@ -35,8 +35,13 @@ public static class ApiResults
 public sealed class SessionsController : ControllerBase
 {
     private readonly SessionService _sessions;
+    private readonly Profiles _profiles;
 
-    public SessionsController(SessionService sessions) => _sessions = sessions;
+    public SessionsController(SessionService sessions, Profiles profiles)
+    {
+        _sessions = sessions;
+        _profiles = profiles;
+    }
 
     [HttpPost]
     public IActionResult Create([FromBody] LoginRequest request)
@@ -44,9 +49,25 @@ public sealed class SessionsController : ControllerBase
         var result = _sessions.Login(request.DisplayName, request.Secret);
         if (!result.Ok)
             return ApiResults.Error(result.Error!);
-        Response.Cookies.Append("wb_session", result.Value!.SessionId, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" });
+        AppendSession(result.Value!.SessionId);
         return Ok(result.Value);
     }
+
+    [HttpPost("/login")]
+    public IActionResult LoginForm([FromForm] LoginRequest request)
+    {
+        var result = _sessions.Login(request.DisplayName, request.Secret);
+        if (!result.Ok)
+            return Redirect("/?error=" + Uri.EscapeDataString(result.Error!.Code));
+
+        AppendSession(result.Value!.SessionId);
+        var profile = _profiles.Find(_sessions.OperatorId(result.Value.SessionId));
+        var destination = profile is null ? "/" : OperatorService.ToMe(profile).Destination;
+        return Redirect(destination);
+    }
+
+    private void AppendSession(string sessionId)
+        => Response.Cookies.Append("wb_session", sessionId, new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" });
 
     [HttpDelete]
     public IActionResult Delete()
@@ -251,4 +272,76 @@ public sealed class ExportController : ControllerBase
             return ApiResults.Error(result.Error!);
         return File(result.Value!, "application/pdf");
     }
+}
+
+[ApiController]
+[Route("api/annotations")]
+public sealed class AnnotationsController : ControllerBase
+{
+    private readonly AnnotationService _annotations;
+
+    public AnnotationsController(AnnotationService annotations) => _annotations = annotations;
+
+    [HttpGet("draft")]
+    public Task<IActionResult> Draft(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.DraftAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
+
+    [HttpPost("draft")]
+    [RequestSizeLimit(8_388_608)]
+    public async Task<IActionResult> Import(IFormFile? file, CancellationToken cancellationToken)
+    {
+        var content = Array.Empty<byte>();
+        if (file is not null)
+        {
+            await using var stream = file.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, cancellationToken);
+            content = memory.ToArray();
+        }
+
+        return ApiResults.From(await _annotations.ImportAsync(
+            ApiResults.OperatorId(HttpContext),
+            file?.FileName,
+            content,
+            cancellationToken));
+    }
+
+    [HttpPut("draft")]
+    public Task<IActionResult> Save([FromBody] AnnotationPackageDto? package, CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.SaveAsync(ApiResults.OperatorId(HttpContext), package, cancellationToken));
+
+    [HttpPost("read-structure")]
+    public Task<IActionResult> ReadStructure(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.ReadStructureAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
+
+    [HttpDelete("draft")]
+    public async Task<IActionResult> Abandon(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.AbandonAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return NoContent();
+    }
+
+    [HttpGet("active")]
+    public async Task<IActionResult> Active(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.ActiveAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return result.Value?.Package is null ? NoContent() : Ok(result.Value);
+    }
+
+    [HttpGet("draft/dbml")]
+    public async Task<IActionResult> DraftDbml(CancellationToken cancellationToken)
+    {
+        var result = await _annotations.DraftDbmlAsync(ApiResults.OperatorId(HttpContext), cancellationToken);
+        if (!result.Ok)
+            return ApiResults.Error(result.Error!);
+        return result.Value is null ? NoContent() : Content(result.Value, "text/plain; charset=utf-8");
+    }
+
+    [HttpPost("confirm")]
+    public Task<IActionResult> Confirm(CancellationToken cancellationToken)
+        => ApiResults.FromAsync(_annotations.ConfirmAsync(ApiResults.OperatorId(HttpContext), cancellationToken));
 }

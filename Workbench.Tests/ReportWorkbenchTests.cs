@@ -69,6 +69,42 @@ public class ReportWorkbenchTests
     }
 
     [TestMethod]
+    public async Task Login_form_signs_in_on_the_first_submit()
+    {
+        await using var host = new WorkbenchHost();
+        using var client = host.CreateClient(new() { AllowAutoRedirect = false });
+
+        var page = await client.GetStringAsync("/");
+        var form = page[page.IndexOf("<form", StringComparison.Ordinal)..page.IndexOf("</form>", StringComparison.Ordinal)];
+        Assert.Contains("method=\"post\"", form, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("action=\"/login\"", form, StringComparison.Ordinal);
+        Assert.Contains("name=\"displayName\"", form, StringComparison.Ordinal);
+        Assert.Contains("name=\"secret\"", form, StringComparison.Ordinal);
+        Assert.DoesNotContain("action=\"/\"", form, StringComparison.Ordinal);
+
+        var accepted = await client.PostAsync("/login", Fields("管理者", Password));
+        Assert.AreEqual(HttpStatusCode.Redirect, accepted.StatusCode);
+        Assert.AreEqual("/operators", accepted.Headers.Location?.OriginalString);
+        Assert.Contains("wb_session=", SetCookie(accepted), StringComparison.Ordinal);
+
+        using var anonymous = host.CreateClient(new() { AllowAutoRedirect = false });
+        var rejected = await anonymous.PostAsync("/login", Fields("管理者", "other-secret"));
+        Assert.AreEqual(HttpStatusCode.Redirect, rejected.StatusCode);
+        Assert.AreEqual("/?error=unauthenticated", rejected.Headers.Location?.OriginalString);
+        Assert.IsFalse(SetCookie(rejected).Contains("wb_session=", StringComparison.Ordinal));
+
+        var again = System.Net.WebUtility.HtmlDecode(await anonymous.GetStringAsync("/?error=unauthenticated"));
+        Assert.Contains("尚未登入。", again, StringComparison.Ordinal);
+        Assert.Contains(">登入</a>", again, StringComparison.Ordinal);
+    }
+
+    private static FormUrlEncodedContent Fields(string name, string secret)
+        => new(new Dictionary<string, string> { ["displayName"] = name, ["secret"] = secret });
+
+    private static string SetCookie(HttpResponseMessage response)
+        => response.Headers.TryGetValues("Set-Cookie", out var values) ? string.Join(";", values) : "";
+
+    [TestMethod]
     public async Task Missing_password_does_not_offer_an_entry()
     {
         await using var host = new WorkbenchHost(options => options.SeedAdmin = false);
@@ -120,6 +156,79 @@ public class ReportWorkbenchTests
         Assert.AreEqual(0, host.Caller.Count);
         Assert.IsFalse(none.Me.IsAdmin);
         _ = lin;
+    }
+
+    [TestMethod]
+    public async Task Governance_entry_assigns_cancels_lands_and_rejects_without_adding_people()
+    {
+        await using var host = new WorkbenchHost();
+        var admin = await host.LoginAsync();
+        const string secret = "fang-secret";
+        var created = await CreateAsync(admin, "方晴", secret);
+        var people = CountOperators(host.SqlitePath);
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+
+        var assigned = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Governance],
+        });
+        Assert.AreEqual(200, assigned.Status, assigned.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Governance }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+        AssertNoSecrets(assigned.Text, secret, Password, "Data Source=", "Password=");
+        Assert.AreEqual(0, host.Caller.Count);
+
+        var only = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/governance", only.Me.Destination);
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Governance }, only.Me.Entries.ToArray());
+        Assert.IsFalse(only.Me.IsAdmin);
+
+        var both = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst, EntryNames.Governance],
+        });
+        Assert.AreEqual(200, both.Status, both.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        CollectionAssert.AreEquivalent(
+            new[] { EntryNames.Analyst, EntryNames.Governance },
+            ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+
+        var switched = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/stations", switched.Me.Destination);
+        Assert.AreEqual(2, switched.Me.Entries.Count);
+
+        var cancelled = await admin.RawAsync(HttpMethod.Put, "api/operators/" + created.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst],
+        });
+        Assert.AreEqual(200, cancelled.Status, cancelled.Text);
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+
+        var analyst = await host.LoginAsync("方晴", secret);
+        Assert.AreEqual("/views", analyst.Me.Destination);
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, analyst.Me.Entries.ToArray());
+        Assert.IsFalse(analyst.Me.Entries.Contains(EntryNames.Governance));
+
+        var rejected = await analyst.RawAsync(HttpMethod.Put, "api/operators/" + analyst.Me.Id + "/entries", new EntryAssignmentRequest
+        {
+            Entries = [EntryNames.Analyst, EntryNames.Governance],
+        });
+        Assert.AreEqual(403, rejected.Status);
+        Assert.Contains("forbidden", rejected.Text);
+        Assert.Contains("沒有權限。", rejected.Text);
+        AssertNoSecrets(rejected.Text, secret, Password, "Data Source=", "Password=");
+        CollectionAssert.AreEquivalent(new[] { EntryNames.Analyst }, ReadEntries(host.SqlitePath, created.Me.Id).ToArray());
+        Assert.AreEqual(people, CountOperators(host.SqlitePath));
+        Assert.IsFalse(ReadAdmin(host.SqlitePath, "方晴"));
+
+        var hidden = await analyst.RawAsync(HttpMethod.Get, "api/operators");
+        Assert.AreEqual(403, hidden.Status);
+        Assert.Contains("沒有權限。", hidden.Text);
+        Assert.AreEqual(0, host.Caller.Count);
+        Assert.AreEqual(0, CountStyles(host.SqlitePath));
+        Assert.AreEqual(0, CountRecords(host.SqlitePath));
     }
 
     [TestMethod]
@@ -704,6 +813,19 @@ public class ReportWorkbenchTests
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT password_verifier FROM operators";
         return (string)command.ExecuteScalar()!;
+    }
+
+    private static List<string> ReadEntries(string path, string operatorId)
+    {
+        using var connection = Open(path);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT entry FROM entries WHERE operator_id = $id ORDER BY entry";
+        command.Parameters.AddWithValue("$id", operatorId);
+        using var reader = command.ExecuteReader();
+        var list = new List<string>();
+        while (reader.Read())
+            list.Add(reader.GetString(0));
+        return list;
     }
 
     private static int CountOperators(string path)

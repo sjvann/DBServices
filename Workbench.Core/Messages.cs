@@ -15,6 +15,15 @@ public static class WorkbenchMessages
     public static ErrorDto Text(string code, string message) => new() { Code = code, Message = message };
 
     public const string UndecidedConnectionText = "無法決定連線，沒有讀取資料。";
+    public const string ImportRejected = "無法匯入。這份活頁簿對不上字典契約。既有草稿沒有改。";
+    public const string DraftExists = "已有工作中的草稿，沒有改。";
+    public const string LinkOutside = "關聯的一端不在這份註記包裡。";
+    public const string Importing = "正在匯入。";
+    public const string ReadingStructure = "正在讀取結構。";
+    public const string NoConnection = "沒有讀取結構。";
+    public const string ConnectionUnselectable = "註記站不能選擇連線，沒有讀取結構。";
+
+    public static string NotPlatformSource(string name) => "不能用" + name + "讀結構或確認。";
     public const string ReportUnavailable = "這份報表現在產生不了。";
     public const string UnreadableStyle = "不能讀取這個樣式。";
     public const string FrozenStructure = "這個檢視已被樣式引用，不能變更結構。";
@@ -23,6 +32,15 @@ public static class WorkbenchMessages
     public const string Disconnected = "來源連不起來。";
     public const string SecondAdmin = "不能建立另一個管理者。";
     public const string LeftUnsaved = "未保存就離開後不能匯出。";
+    public const string ServiceUnconfiguredCode = "service_unconfigured";
+    public const string ServiceUnavailableCode = "service_unavailable";
+
+    public static CatalogNotice CatalogWaiting(string code, string target)
+    {
+        if (code == ServiceUnconfiguredCode)
+            return new CatalogNotice("資料服務位址還沒有設定", "你填的 " + target + " 會在資料服務位址設定好之後才送出。");
+        return new CatalogNotice("資料服務還沒有啟動", "你填的 " + target + " 會在資料服務啟動後才送出。");
+    }
 
     public static string NoReport(IEnumerable<string> names)
     {
@@ -49,6 +67,11 @@ public static class WorkbenchMessages
             parts.Add("環境設定尚未完成");
         return new ErrorDto { Code = "environment_incomplete", Message = "環境設定未完成：" + string.Join("，", parts) + "。" };
     }
+}
+
+public readonly record struct CatalogNotice(string Title, string Body)
+{
+    public static CatalogNotice None { get; } = new("", "");
 }
 
 public sealed class OpResult<T>

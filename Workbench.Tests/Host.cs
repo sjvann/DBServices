@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Workbench.Contracts;
+using Workbench.Core;
 using Workbench.Core.Ports;
 
 namespace Workbench.Tests;
@@ -26,6 +27,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         _root = options.ContentRoot ?? Path.Combine(Path.GetTempPath(), "wb-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         Catalog = options.Catalog ?? new RecordingCatalog();
+        Annotations = options.Annotations ?? new RecordingAnnotations();
         Caller = options.Caller ?? new RecordingCaller();
         Connections = options.Connections ?? new RecordingConnections();
         ModelReady = options.ModelReady;
@@ -39,6 +41,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
 
     public HostOptions Options { get; }
     public RecordingCatalog Catalog { get; }
+    public RecordingAnnotations Annotations { get; }
     public RecordingCaller Caller { get; }
     public RecordingConnections Connections { get; }
     public bool ModelReady { get; }
@@ -87,6 +90,7 @@ internal sealed class WorkbenchHost : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IViewCatalog>(Catalog);
+            services.AddSingleton<IAnnotationCatalog>(Annotations);
             services.AddSingleton<IViewCaller>(Caller);
             services.AddSingleton<IConnectionCount>(Connections);
             services.AddSingleton<IConnectionAdmin>(new RecordingConnectionAdmin());
@@ -139,6 +143,7 @@ internal sealed class HostOptions
     public string? ContentRoot { get; set; }
     public bool PreserveRoot { get; set; }
     public RecordingCatalog? Catalog { get; set; }
+    public RecordingAnnotations? Annotations { get; set; }
     public RecordingCaller? Caller { get; set; }
     public RecordingConnections? Connections { get; set; }
     public bool ModelReady { get; set; } = true;
@@ -218,6 +223,199 @@ internal sealed class RecordingCatalog : IViewCatalog
 
     private static ViewDocumentDto Clone(ViewDocumentDto document)
         => JsonSerializer.Deserialize<ViewDocumentDto>(JsonSerializer.Serialize(document))!;
+}
+
+internal sealed class RecordingAnnotations : IAnnotationCatalog
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public AnnotationPackageDto? Draft { get; set; }
+    public AnnotationPackageDto? Active { get; set; }
+    public List<AnnotationPackageDto> Others { get; } = [];
+    public int Attempts { get; private set; }
+    public int Commits { get; private set; }
+    public int StructureAttempts { get; private set; }
+    public int SaveAttempts { get; private set; }
+    public int ConfirmAttempts { get; private set; }
+    public int DbmlAttempts { get; private set; }
+    public int AbandonAttempts { get; private set; }
+    public string? DraftDbml { get; set; }
+    public Task? ReadGate { get; set; }
+    public AnnotationWriteResult? StructureFailure { get; set; }
+    public AnnotationWriteResult? SaveFailure { get; set; }
+    public AnnotationWriteResult? ConfirmFailure { get; set; }
+    public AnnotationPackageDto? StructurePackage { get; set; }
+
+    public Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(Draft is null ? null : Clone(Draft));
+
+    public Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken)
+        => Task.FromResult(new AnnotationActiveDto
+        {
+            Package = Active is null ? null : Clone(Active),
+            Others = Others.Select(Clone).ToList(),
+        });
+
+    public Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken)
+    {
+        DbmlAttempts++;
+        return Task.FromResult(Draft is null ? null : DraftDbml ?? "");
+    }
+
+    public Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken)
+    {
+        ConfirmAttempts++;
+        if (ConfirmFailure is not null)
+            return Task.FromResult(ConfirmFailure);
+        if (Draft is null)
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        if (Active is not null)
+        {
+            var old = Clone(Active);
+            old.Status = "confirmed";
+            old.Active = false;
+            Others.RemoveAll(item => item.Id == old.Id);
+            Others.Add(old);
+        }
+
+        var confirmed = Clone(Draft);
+        confirmed.Status = "confirmed";
+        confirmed.Active = true;
+        confirmed.Changes = [];
+        if (string.IsNullOrEmpty(confirmed.Dbml))
+            confirmed.Dbml = DraftDbml ?? "";
+        Draft = null;
+        Active = Clone(confirmed);
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(confirmed)));
+    }
+
+    public Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+    {
+        Attempts++;
+        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
+        {
+            Draft = Adopt(Draft!, package);
+            Commits++;
+            return Task.FromResult(AnnotationWriteResult.Success(Clone(Draft)));
+        }
+
+        var created = Clone(package);
+        created.Status = "draft";
+        created.Active = false;
+        Draft = created;
+        Commits++;
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(created)));
+    }
+
+    public Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken)
+    {
+        SaveAttempts++;
+        if (SaveFailure is not null)
+            return Task.FromResult(SaveFailure);
+        if (Draft is null && Active is not null && string.Equals(Active.Id, package.Id, StringComparison.Ordinal))
+        {
+            var forked = Clone(Active);
+            forked.Id = Guid.NewGuid().ToString("N");
+            forked.Status = "draft";
+            forked.Active = false;
+            forked.Dbml = "";
+            forked.Purpose = package.Purpose ?? "";
+            foreach (var table in forked.Tables)
+            {
+                var match = package.Tables?.FirstOrDefault(item => item.Name == table.Name);
+                if (match is null)
+                    continue;
+                table.Note = match.Note ?? "";
+                foreach (var column in table.Columns)
+                {
+                    var noted = match.Columns?.FirstOrDefault(item => item.Name == column.Name);
+                    if (noted is null)
+                        continue;
+                    column.Note = string.IsNullOrWhiteSpace(noted.Note) ? "" : noted.Note;
+                    column.Pii = noted.Pii ?? "";
+                }
+            }
+
+            forked.Links = package.Links ?? [];
+            Draft = Clone(forked);
+            Commits++;
+            return Task.FromResult(AnnotationWriteResult.Success(Clone(forked)));
+        }
+
+        if (Draft is not null && Active is not null && string.Equals(Active.Id, package.Id, StringComparison.Ordinal))
+            return Task.FromResult(AnnotationWriteResult.Fail("draft_exists", WorkbenchMessages.DraftExists));
+        if (Draft is null
+            || !string.Equals(Draft.Status, "draft", StringComparison.Ordinal)
+            || !string.Equals(Draft.Id, package.Id, StringComparison.Ordinal))
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+
+        var copy = Clone(package);
+        copy.Status = "draft";
+        copy.Active = false;
+        Draft = Clone(copy);
+        Commits++;
+        return Task.FromResult(AnnotationWriteResult.Success(Clone(copy)));
+    }
+
+    public async Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken)
+    {
+        StructureAttempts++;
+        if (ReadGate is not null)
+            await ReadGate.WaitAsync(cancellationToken);
+        if (StructureFailure is not null)
+            return StructureFailure;
+
+        var package = Clone(StructurePackage ?? new AnnotationPackageDto { Id = "structure", Title = "平台" });
+        package.Status = "draft";
+        package.Active = false;
+        if (string.Equals(Draft?.Status, "draft", StringComparison.Ordinal))
+            package = Adopt(Draft!, package);
+        Draft = Clone(package);
+        Commits++;
+        return AnnotationWriteResult.Success(Clone(package));
+    }
+
+    public Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken)
+    {
+        AbandonAttempts++;
+        if (Draft is null)
+            return Task.FromResult(AnnotationWriteResult.Fail("execution_failed", "沒有保存。"));
+        Draft = null;
+        return Task.FromResult(new AnnotationWriteResult { Ok = true });
+    }
+
+    private static AnnotationPackageDto Adopt(AnnotationPackageDto draft, AnnotationPackageDto incoming)
+    {
+        var merged = Clone(incoming);
+        merged.Id = draft.Id;
+        merged.Title = draft.Title ?? "";
+        merged.Purpose = draft.Purpose ?? "";
+        merged.Status = "draft";
+        merged.Active = false;
+        merged.Dbml = draft.Dbml ?? "";
+        foreach (var table in merged.Tables ?? [])
+        {
+            var prior = draft.Tables?.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), (table.Name ?? "").Trim(), StringComparison.Ordinal));
+            if (prior is null)
+                continue;
+            table.Note = prior.Note ?? "";
+            foreach (var column in table.Columns ?? [])
+            {
+                var noted = prior.Columns?.FirstOrDefault(item => string.Equals((item.Name ?? "").Trim(), (column.Name ?? "").Trim(), StringComparison.Ordinal));
+                if (noted is null)
+                    continue;
+                column.Note = noted.Note ?? "";
+                column.Pii = noted.Pii ?? "";
+            }
+        }
+
+        merged.Changes = draft.Changes ?? [];
+        return merged;
+    }
+
+    private static AnnotationPackageDto Clone(AnnotationPackageDto package)
+        => JsonSerializer.Deserialize<AnnotationPackageDto>(JsonSerializer.Serialize(package, Json), Json)!;
 }
 
 internal sealed class RecordingCaller : IViewCaller

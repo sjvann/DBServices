@@ -95,6 +95,36 @@ public sealed class CatalogWriteResult
     public static CatalogWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
 }
 
+public sealed class AnnotationWriteResult
+{
+    public bool Ok { get; init; }
+    public string Code { get; init; } = "";
+    public string Message { get; init; } = "";
+    public AnnotationPackageDto? Package { get; init; }
+
+    public static AnnotationWriteResult Success(AnnotationPackageDto package) => new() { Ok = true, Package = package };
+
+    public static AnnotationWriteResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public sealed class AnnotationActiveDto
+{
+    public AnnotationPackageDto? Package { get; set; }
+    public List<AnnotationPackageDto> Others { get; set; } = [];
+}
+
+public interface IAnnotationCatalog
+{
+    Task<AnnotationPackageDto?> DraftAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationActiveDto> ActiveAsync(string callerId, CancellationToken cancellationToken);
+    Task<string?> DraftDbmlAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> ImportAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> SaveAsync(AnnotationPackageDto package, string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> ReadStructureAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> ConfirmAsync(string callerId, CancellationToken cancellationToken);
+    Task<AnnotationWriteResult> AbandonAsync(string callerId, CancellationToken cancellationToken);
+}
+
 public interface IViewCatalog
 {
     Task<IReadOnlyList<ViewDocumentDto>> ListAsync(string callerId, CancellationToken cancellationToken);
@@ -211,6 +241,21 @@ public sealed class DatabaseListResult
     public static DatabaseListResult Success(IReadOnlyList<string> names) => new() { Ok = true, Names = names };
 
     public static DatabaseListResult Fail(string code, string message) => new() { Code = code, Message = message };
+}
+
+public sealed class DataServiceStart
+{
+    public bool Ok { get; init; }
+    public string Message { get; init; } = "";
+
+    public static DataServiceStart Ready(string message) => new() { Ok = true, Message = message };
+
+    public static DataServiceStart Fail(string message) => new() { Message = message };
+}
+
+public interface IDataServiceHost
+{
+    Task<DataServiceStart> StartAsync(CancellationToken cancellationToken);
 }
 
 public interface IConnectionAdmin

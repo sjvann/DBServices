@@ -19,3 +19,15 @@
 - source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\spec-ai-model-suggest-pull-probe.md`
   summary: 探測用的 HttpClient 是否真的套用 8 秒逾時，目前只斷言了公開常數。
   evidence: 把 Timeout 改成無限時，現有測試仍通過。要觀察私有 client 就得為測試露出它。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-1-指派資料治理入口並打開註記站.md`
+  summary: 環境未就緒時，換工作不會列出資料治理。
+  evidence: `Stations` 在快照未就緒時直接顯示既有的環境設定提示並返回，這是這一輪明確不改的 `/environment` 閘門。直接打開 `/governance` 不受這道閘影響。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-1-指派資料治理入口並打開註記站.md`
+  summary: 指派若丟出例外，勾選不會回到保存前，也沒有兩行錯誤。
+  evidence: 畫面只處理回傳的 `ErrorDto`。例外沒有既有代碼；規格不准新造代碼。其他站的保存也沒有把儲存例外收成畫面錯誤。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-3-從二代平台讀出結構草稿.md`
+  summary: 指向尚未存在的 Sqlite 檔時，讀結構會先把空資料庫建出來。
+  evidence: 這是既有 `SchemaGraph.Read` 與 Sqlite 提供者的行為。這一則不准改 `SchemaGraph.Read`。平台連線平常已存在，空檔測試才會走到建立檔案。
+- source_spec: `E:\sjvann\DBServices\_bmad-output\implementation-artifacts\source-annotation\spec-1-4-編輯四層註記並保存重開.md`
+  summary: 空白欄註若被改成危險色，現有測試仍會通過。
+  evidence: 測試只檢查 `unnoted` 這個 class，以及 `.purpose-field` 的第一段規則，沒有套用計算後的樣式。元件測試量不到實際顏色。

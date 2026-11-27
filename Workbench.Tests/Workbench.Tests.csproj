@@ -22,5 +22,6 @@
     <ProjectReference Include="..\Workbench.Adapters\Workbench.Adapters.csproj" />
     <ProjectReference Include="..\Workbench.Avalonia\Workbench.Avalonia.csproj" />
     <ProjectReference Include="..\McpService\McpService.csproj" Aliases="mcp" />
+    <ProjectReference Include="..\DbServices.Mcp\DbServices.Mcp.csproj" />
   </ItemGroup>
 </Project>
